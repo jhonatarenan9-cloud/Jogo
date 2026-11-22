@@ -360,7 +360,7 @@ const ORES_PER_BAR = 5, BAR_MULT = 20;
 // carvão: cada barra queima 1 carvão; a esteira de carvão leva o carvão por trás das minas até as fundições
 const COAL_PER_BAR = 1, COAL_HELPER_MULT = 3;
 // a esteira de carvão é montada sozinha quando a primeira fundição abre
-const coalLineOn = () => MINES.some(m=>!m.fuel && S.smelters[m.id]);
+const coalLineOn = () => MINES.some(m=>!m.fuel && S.smelters[m.id]) || !!(S.power && S.power.br);
 const coalMult = () => 1 + DRILL_BONUS*S.coalLvl;
 const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
 const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
@@ -428,6 +428,7 @@ function newState(){
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false, tool:0}])),
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
+    power:{open:false, br:false, lv:false, cd:false, tb:false, lvl:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
@@ -481,7 +482,7 @@ function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.2, S.staf
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
 const boostMult = () => 1 + BOOST_BONUS*S.boost;
 // minério/s de uma mina vindo dos ajudantes
-function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) : 0; }
+function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) * (1 + POWER_LIGHT_BONUS*powerRatio()) : 0; }
 // minério/s das máquinas (vai para a mina ativa)
 function machineRate(){ let r = 0; for(const t of TOOLS) if(S.tools[t.id]) r += t.passive; return r * boostMult(); }
 function incomePerSec(){
@@ -502,6 +503,7 @@ function produce(sec){
   const mr = machineRate(); if(mr > 0) gained[S.active] = (gained[S.active]||0) + mr*sec;
   for(const id in gained) addOre(id, gained[id]);
   smelt(sec);
+  powerTick(sec);
   sellByBelts();
   return gained;
 }
@@ -517,7 +519,7 @@ const barValue = m => m.value * BAR_MULT;
 const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 // valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
 const oreValue = (auto) => MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
-const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl);
+const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl) * (1 + POWER_BELT_BONUS*powerRatio());
 const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
 const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
 const SOLD = {};   // vendido pela esteira de venda (para mostrar o dinheiro subindo no mapa)
@@ -544,6 +546,49 @@ function smelt(sec){
   }
 }
 
+// ===================== USINA DE ENERGIA =====================
+// carvão → britador → lavadora → caldeira → turbina → energia (postes e esteiras)
+const POWER_OPEN_COST = 3000;
+const POWER_STAGES = [
+  {id:'br', name:'Britador', ico:'🪨', cost:2000,  desc:'Quebra o carvão em pedaços menores.'},
+  {id:'lv', name:'Lavadora', ico:'💧', cost:4000,  desc:'Lava o carvão moído (10% se perde na lavagem).'},
+  {id:'cd', name:'Caldeira', ico:'🔥', cost:7000,  desc:'Queima o carvão limpo e gera vapor.'},
+  {id:'tb', name:'Turbina',  ico:'⚡', cost:12000, desc:'O vapor gira a turbina, que gera energia.'},
+];
+const ENERGY_PER_COAL = 10, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POWER_BUF_MAX = 40, WASH_LOSS = 0.1;
+const powerIntake = () => 0.4 * (1 + 0.5*S.power.lvl);                    // carvão/s que a usina processa
+const boilerCost = () => Math.ceil(20000 * Math.pow(3, S.power.lvl));
+let powerNow = 0;                                                          // kW gerados agora
+// consumo: 1 kW para os postes + 1 kW por esteira ligada
+const powerDemand = () => 1 + MINES.filter(m=>hasBelt(m)).length + MINES.filter(m=>hasSellBelt(m)).length + (coalLineOn() ? 1 : 0);
+const powerRatio = () => S.power.tb ? Math.min(1, powerNow / powerDemand()) : 0;
+const powerStageLeft = st => Math.max(0, st.cost - (S.paid['pw_'+st.id]||0));
+const powerOpenLeft = () => Math.max(0, POWER_OPEN_COST - (S.paid.pw_open||0));
+const nextPowerStage = () => POWER_STAGES.find(st=>!S.power[st.id]);
+function powerTick(sec){
+  const P = S.power; if(!P.open || sec <= 0){ powerNow = 0; return; }
+  const r = powerIntake()*sec, b = P.buf; let gen = 0;
+  if(P.br){ const t = Math.max(0, Math.min(S.ore.carvao, r, POWER_BUF_MAX - b.moido)); S.ore.carvao -= t; b.moido += t; }
+  if(P.lv){ const t = Math.max(0, Math.min(b.moido, r, POWER_BUF_MAX - b.limpo)); b.moido -= t; b.limpo += t*(1-WASH_LOSS); }
+  if(P.cd){ const t = Math.max(0, Math.min(b.limpo, r, POWER_BUF_MAX - b.vapor)); b.limpo -= t; b.vapor += t; }
+  if(P.tb){ const t = Math.min(b.vapor, r); b.vapor -= t; gen = t*ENERGY_PER_COAL; }
+  const now = gen/sec;
+  powerNow = sec > 1 ? now : powerNow + (now - powerNow)*Math.min(1, sec*2);   // suaviza o número na tela
+}
+function openPower(){ S.power.open = true; delete S.paid.pw_open; toast('⚡ Terreno da Usina liberado! Construa o Britador primeiro.'); if(window.world3d) world3d.onPowerChanged(); buildShop(); render(); save(); }
+function buildPowerStage(st){
+  if(!S.power.open || S.power[st.id] || nextPowerStage() !== st) return;
+  const r = powerStageLeft(st); if(S.money < r) return;
+  S.money -= r; completePowerStage(st);
+}
+function completePowerStage(st){
+  S.power[st.id] = true; delete S.paid['pw_'+st.id];
+  toast(st.id === 'tb' ? '⚡ Turbina ligada! A usina está gerando energia para os postes e as esteiras.' : `${st.ico} ${st.name} construído! Falta: ${nextPowerStage().name}.`);
+  if(window.world3d) world3d.onPowerChanged();
+  buildShop(); render(); save();
+}
+function upgradeBoiler(){ const c = boilerCost(); if(!S.power.tb || S.money < c) return; S.money -= c; S.power.lvl++; toast('🔥 Caldeira maior! A usina processa mais carvão.'); render(); save(); }
+
 // ===================== MISSÕES =====================
 // uma de cada vez; recompensa ~20-30% do próximo passo, para ajudar sem estragar o desafio
 const MISSIONS = [
@@ -566,6 +611,8 @@ const MISSIONS = [
   {t:'Faça 3 entregas na Metalúrgica Aurora', p:()=>[S.deliveries||0, 3], r:500, go:()=>bagTotal() >= 1 ? {x:-3.4, z:19} : null},
   {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
   {t:'Compre o 🛺 coletador da mina de Cobre', p:()=>[+!!S.collectors.cobre, 1], r:400},
+  {t:'Abra o terreno da ⚡ Usina de Energia', p:()=>[+!!S.power.open, 1], r:800, go:()=>S.money >= powerOpenLeft() ? {x:24, z:12} : null},
+  {t:'Ligue a Turbina da Usina (4 etapas)', p:()=>[POWER_STAGES.filter(st=>S.power[st.id]).length, 4], r:5000},
   {t:'Contrate 3 ajudantes na mina de Ferro', p:()=>[S.staff.ferro.n, 3], r:2000},
   {t:'Complete a fundição do Ferro (3 itens)', p:()=>[3-factoryMissing(MINES[1]).length, 3], r:6000},
   {t:'Ganhe $50.000 em vendas', p:()=>[S.earned, 50000], r:8000},
@@ -850,6 +897,32 @@ function buildPanel(){
   const step = (on, ico, label) => `<div class="fstep${on?' on':''}"><div class="fico">${ico}</div><div>${label}</div></div>`;
   const arrow = on => `<div class="farrow${on?' on':''}">➜</div>`;
 
+  if(panelTarget === 'usina'){
+    const P = S.power, ratio = powerRatio(), dem = powerDemand();
+    document.getElementById('sheetTitle').textContent = '⚡ Usina de Energia';
+    el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">⚡</span>
+        <div><small>Energia</small><b>${fmt(powerNow)} / ${fmt(dem)} kW</b></div><span class="lvlBadge">${Math.round(ratio*100)}%</span></div>
+      <div class="lvlNext"><small>Abastecimento da rede</small><div>${!P.tb ? 'Termine as 4 etapas para gerar energia' : ratio >= 1 ? '✔ Tudo ligado com energia total' : '⚠️ Energia fraca: precisa de mais carvão ou caldeira maior'}</div>
+        <div class="progress"><div style="width:${ratio*100}%"></div></div></div>
+      <div class="flow">${step(P.open,'⚫','Carvão')}${arrow(P.br)}${step(P.br,'🪨','Britador')}${arrow(P.lv)}${step(P.lv,'💧','Lavadora')}${arrow(P.cd)}${step(P.cd,'🔥','Caldeira')}${arrow(P.tb)}${step(P.tb,'⚡','Turbina')}</div>
+      <div class="lvlRows">
+        <div><span>⚫ Usa até</span><b>${fmt(powerIntake())} carvão/s</b></div>
+        <div><span>🪨 Moído · 💧 Limpo · ♨️ Vapor</span><b>${fmt(P.buf.moido)} · ${fmt(P.buf.limpo)} · ${fmt(P.buf.vapor)}</b></div>
+        <div><span>💡 Postes (minas iluminadas)</span><b>ajudantes +${Math.round(POWER_LIGHT_BONUS*ratio*100)}%</b></div>
+        <div><span>🛤️ Esteiras</span><b>+${Math.round(POWER_BELT_BONUS*ratio*100)}% de velocidade</b></div>
+      </div></div>`);
+    if(!P.open){ const r = powerOpenLeft(); add('🏗️', 'Terreno da Usina', 'Libera a zona industrial ao sul-leste do vilarejo. Também dá para pagar pisando no quadrado da entrada.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openPower(); } }, r)); return; }
+    sec('🏭 Etapas (construa em ordem)');
+    POWER_STAGES.forEach((st,i)=>{
+      const r = powerStageLeft(st), isNext = nextPowerStage() === st;
+      add(st.ico, `${i+1}. ${st.name}`, st.desc, P[st.id] ? tag('✔ Construído') : isNext ? btn(money(r), ()=>buildPowerStage(st), r) : tag('🔒 Etapa anterior','var(--muted)'));
+    });
+    sec('🔧 Melhorias');
+    const bc = boilerCost();
+    add('🔥', `Caldeira Maior <span class="count">nv ${P.lvl}</span>`, `+50% de carvão processado (hoje ${fmt(powerIntake())}/s, gera até ${fmt(powerIntake()*(1-WASH_LOSS)*ENERGY_PER_COAL)} kW)`, P.tb ? btn(money(bc), upgradeBoiler, bc) : tag('🔒 Turbina','var(--muted)'));
+    el.insertAdjacentHTML('beforeend', `<p class="small">Cada esteira ligada consome 1 kW e os postes, mais 1 kW. A usina usa carvão do mesmo estoque das fundições: garanta uma boa mina de Carvão.</p>`);
+    return;
+  }
   if(panelTarget === 'galpao'){
     document.getElementById('sheetTitle').textContent = '📦 Galpão de Entregas';
     el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">📦</span><div><small>Metalúrgica Aurora paga</small><b>${xf(DELIVERY_MULT)} o preço do Mercado</b></div></div>
@@ -985,6 +1058,7 @@ function buildStats(){
   const c = mineById('carvao');
   h += `<h3 class="subhead">Carvão e frota</h3><div class="statTot">
     <div><small>⚫ Carvão</small><b>${fmt(mineRate(c)*60)}/min</b><small>consumo até ${fmt(coalUseMax()*60)}/min</small></div>
+    <div><small>⚡ Energia</small><b>${fmt(powerNow)}/${fmt(powerDemand())} kW</b><small>${S.power.tb ? Math.round(powerRatio()*100)+'% da rede ligada' : 'usina desligada'}</small></div>
     <div><small>🚚 Frota</small><b>${S.trucks} caminhão(ões)</b><small>${Array.from({length:S.trucks},(_,k)=>Math.round(cond('truck_'+k)*100)+'%').join(' · ') || 'sem caminhões'}</small></div></div>`;
   el.innerHTML = h;
 }
@@ -1381,10 +1455,11 @@ function createWorld(){
   }
 
   // ---------- minas ----------
+  const LAMP_MAT = new THREE.MeshBasicMaterial({color:'#4e4b44'});   // acende com a energia da usina
   function lampPost(x, z, h=2.2){
     mesh(new THREE.CylinderGeometry(0.07,0.09,h,6), M('#3b3b44'), x, h/2, z);
     mesh(new THREE.BoxGeometry(0.34,0.34,0.34), M('#3b3b44'), x, h+0.1, z);
-    const bulb = mesh(new THREE.BoxGeometry(0.24,0.24,0.24), new THREE.MeshBasicMaterial({color:'#ffe9a8'}), x, h+0.1, z);
+    const bulb = mesh(new THREE.BoxGeometry(0.24,0.24,0.24), LAMP_MAT, x, h+0.1, z);
     bulb.castShadow = false;
     mesh(new THREE.ConeGeometry(0.3,0.2,4), M('#3b3b44'), x, h+0.37, z).rotation.y = Math.PI/4;
     circles.push({x, z, r:0.15});
@@ -1647,7 +1722,7 @@ function createWorld(){
   // árvores entre as minas
   [-35,-21,-7,7,21,35].forEach((x,k)=>{ pine(x, -14.5, 1.1); pine(x+0.3, -11.2, 0.95); roundTree(x-0.2, -8.6, 0.8); });
   // contorno do mapa
-  for(let x=-63; x<=33; x+=3.3){ if(Math.abs(x) < 13) continue; (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
+  for(let x=-63; x<=33; x+=3.3){ if(x > -13) continue; (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
   for(let x=-40; x<=40; x+=3.6) (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 29 + rnd()*1.5, 0.9 + rnd()*0.35);
   for(let z=15; z<=23; z+=3.4){ pine(-13.5, z, 1); roundTree(-17, z+1.5, 0.9); }
   for(let z=-1; z<=11; z+=3.2){ pine(-35.2, z, 1); pine(35.2, z+1, 1); }
@@ -1704,7 +1779,9 @@ function createWorld(){
   function freeSpot(x, z){
     if(z > -2.2 && z < 7.2 && Math.abs(x) < 9) return false;          // vilarejo
     if(z > 8 && Math.abs(x) < 14) return false;                        // área de entregas
-    if(z > 23.5 && x > 8) return false;                                // estrada dos caminhões
+    if(z > 23.5 && x > 8) return false;
+    if(x > 12 && z > 10) return false;                                 // usina
+    if(Math.abs(x-24) < 1.8 && z > -3 && z < 13) return false;         // caminho da usina                                // estrada dos caminhões
     if(z > -5.8 && z < -2.2) return false;                             // estrada
     if(Math.hypot(x+19, z-5.6) < 4.2) return false;                    // lago
     if(z < -7) return false;                                           // minas
@@ -1827,6 +1904,7 @@ function createWorld(){
   const coalGroup = new THREE.Group(); world.add(coalGroup);
   let coalTexs = [];
   const COAL_O = MINES3.find(o=>o.m.fuel);
+  let usinaCoalPath = null;
   function buildCoalLine(){
     while(coalGroup.children.length) coalGroup.remove(coalGroup.children[0]);
     for(const t of coalTexs){ const k = beltTexs.indexOf(t); if(k>=0) beltTexs.splice(k,1); }
@@ -1850,6 +1928,14 @@ function createWorld(){
       o.coalLens = o.coalPath.slice(1).map((v,k)=>v.distanceTo(o.coalPath[k]));
       o.coalTotal = o.coalLens.reduce((a,b)=>a+b,0);
     });
+    usinaCoalPath = null;
+    if(S.power.br){   // continua por trás das minas e desce até o britador da usina
+      const ux = 33.6, from = Math.max(maxX, rx), UZ0 = 18.2;
+      if(ux > from) beltSeg(coalGroup, from, ZB, ux, ZB, CY);
+      beltSeg(coalGroup, ux, ZB, ux, UZ0, CY); beltSeg(coalGroup, ux, UZ0, 32.2, UZ0, CY);
+      usinaCoalPath = [new THREE.Vector3(cx,0.4,cz), new THREE.Vector3(cx,CY+0.15,cz), new THREE.Vector3(rx,CY+0.15,cz), new THREE.Vector3(rx,CY+0.15,ZB),
+        new THREE.Vector3(ux,CY+0.15,ZB), new THREE.Vector3(ux,CY+0.15,UZ0), new THREE.Vector3(32.2,CY+0.15,UZ0), new THREE.Vector3(31,2.4,UZ0)];
+    }
     coalTexs = beltTexs.slice(before);
   }
   function refreshFactory(){ MINES3.forEach(o=>{ if(o.refreshFactory) o.refreshFactory(); }); buildCoalLine(); }
@@ -1907,6 +1993,114 @@ function createWorld(){
       let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; }
       it.r.position.lerpVectors(path[s], path[s+1], d/lens[s]);
     }
+  }
+
+  // ---------- usina de energia (zona industrial ao sul-leste) ----------
+  const UZ = 18.2, UST = {br:31, lv:27, cd:23, tb:19};
+  const powerGroup = new THREE.Group(); world.add(powerGroup);
+  const powerEntry = makeTile(24, 12.0);
+  const stageTiles = {}; POWER_STAGES.forEach(st=>{ stageTiles[st.id] = makeTile(UST[st.id], 21.6); });
+  const LAMP_ON = new THREE.Color('#ffe9a8'), LAMP_OFF = new THREE.Color('#4e4b44');
+  pathRect(23, -2.7, 25, 12.0);                                                   // caminho do vilarejo até a usina
+  const floorGrp = new THREE.Group(); world.add(floorGrp);
+  { const f = new THREE.Mesh(new THREE.BoxGeometry(20, 0.04, 9.4), M('#8d8a83')); f.position.set(24, 0.022, 18.2); f.receiveShadow = true; floorGrp.add(f);
+    const e = new THREE.Mesh(new THREE.BoxGeometry(20.5, 0.03, 9.9), M('#6f6c66')); e.position.set(24, 0.015, 18.2); e.receiveShadow = true; floorGrp.add(e); }
+  const signU = labelSprite(4.4); signU.position.set(24, 3.2, 13.6);
+  const stageObj = {};
+  function buildStage(id){
+    const g = new THREE.Group(); g.position.set(UST[id], 0, UZ); powerGroup.add(g); const P = {};
+    if(id === 'br'){
+      mesh(new THREE.BoxGeometry(2.2,1.4,2.0), M('#e0a43a'), 0, 0.7, 0, g);
+      const hop = mesh(new THREE.CylinderGeometry(1.1,0.5,1.0,4), M('#5b5f66'), 0, 1.9, 0, g); hop.rotation.y = Math.PI/4;
+      P.g1 = mesh(new THREE.CylinderGeometry(0.35,0.35,2.3,10), M('#3b3f45'), 0, 0.9, 1.05, g); P.g1.rotation.x = Math.PI/2; P.g1.rotation.z = Math.PI/2;
+      for(const s of [-0.6,0.6]){ const w = mesh(new THREE.CylinderGeometry(0.42,0.42,0.12,8), M('#2b2b2b'), s, 0.9, 1.05, g); w.rotation.z = Math.PI/2; (P.wheels = P.wheels || []).push(w); }
+    } else if(id === 'lv'){
+      mesh(new THREE.CylinderGeometry(1.15,1.15,1.5,18), M('#c9d1d9'), 0, 0.75, 0, g);
+      const water = new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.0,0.12,18), new THREE.MeshPhongMaterial({color:'#4fb6e8', shininess:90, transparent:true, opacity:.85})); water.position.y = 1.45; g.add(water); P.water = water;
+      P.drum = mesh(new THREE.CylinderGeometry(0.45,0.45,1.6,10), M('#5b5f66'), 0, 1.85, 0, g); P.drum.rotation.z = Math.PI/2;
+      P.drops = [0,1,2,3].map(k=>{ const d = mesh(new THREE.SphereGeometry(0.08,6,4), new THREE.MeshBasicMaterial({color:'#9fdcff'}), 0, 2, 0, g); d.castShadow = false; return d; });
+    } else if(id === 'cd'){
+      mesh(new THREE.CylinderGeometry(1.0,1.1,2.6,16), M('#9c3d2c'), 0, 1.3, 0, g);
+      mesh(new THREE.CylinderGeometry(1.05,1.05,0.15,16), M('#3b3b44'), 0, 2.65, 0, g);
+      P.fire = new THREE.MeshBasicMaterial({color:'#ff8a2a'}); mesh(new THREE.BoxGeometry(0.7,0.5,0.1), P.fire, 0, 0.6, 1.06, g).castShadow = false;
+      mesh(new THREE.CylinderGeometry(0.22,0.26,2.2,10), M('#6f747c'), 0.5, 3.6, -0.3, g);
+      P.smoke = [0,1,2].map(k=>{ const s = mesh(new THREE.SphereGeometry(0.3,8,6), new THREE.MeshLambertMaterial({color:'#e8e8e8', transparent:true, opacity:0}), 0.5, 4.8, -0.3, g); s.castShadow = false; return s; });
+    } else {
+      mesh(new THREE.BoxGeometry(2.6,0.5,1.6), M('#3b3f45'), 0, 0.25, 0, g);
+      const body = mesh(new THREE.CylinderGeometry(0.7,0.7,1.8,16), M('#2f80ed'), -0.2, 1.2, 0, g); body.rotation.z = Math.PI/2;
+      mesh(new THREE.BoxGeometry(0.9,1.2,1.2), M('#f2b632'), 1.05, 1.1, 0, g);
+      P.fan = new THREE.Group(); P.fan.position.set(-1.25, 1.2, 0); g.add(P.fan);
+      mesh(new THREE.CylinderGeometry(0.75,0.75,0.08,16), M('#c9d1d9'), 0, 0, 0, P.fan).rotation.z = Math.PI/2;
+      for(let k=0;k<4;k++){ const bl = mesh(new THREE.BoxGeometry(0.06,1.3,0.22), M('#3b3f45'), -0.05, 0, 0, P.fan); bl.rotation.x = k*Math.PI/4; }
+      P.bolt = labelSprite(1.6); P.bolt.position.set(1.05, 2.4, 0); P.bolt.userData.draw('⚡', '#ffd23f'); world.remove(P.bolt); g.add(P.bolt);
+    }
+    const lb = labelSprite(2.8); lb.position.set(0, id === 'cd' ? 5.6 : 3.4, 0); world.remove(lb); g.add(lb);
+    const st = POWER_STAGES.find(s=>s.id===id); lb.userData.draw(`${st.ico} ${st.name}`, '#ffffff');
+    circles.push({x:UST[id], z:UZ, r:1.3});
+    stageObj[id] = {g, P};
+  }
+  // esteiras entre as etapas e cano de vapor
+  const linkGrp = new THREE.Group(); world.add(linkGrp);
+  const linkPaths = {};
+  function buildLinks(){
+    while(linkGrp.children.length) linkGrp.remove(linkGrp.children[0]);
+    const S2 = S.power;
+    if(S2.lv){ beltSeg(linkGrp, 29.9, UZ, 28.1, UZ, 1.2); linkPaths.br = [new THREE.Vector3(30,1.35,UZ), new THREE.Vector3(28.1,1.35,UZ)]; }
+    if(S2.cd){ beltSeg(linkGrp, 25.9, UZ, 24.1, UZ, 1.2); linkPaths.lv = [new THREE.Vector3(26,1.35,UZ), new THREE.Vector3(24.1,1.35,UZ)]; }
+    if(S2.tb){ const pipe = mesh(new THREE.CylinderGeometry(0.16,0.16,2.6,10), M('#c9d1d9'), 21, 2.2, UZ, linkGrp); pipe.rotation.z = Math.PI/2;
+      linkPaths.cd = [new THREE.Vector3(22.3,2.2,UZ), new THREE.Vector3(19.9,2.2,UZ)];
+      // torres de transmissão até a estrada
+      const towers = [[16,16],[16,10.5],[16,4.5],[16,-1.4]];
+      towers.forEach(([x,z])=>{ for(const s of [-0.35,0.35]) mesh(new THREE.BoxGeometry(0.12,4.2,0.12), M('#6f747c'), x+s, 2.1, z, linkGrp);
+        mesh(new THREE.BoxGeometry(1.4,0.12,0.12), M('#6f747c'), x, 4.1, z, linkGrp); circles.push({x, z, r:0.5}); });
+      for(let k=0;k<towers.length;k++){ const [x1,z1] = k ? towers[k-1] : [19,UZ], [x2,z2] = towers[k], y1 = k ? 4.15 : 2.0;
+        for(const s of [-0.6,0.6]){ const len = Math.hypot(x2-x1, z2-z1, 4.15-y1); const w = mesh(new THREE.CylinderGeometry(0.02,0.02,len,4), M('#222226'), (x1+x2)/2+s, (y1+4.15)/2-0.15, (z1+z2)/2, linkGrp);
+          w.lookAt(x2+s, 4.15, z2); w.rotateX(Math.PI/2); w.castShadow = false; } }
+    }
+  }
+  function refreshPower(){
+    const P = S.power;
+    floorGrp.visible = P.open; signU.visible = P.open;
+    if(P.open) signU.userData.draw('⚡ Usina de Energia', '#ffd23f');
+    powerEntry.mesh.visible = !P.open;
+    POWER_STAGES.forEach(st=>{ if(P[st.id] && !stageObj[st.id]) buildStage(st.id); stageTiles[st.id].mesh.visible = P.open && !P[st.id] && nextPowerStage() === st; });
+    buildLinks(); buildCoalLine();
+  }
+  refreshPower();
+  const pwRiders = []; let pwT = {};
+  function updatePower(dt, t, p){
+    const P = S.power, ratio = powerRatio(), on = ratio > 0;
+    // quadrados de compra
+    if(powerEntry.mesh.visible){ const r = powerOpenLeft(); powerEntry.draw('⚡', money(r), 1 - r/POWER_OPEN_COST, false); }
+    POWER_STAGES.forEach(st=>{ const tl = stageTiles[st.id]; if(tl.mesh.visible){ const r = powerStageLeft(st); tl.draw(st.ico, money(r), 1 - r/st.cost, false); } });
+    // postes acesos com energia
+    LAMP_MAT.color.copy(LAMP_OFF).lerp(LAMP_ON, ratio);
+    // animação das etapas
+    const work = id => P[id] && (id === 'br' ? S.ore.carvao > 0.05 : id === 'lv' ? P.buf.moido > 0.05 : id === 'cd' ? P.buf.limpo > 0.05 : P.buf.vapor > 0.02);
+    const sb = stageObj.br; if(sb && work('br')){ sb.P.g1.rotation.y += dt*6; sb.P.wheels.forEach(w=>w.rotation.x += dt*5); sb.g.position.y = Math.abs(Math.sin(t*30))*0.02; }
+    const sl = stageObj.lv; if(sl){ const w = work('lv'); sl.P.drum.rotation.x += dt*(w?4:0); sl.P.drops.forEach((d,k)=>{ const u = (t*1.2 + k/4) % 1; d.visible = w; d.position.set(-0.6 + k*0.4, 1.8 - u*0.4, Math.sin(u*6)*0.2); }); }
+    const sc = stageObj.cd; if(sc){ const w = work('cd'); sc.P.fire.color.setHSL(0.07, 1, w ? 0.55 + Math.sin(t*9)*0.08 : 0.25);
+      sc.P.smoke.forEach((s,k)=>{ const u = (t*0.5 + k/3) % 1; s.position.y = 4.8 + u*2; s.scale.setScalar(0.7 + u*1.2); s.material.opacity = w ? 0.6*(1-u) : 0; }); }
+    const stb = stageObj.tb; if(stb){ stb.P.fan.rotation.x += dt*(work('tb') ? 14 : 0.5); stb.P.bolt.visible = on && Math.sin(t*6) > -0.3; }
+    // blocos andando: carvão chegando, moído e limpo
+    const spawn = (key, path, color, ok) => { pwT[key] = (pwT[key]||0) + dt; if(ok && path && pwT[key] > 0.9){ pwT[key] = 0; const r = new THREE.Mesh(riderGeo, M(color)); world.add(r); pwRiders.push({r, path, d:0}); } };
+    spawn('coal', usinaCoalPath, '#26262c', P.br && S.ore.carvao > 1 && P.buf.moido < POWER_BUF_MAX-1);
+    spawn('br', linkPaths.br, '#4a4a52', P.lv && P.buf.moido > 0.3);
+    spawn('lv', linkPaths.lv, '#1c1c22', P.cd && P.buf.limpo > 0.3);
+    spawn('cd', linkPaths.cd, '#ffffff', P.tb && P.buf.vapor > 0.1);
+    const sp = BELT_SPEED*(1 + POWER_BELT_BONUS*ratio);
+    for(let k=pwRiders.length-1;k>=0;k--){ const it = pwRiders[k]; it.d += dt*sp;
+      const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,b)=>a+b,0);
+      if(it.d >= tot){ world.remove(it.r); pwRiders.splice(k,1); continue; }
+      let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; } it.r.position.lerpVectors(it.path[s], it.path[s+1], d/lens[s]); }
+  }
+  function payPower(dt){
+    const P = S.power; if(S.money <= 0) return;
+    if(!P.open){ const r = powerOpenLeft(), pay = Math.min(S.money, r, Math.max(POWER_OPEN_COST*dt/1.6, 1)); S.money -= pay; S.paid.pw_open = (S.paid.pw_open||0) + pay; if(Math.random() < dt*8) burstBills(24, 12, 1); if(powerOpenLeft() <= 0.0001) openPower(); return; }
+    const st = nextPowerStage(); if(!st || !stageTiles[st.id].inside(player.position)) return;
+    const r = powerStageLeft(st), pay = Math.min(S.money, r, Math.max(st.cost*dt/1.6, 1)); S.money -= pay; S.paid['pw_'+st.id] = (S.paid['pw_'+st.id]||0) + pay;
+    if(Math.random() < dt*8) burstBills(UST[st.id], 21.6, 1);
+    if(powerStageLeft(st) <= 0.0001) completePowerStage(st);
   }
 
   // ---------- personagem ----------
@@ -2380,11 +2574,14 @@ function createWorld(){
   const lvlBtns = [];
   MINES3.forEach(o=>{ const bx = o.m.fuel ? o.x - 5.0 : o.x - 3.4; lvlBtns.push({id:o.m.id, tile:makeTile(bx, -6.2), x:bx, z:-6.2}); });
   lvlBtns.push({id:'galpao', tile:makeTile(-4.0, 12.2), x:-4.0, z:12.2});
+  lvlBtns.push({id:'usina', tile:makeTile(27.4, 12.2), x:27.4, z:12.2});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
   function updateLvlBtns(t){
     lvlBtns.forEach((b,k)=>{
       let lvl, cost, open = true;
-      if(b.id === 'galpao'){ lvl = (S.depotOpen?1:0) + S.trucks + S.loaders + S.truckLvl + S.bagLvl; cost = cheapestDepot(); }
+      if(b.id === 'usina'){ const P2 = S.power, ns = nextPowerStage(); lvl = (P2.open?1:0) + POWER_STAGES.filter(st=>P2[st.id]).length + P2.lvl;
+        cost = !P2.open ? powerOpenLeft() : ns ? powerStageLeft(ns) : boilerCost(); }
+      else if(b.id === 'galpao'){ lvl = (S.depotOpen?1:0) + S.trucks + S.loaders + S.truckLvl + S.bagLvl; cost = cheapestDepot(); }
       else { const m = mineById(b.id); open = isUnlocked(m); lvl = mineLevelInfo(m).lvl; cost = cheapestUpgrade(m); }
       b.tile.draw(open ? '⬆️' : '🔒', 'NÍVEL ' + lvl, 0, !open);
       const can = open && S.money >= cost;
@@ -2593,7 +2790,8 @@ function createWorld(){
 
     // zonas: quadrados de compra, mercado, loja
     let z = null;
-    if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
+    if((powerEntry.mesh.visible && powerEntry.inside(p)) || POWER_STAGES.some(st=>stageTiles[st.id].mesh.visible && stageTiles[st.id].inside(p))) z = 'pw';
+    else if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
     else if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
     else if(lvlBtns.some(b=>b.tile.inside(p))) z = 'lvl:' + lvlBtns.find(b=>b.tile.inside(p)).id;
@@ -2610,6 +2808,8 @@ function createWorld(){
     if(z && z.startsWith('buy:')) payTile(MINES3[+z.slice(4)], dt);
     if(z && z.startsWith('factory:')) payFactory(MINES3[+z.slice(8)], dt);
     if(z === 'depot') payDepot(dt);
+    if(z === 'pw') payPower(dt);
+    updatePower(dt, npcT, p);
     updateDelivery(dt, p);
     updateTrophies(npcT);
     updateLvlBtns(npcT);
@@ -2710,6 +2910,7 @@ function createWorld(){
       floatText('💎 Gema!', pos.clone().setY(2.6), '#bff3ff');
     },
     onGemItem(id){ if(id === 'capacete') refreshHelmet(); burstBills(player.position.x, player.position.z, 10); },
+    onPowerChanged(){ refreshPower(); burstBills(player.position.x, player.position.z, 10); },
     celebrate(){ burstBills(player.position.x, player.position.z, 18); },
     onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },
     debug:{player},

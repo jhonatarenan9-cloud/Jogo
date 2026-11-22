@@ -30,6 +30,7 @@ sempre que uma nova versão é enviada para o repositório.
 - Melhorias: afiar ferramenta, manutenção e vendedor automático.
 - O progresso é salvo no navegador, e você ganha minério mesmo offline (25%, até 4h).
 - **📦 Área de Entregas** (sul do vilarejo): desbloqueie o galpão e leve minério até ele na 🎒 mochila ou com os 🛺 **coletadores** (um por mina, buscam o minério na pilha). Os 🧑‍🏭 **carregadores** (até 4, um por caminhão) põem as caixas nos 🚚 **caminhões** (até 4), que levam tudo à Metalúrgica Aurora. Ela paga 5x o preço do Mercado, um pouco mais que a barra da fundição (4x). Nas minas com fundição e coletador, a pilha é dividida (padrão 50% / 50%, ajustável em 25%, 50% ou 75% para a fundição).
+- **⚡ Usina de Energia** (sul-leste do vilarejo): o carvão segue pela esteira até a usina e passa por 4 etapas: Britador → Lavadora → Caldeira → Turbina. A energia acende os postes (ajudantes +20%) e acelera as esteiras (+40%). Cada esteira consome 1 kW; aumente a Caldeira para gerar mais.
 - **📊 Estatísticas:** quanto cada mina rende por minuto e a comparação Mercado × Fundição × Galpão.
 - **🔧 Manutenção:** fundições e caminhões se desgastam e rendem menos (até 50%); conserte tudo no botão **🔧 Manutenção** da barra de baixo (a bolinha vermelha mostra quantas máquinas precisam de conserto).
 - **💎 Gemas raras:** caem ao minerar com a picareta e nas entregas. Compre itens especiais na Loja → Gemas.
