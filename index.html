@@ -318,6 +318,8 @@
   /* cartões flutuando sobre as construções */
   #cards{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
   #topbar,#goalBox{z-index:3}
+  #sheet{z-index:10}
+  body.sheetOpen #cards{display:none}
   .bcard{position:absolute;left:0;top:0;width:150px;margin-left:-75px;pointer-events:auto;font-family:var(--fontB);will-change:transform;cursor:pointer;transform-origin:50% 100%}
   .bcard .bt{background:#2b2f3a;color:#fff;font:13px var(--fontD);text-align:center;padding:3px 6px;border-radius:8px 8px 0 0;border:2px solid #14161d;border-bottom:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .bcard .bb{display:flex;align-items:center;gap:5px;background:linear-gradient(#2f7fd8,#1f5fae);border:2.5px solid var(--navyD);border-radius:0 0 12px 12px;padding:5px;box-shadow:0 3px 0 var(--navyD)}
@@ -3543,9 +3545,9 @@ function openSheet(name){
   if(name==='stats') buildStats();
   if(name==='maint') buildMaint();
   render();
-  document.getElementById('sheet').hidden = false;
+  document.getElementById('sheet').hidden = false; document.body.classList.add('sheetOpen');
 }
-function closeSheet(){ sheetOpen = null; document.getElementById('sheet').hidden = true; }
+function closeSheet(){ sheetOpen = null; document.getElementById('sheet').hidden = true; document.body.classList.remove('sheetOpen'); }
 document.querySelectorAll('#dock button').forEach(b=>b.onclick=()=>{ sheetOpen===b.dataset.open ? closeSheet() : openSheet(b.dataset.open); });
 document.getElementById('sheetClose').onclick = closeSheet;
 document.getElementById('sheet').addEventListener('pointerdown', e=>{ if(e.target.id==='sheet') closeSheet(); });
