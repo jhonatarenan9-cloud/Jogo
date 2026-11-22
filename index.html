@@ -50,6 +50,14 @@
   .progress > div{height:100%;background:linear-gradient(90deg,#a6e14a,#f2c14e);width:0}
   .mapHint{position:absolute;left:50%;bottom:calc(98px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font-size:13px;color:#fff;background:var(--hudbg);
     padding:7px 12px;border-radius:10px;pointer-events:none;text-align:center;width:max-content;max-width:calc(100% - 24px)}
+  #sellTab{position:absolute;right:0;top:46%;transform:translateY(-50%);z-index:5;display:flex;flex-direction:column;align-items:center;gap:2px;
+    width:64px;padding:10px 4px 9px;border-radius:16px 0 0 16px;background:linear-gradient(#ffd23f,#f2a516);color:#3a2400;border:3px solid #7a4a00;border-right:0;
+    box-shadow:-2px 4px 0 #7a4a00;font-family:'Lilita One','Nunito',sans-serif;font-size:13px;letter-spacing:.3px;cursor:pointer}
+  #sellTab span{font-size:26px;line-height:1}
+  #sellTab:active{transform:translateY(calc(-50% + 2px))}
+  #sellTab i{position:absolute;top:-10px;left:-14px;background:#2fa84f;color:#fff;font-style:normal;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;
+    min-width:22px;height:20px;line-height:20px;border-radius:10px;padding:0 6px;box-shadow:0 2px 4px rgba(0,0,0,.3);white-space:nowrap}
+  body.sheetOpen #sellTab{display:none}
   #dock{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:10px}
   #dock button{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;width:76px;padding:8px 4px 7px;border-radius:16px;
     background:rgba(255,255,255,.92);color:#2a3a18;border:0;border-bottom:4px solid #b9cf9a;font-weight:700;font-size:12px;box-shadow:0 4px 10px rgba(0,0,0,.2)}
@@ -377,6 +385,7 @@
   <div id="goalBox"><div id="goalText"></div><div class="progress"><div id="goalBar"></div></div></div>
   <div id="joy" hidden><div id="knob"></div></div>
   <div id="crosshair" hidden></div>
+  <button id="sellTab" aria-label="Vender produtos"><span>💰</span>Vender<i id="sellBadge" hidden></i></button>
   <button id="viewBtn" aria-label="Trocar câmera">👁️ <span id="viewLbl">1ª pessoa</span></button>
   <div class="mapHint" id="mapHint">Arraste o dedo para andar (ou WASD/setas). Pare perto das pedras para minerar.</div>
   <nav id="dock">
@@ -414,6 +423,7 @@
         </section>
         <section data-panel="panel"><div id="panelBody"></div></section>
         <section data-panel="maint"><div id="maintBody"></div></section>
+        <section data-panel="sell"><div id="sellBody"></div></section>
         <section data-panel="stats"><div id="statsBody"></div></section>
         <section data-panel="ach"><div id="achList"></div></section>
         <section data-panel="mines">
@@ -678,7 +688,7 @@ function sellByBelts(){
   return total;
 }
 // lucro por etapa: cada etapa do carvão e do petróleo já paga um pouco pelo que processa (bem menos que o produto final)
-const STAGE_PAY = {carvao:0.5, britagem:4, lavagem:6, caldeira:8, extracao:3, separacao:5, refino:25};
+const STAGE_PAY = {carvao:0.05, britagem:4, lavagem:6, caldeira:8, extracao:3, separacao:5, refino:25};
 const STAGE_RATE = {};   // $/s de cada etapa (média recente, para os painéis)
 let stageSec = 0, stageAcc = {};
 function stagePay(key, units){ if(units <= 0) return; const v = units*STAGE_PAY[key]; S.money += v; S.earned += v; stageAcc[key] = (stageAcc[key]||0) + v; }
@@ -1164,6 +1174,53 @@ function cheapestDepot(){
   if(S.trucks) c.push(truckCapCost());
   return Math.min(...c);
 }
+// ===== ABA VENDER: produtos das etapas (carvão e petróleo) e produtos finais =====
+// valores sobem a cada etapa, mas sempre abaixo de terminar a cadeia (bateria, galão, barra)
+const SELL_ITEMS = [
+  {g:'etapa', id:'carvao', ico:'⚫', name:'Carvão bruto', v:0.1, q:()=>S.ore.carvao, take:n=>{ S.ore.carvao -= n; }, warn:()=>coalLineOn() ? 'As fundições e a usina usam este carvão' : ''},
+  {g:'etapa', id:'moido', ico:'🪨', name:'Carvão quebrado', v:6, q:()=>S.power.buf.moido, take:n=>{ S.power.buf.moido -= n; }},
+  {g:'etapa', id:'limpo', ico:'💧', name:'Carvão lavado', v:12, q:()=>S.power.buf.limpo, take:n=>{ S.power.buf.limpo -= n; }},
+  {g:'etapa', id:'crude', ico:'🛢️', name:'Petróleo cru', v:4, q:()=>S.oil.buf.crude, take:n=>{ S.oil.buf.crude -= n; }},
+  {g:'etapa', id:'clean', ico:'🧪', name:'Petróleo separado', v:8, q:()=>S.oil.buf.clean, take:n=>{ S.oil.buf.clean -= n; }},
+  {g:'etapa', id:'drums', ico:'🛢️', name:'Tambores (paletes e refinaria)', v:50, q:()=>Math.floor(S.oil.drums) + S.oil.refBuf, take:n=>{ const a = Math.min(n, Math.floor(S.oil.drums)); S.oil.drums -= a; S.oil.refBuf = Math.max(0, S.oil.refBuf - (n - a)); }},
+  {g:'etapa', id:'diesel', ico:'⛽', name:'Combustível na refinaria (L)', v:15, q:()=>S.oil.buf.diesel, take:n=>{ S.oil.buf.diesel -= n; }},
+  {g:'final', id:'bat', ico:'🔋', name:'Baterias', v:BATTERY_VALUE, q:()=>S.power.batteries||0, take:n=>{ S.power.batteries -= n; S.power.sold = (S.power.sold||0) + n; }},
+  {g:'final', id:'gal', ico:'⛽', name:'Galões', v:GAL_VALUE, q:()=>Math.floor(S.oil.gal||0), take:n=>{ S.oil.gal -= n; S.oil.sold = (S.oil.sold||0) + n; }},
+  {g:'final', id:'ore', ico:'⛏️', name:'Minérios e barras', v:1, q:()=>MINES.reduce((a,m)=>m.fuel ? a : a + S.ore[m.id]*m.value + (S.bars[m.id]||0)*barValue(m), 0),
+    take:()=>{ for(const m of MINES){ if(m.fuel) continue; S.ore[m.id] = 0; S.bars[m.id] = 0; } }, money:true},
+];
+const sellQty = it => Math.max(0, it.q() || 0);
+const sellVal = it => sellQty(it)*it.v;
+function sellItem(it, silent){ const n = sellQty(it), v = n*it.v; if(v < 0.01) return 0; it.take(n); S.money += v; S.earned += v;
+  if(!silent){ toast(`💰 ${it.name} vendido por ${money(v)}`); if(window.world3d) world3d.celebrate(); render(); save(); } return v; }
+const sellAllVal = () => SELL_ITEMS.reduce((a,it)=>a + (it.id === 'carvao' ? 0 : sellVal(it)), 0);
+function buildSell(){
+  const el = document.getElementById('sellBody'); el.innerHTML = '';
+  const all = document.createElement('button'); all.className = 'primary'; all.style.width = '100%'; all.id = 'sellAllBtn';
+  all.onclick = ()=>{ let v = 0; SELL_ITEMS.forEach(it=>{ if(it.id !== 'carvao') v += sellItem(it, true); }); if(v > 0){ toast('💰 Tudo vendido por ' + money(v)); if(window.world3d) world3d.celebrate(); } render(); save(); updateSell(); };
+  el.appendChild(all);
+  el.insertAdjacentHTML('beforeend', `<p class="small">"Vender tudo" não vende o carvão bruto, para as fundições não pararem. Vender um produto no meio da cadeia tira ele das próximas etapas: terminar a cadeia (bateria, galão, barra) sempre vale mais.</p>`);
+  [['etapa','⚙️ Produtos das etapas'],['final','🏁 Produtos finais']].forEach(([g,title])=>{
+    el.insertAdjacentHTML('beforeend', `<h3 class="subhead">${title}</h3>`);
+    SELL_ITEMS.filter(it=>it.g === g).forEach(it=>{
+      const d = document.createElement('div'); d.className = 'item';
+      d.innerHTML = `<div class="ico">${it.ico}</div><div class="info"><div class="name">${it.name}</div><div class="desc" data-sd="${it.id}"></div></div>`;
+      const b = document.createElement('button'); b.dataset.sb = it.id;
+      b.onclick = ()=>{ sellItem(it); updateSell(); }; d.appendChild(b); el.appendChild(d);
+    });
+  });
+  updateSell();
+}
+function updateSell(){
+  const all = document.getElementById('sellAllBtn'); if(!all) return;
+  const tot = sellAllVal(); all.textContent = tot >= 0.01 ? `💰 Vender tudo por ${money(tot)}` : 'Nada para vender agora'; all.disabled = tot < 0.01;
+  SELL_ITEMS.forEach(it=>{
+    const n = sellQty(it), v = sellVal(it), w = it.warn ? it.warn() : '';
+    const d = document.querySelector(`[data-sd="${it.id}"]`), b = document.querySelector(`[data-sb="${it.id}"]`); if(!d || !b) return;
+    d.innerHTML = `${it.money ? 'Estoque das minas' : `${fmt(n)} × ${money(it.v)}`}${w ? ` · <span style="color:#b3261e">${w}</span>` : ''}`;
+    b.textContent = v >= 0.01 ? money(v) : '—'; b.disabled = v < 0.01;
+  });
+}
 function openPanel(id){ panelTarget = id; openSheet('panel'); }
 // linhas compactas: máquina e funcionários da mesma unidade na mesma linha
 function unitRows(el, groups, st, getIt, can, left, build){
@@ -1647,6 +1704,7 @@ function render(){
   const total = oreValue();
   document.getElementById('sellBtn').disabled = total<=0;
   const badge = document.getElementById('invBadge'); badge.hidden = total<=0; badge.textContent = money(total);
+  const sv = sellAllVal(), sBadge = document.getElementById('sellBadge'); sBadge.hidden = sv < 1; sBadge.textContent = money(sv);
   const sb = MINES.filter(hasSellBelt).map(m=>m.name);
   if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
   else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
@@ -3649,7 +3707,7 @@ function frame(now){
 })();
 
 // ---------- janelas dentro do jogo ----------
-const SHEETS = {maint:'🔧 Oficina de Manutenção', stats:'📊 Estatísticas', panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+const SHEETS = {sell:'💰 Vender Produtos', maint:'🔧 Oficina de Manutenção', stats:'📊 Estatísticas', panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
 let sheetOpen = null;
 function openSheet(name){
   sheetOpen = name;
@@ -3662,12 +3720,15 @@ function openSheet(name){
   if(name==='panel') buildPanel();
   if(name==='stats') buildStats();
   if(name==='maint') buildMaint();
+  if(name==='sell') buildSell();
   render();
   document.getElementById('sheet').hidden = false; document.body.classList.add('sheetOpen');
 }
 function closeSheet(){ sheetOpen = null; document.getElementById('sheet').hidden = true; document.body.classList.remove('sheetOpen'); }
 document.querySelectorAll('#dock button').forEach(b=>b.onclick=()=>{ sheetOpen===b.dataset.open ? closeSheet() : openSheet(b.dataset.open); });
 document.getElementById('sheetClose').onclick = closeSheet;
+document.getElementById('sellTab').onclick = ()=>openSheet('sell');
+setInterval(()=>{ if(sheetOpen === 'sell') updateSell(); }, 1000);
 document.getElementById('sheet').addEventListener('pointerdown', e=>{ if(e.target.id==='sheet') closeSheet(); });
 window.addEventListener('keydown', e=>{ if(e.key==='Escape' && sheetOpen) closeSheet(); });
 
