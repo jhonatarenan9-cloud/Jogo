@@ -197,7 +197,7 @@ const STAFF_COST = {cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:90
 const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 2, MANAGER_COST_MULT = 40;
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
-const ORES_PER_BAR = 5, BAR_MULT = 8, BELT_RATE = 1;
+const ORES_PER_BAR = 5, BAR_MULT = 20, BELT_RATE = 3;   // barra = 4x o valor do minério
 const SMELTER_COST = {cobre:150, ferro:6000, ouro:180000, diamante:5000000, esmeralda:120000000};
 const BELT_COST    = {cobre:80,  ferro:3000, ouro:90000,  diamante:2500000, esmeralda:60000000};
 const SELLBELT_COST = {cobre:120, ferro:4500, ouro:130000, diamante:3500000, esmeralda:90000000};
@@ -261,7 +261,15 @@ const boostMult = () => 1 + 0.15*S.boost;
 function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * boostMult() : 0; }
 // minério/s das máquinas (vai para a mina ativa)
 function machineRate(){ let r = 0; for(const t of TOOLS) if(S.tools[t.id]) r += t.passive; return r * boostMult(); }
-function incomePerSec(){ return MINES.reduce((a,m)=>a + mineRate(m)*m.value, 0) + machineRate()*mineById(S.active).value; }
+function incomePerSec(){
+  let v = 0;
+  for(const m of MINES){
+    const r = mineRate(m) + (m.id===S.active ? machineRate() : 0);
+    const toBars = hasBelt(m) ? Math.min(r, beltRate()) : 0;
+    v += (r - toBars)*m.value + toBars/ORES_PER_BAR*barValue(m);
+  }
+  return v;
+}
 function sharpenCost(){ return Math.ceil(150 * Math.pow(3.2, S.sharpen)); }
 function boostCost(){ return Math.ceil(3000 * Math.pow(4, S.boost)); }
 const AUTOSELL_COST = 50000;
@@ -437,14 +445,14 @@ function buildShop(){
       add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}${warn}`, right);
     });
   } else if(tab==='factory'){
-    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem a sua fundição, dentro do cercado. Ela transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério. <b style="color:var(--gold)">Para liberar a próxima mina, compre os 3 itens da mina atual: fundição, esteira e esteira de venda.</b> A fundição também pode ser paga pisando no quadrado 🏭 dentro da mina.</p>`);
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem a sua fundição, dentro do cercado. Ela transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério: <b style="color:#9cff7a">${BAR_MULT/ORES_PER_BAR}x mais dinheiro</b> do que vender o minério bruto. <b style="color:var(--gold)">Para liberar a próxima mina, compre os 3 itens da mina atual: fundição, esteira e esteira de venda.</b> A fundição também pode ser paga pisando no quadrado 🏭 dentro da mina.</p>`);
     MINES.forEach(m=>{
       const gem = `<span class="gem" style="display:inline-block;width:24px;height:24px;background:${m.color}"></span>`;
       let r1, r2;
       if(!isUnlocked(m)) r1 = tag('🔒','var(--muted)');
       else if(S.smelters[m.id]) r1 = tag('✔ Construída');
       else r1 = btn(money(smelterLeft(m)), ()=>buySmelter(m), smelterLeft(m));
-      add(gem, `Fundição · ${m.name}`, `Barra de ${m.name}: ${money(barValue(m))}`, r1);
+      add(gem, `Fundição · ${m.name}`, `${ORES_PER_BAR} ${m.name.toLowerCase()} = ${money(ORES_PER_BAR*m.value)} → 1 barra = <b style="color:#9cff7a">${money(barValue(m))}</b> (${BAR_MULT/ORES_PER_BAR}x)`, r1);
       if(S.belts[m.id]) r2 = tag('✔ Instalada');
       else if(!S.smelters[m.id]) r2 = tag('🔒','var(--muted)');
       else r2 = btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]);
