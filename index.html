@@ -473,6 +473,7 @@ const HELPER_TOOLS = [
   {name:'Martelete', ico:'🔩', mult:1.4, costMult:15},
   {name:'Rompedor', ico:'💥', mult:2, costMult:110},
 ];
+const START_MONEY = 1000;   // dinheiro de quem começa um jogo novo
 const MAX_HELPERS = 3, HELPER_RATE = 0.22, MANAGER_MULT = 1.5, MANAGER_COST_MULT = 30;
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
@@ -542,7 +543,7 @@ const GOAL = 1000; // esmeraldas para vencer
 const SAVE_KEY = 'mina-idle-v2';   // v2: economia reiniciada para testar do começo
 function newState(){
   return {
-    money:0,
+    money:START_MONEY,
     ore:Object.fromEntries(MINES.map(m=>[m.id,0])),
     mined:Object.fromEntries(MINES.map(m=>[m.id,0])),
     tools:{madeira:true}, paid:{},
@@ -596,8 +597,7 @@ try{
     if(d.ach === undefined){ S.ach = {}; S.skipAchRewards = true; } }
 }catch(e){}
 // BÔNUS DE TESTE: $10 milhões, uma única vez por save (remover quando terminar os testes)
-const TEST_GRANT = 10000000;
-if(!S.testGrant10M){ S.testGrant10M = true; S.money += TEST_GRANT; save(); setTimeout(()=>toast('🧪 Bônus de teste: +$10.000.000 para testar tudo!'), 1500); }
+
 function save(){ S.last = Date.now(); try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
 
 // ===================== CÁLCULOS =====================

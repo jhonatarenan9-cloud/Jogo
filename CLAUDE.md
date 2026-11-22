@@ -48,9 +48,8 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   `beltPower` para as esteiras), combustível obrigatório para caminhões e coletadores (`useFuel`, `FUEL_BUY_*` compra cara no galpão).
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
-## Bônus de teste
-Há um bônus único de $10 milhões (`TEST_GRANT`, flag `testGrant10M`) colocado a pedido do usuário para testar.
-Remova quando ele terminar os testes.
+## Começo do jogo
+Jogo novo começa com `START_MONEY` ($1.000). O bônus de teste de $10 milhões foi removido.
 
 ## Testes
 O `index.html` usa o `three.min.js` local, então dá para testar com Playwright servindo a pasta
