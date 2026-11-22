@@ -197,6 +197,14 @@
   .mRight button{font-size:12px;padding:6px 10px}
   .miniSlots{display:inline-flex;gap:3px;vertical-align:middle;margin-left:4px}
   .miniSlots .slot{width:20px;height:20px;font-size:11px;border-radius:6px}
+  .item.unit{padding:8px}
+  .ubtns{display:flex;gap:4px;flex:none;flex-wrap:nowrap;justify-content:flex-end}
+  .ubtn{display:flex;align-items:center;gap:2px;font-size:11px;padding:5px 6px;min-width:0;white-space:nowrap}
+  .ubtn span{font-size:13px}
+  .item.unit .ico{width:36px;height:36px;font-size:19px}
+  .item.unit .name{font-size:14px}
+  .item.unit .info{min-width:0}
+  .uok{font-size:11px;font-weight:800;color:#9cff7a;background:rgba(0,0,0,.25);border-radius:9px;padding:5px 6px;white-space:nowrap}
   .lvlBtn{flex:none;font-size:12px;font-weight:700;padding:6px 9px;background:#e0b020;color:#2a1e05;border:0;border-bottom:3px solid #a67c12;border-radius:8px}
   .lvlBtn:hover:not(:disabled){background:#f2c14e}
   .lvlCard{background:linear-gradient(160deg,#f1e2c4,#e3cfa6);color:#3a2d1c;border-radius:14px;padding:12px;margin-bottom:12px;border:2px solid #c9a86a;box-shadow:inset 0 0 0 3px #f8efdc}
@@ -1135,6 +1143,29 @@ function cheapestDepot(){
   return Math.min(...c);
 }
 function openPanel(id){ panelTarget = id; openSheet('panel'); }
+// linhas compactas: máquina e funcionários da mesma unidade na mesma linha
+function unitRows(el, groups, st, getIt, can, left, build){
+  groups.forEach(([title, units])=>{
+    el.insertAdjacentHTML('beforeend', `<h3 class="subhead">${title}</h3>`);
+    units.forEach(([name, ...ids])=>{
+      const its = ids.map(getIt), mach = its[0], done = its.filter(it=>st[it.id]).length;
+      const d = document.createElement('div'); d.className = 'item unit';
+      const locked = !st[mach.id] && !can(mach);
+      const sub = locked ? '🔒 Bloqueado' : done === its.length ? '✔ Funcionando' : !st[mach.id] ? 'Construa a máquina' : 'Falta funcionário';
+      d.innerHTML = `<div class="ico">${mach.ico}</div><div class="info"><div class="name">${name} <span class="count">${done}/${its.length}</span></div><div class="desc">${sub}</div></div><div class="ubtns"></div>`;
+      const box = d.querySelector('.ubtns');
+      its.forEach(it=>{
+        if(st[it.id]){ const t = document.createElement('span'); t.className = 'uok'; t.textContent = it.ico + '✔'; t.title = it.name; box.appendChild(t); return; }
+        if(locked && it !== mach) return;   // linha bloqueada: só o botão da máquina, cinza
+        const r = left(it), b = document.createElement('button'); b.className = 'ubtn';
+        b.innerHTML = `<span>${it.ico}</span>${money(r)}`; b.title = it.name;
+        if(can(it)){ b.dataset.cost = r; b.onclick = ()=>{ build(it); buildPanel(); render(); }; } else b.disabled = true;
+        box.appendChild(b);
+      });
+      el.appendChild(d);
+    });
+  });
+}
 function buildPanel(){
   const el = document.getElementById('panelBody'); el.innerHTML = '';
   const add = (ico,name,desc,right) => {
@@ -1166,9 +1197,9 @@ function buildPanel(){
     if(O.ps){ const b = document.createElement('button'); b.className = 'primary'; b.style.width = '100%'; b.style.marginBottom = '10px';
       const n = Math.floor(O.gal); b.textContent = n ? `⛽ Vender ${n} galões por ${money(galValue())}` : '⛽ Nenhum galão sobrando (o tanque usa primeiro)'; b.disabled = !n;
       b.onclick = ()=>{ sellGallons(); buildPanel(); }; el.appendChild(b); }
-    const groups = [['🛢️ Bombas', ['p1','w1','p2','w2','p3','w3','p4','w4']], ['🧪 Separadores', ['s1','m1','s2','m2']], ['🚜 Transporte e refino', ['ld','rf']], ['⛽ Posto', ['ps']]];
-    groups.forEach(([title, ids])=>{ sec(title); ids.forEach(id=>{ const it = oilItem(id), r = oilLeft(it);
-      add(it.ico, it.name, it.desc, O[id] ? tag(it.kind === 'w' ? '✔ Contratado' : '✔ Construído') : oilCan(it) ? btn(money(r), ()=>buildOilItem(it), r) : tag('🔒 ' + oilItem(it.need).name,'var(--muted)')); }); });
+    unitRows(el, [['🛢️ Bombas', [['Bomba 1','p1','w1'],['Bomba 2','p2','w2'],['Bomba 3','p3','w3'],['Bomba 4','p4','w4']]],
+      ['🧪 Separadores', [['Separador 1','s1','m1'],['Separador 2','s2','m2']]], ['🚜 Transporte, refino e posto', [['Carregadeira','ld'],['Refinaria','rf'],['Posto de Combustível','ps']]]],
+      O, oilItem, oilCan, oilLeft, buildOilItem);
     sec('🔧 Melhorias');
     const pc = pumpCost();
     add('🛢️', `Campo Maior <span class="count">nv ${O.lvl}</span>`, `+50% em todos os setores e +50 L de tanque (hoje ${fmt(oilStep())} petróleo/s por bomba)`, O.ps ? btn(money(pc), upgradePump, pc) : tag('🔒 Posto','var(--muted)'));
@@ -1193,9 +1224,9 @@ function buildPanel(){
     if(P.bat){ const b = document.createElement('button'); b.className = 'primary'; b.style.width = '100%'; b.style.marginBottom = '10px';
       b.textContent = (P.batteries||0) ? `🔋 Vender ${P.batteries} bateria(s) por ${money(batteryValue())}` : '🔋 Nenhuma bateria carregada ainda'; b.disabled = !(P.batteries||0);
       b.onclick = ()=>{ sellBatteries(); buildPanel(); }; el.appendChild(b); }
-    const groups = [['🪨 Setor de Britagem', ['brA','opA','brB','opB']], ['💧 Setor de Lavagem', ['lv','maq']], ['🔥 Setor da Caldeira', ['cd','aj1','aj2']], ['⚡ Geração', ['tb','bat']]];
-    groups.forEach(([title, ids])=>{ sec(title); ids.forEach(id=>{ const it = pwItem(id), r = pwLeft(it);
-      add(it.ico, it.name, it.desc, P[id] ? tag(it.kind === 'w' ? '✔ Contratado' : '✔ Construído') : pwCan(it) ? btn(money(r), ()=>buildPowerItem(it), r) : tag('🔒 ' + pwItem(it.need).name,'var(--muted)')); }); });
+    unitRows(el, [['🪨 Britagem', [['Britador 1','brA','opA'],['Britador 2','brB','opB']]], ['💧 Lavagem', [['Lavadora Industrial','lv','maq']]],
+      ['🔥 Caldeira', [['Caldeira','cd','aj1','aj2']]], ['⚡ Geração', [['Turbina','tb'],['Banco de Baterias','bat']]]],
+      P, pwItem, pwCan, pwLeft, buildPowerItem);
     sec('🔧 Melhorias');
     const bc = boilerCost();
     add('🏭', `Usina Maior <span class="count">nv ${P.lvl}</span>`, `+50% em todos os setores (hoje ${fmt(powerStep())} carvão/s por britador)`, P.tb ? btn(money(bc), upgradeBoiler, bc) : tag('🔒 Turbina','var(--muted)'));
@@ -2553,6 +2584,7 @@ function createWorld(){
     for(const lay of [0,1]) for(const [px,pz] of [[-34,18.2],[-31.4,18.2],[-34,21.4],[-31.4,21.4]]) for(let i=0;i<6;i++){
       dd.position.set(px - 0.6 + (i%3)*0.6, 0.47 + lay*0.64, pz - 0.3 + Math.floor(i/3)*0.6); dd.updateMatrix(); drumsMesh.setMatrixAt(k++, dd.matrix); }
     drumsMesh.count = 0; drumsMesh.castShadow = true; world.add(drumsMesh); }
+  rects.push({x1:-36.0, x2:-30.2, z1:16.35, z2:17.15, when:()=>!!S.oil.s1}, {x1:-36.0, x2:-30.2, z1:22.45, z2:23.25, when:()=>!!S.oil.s2});
   rects.push({x1:-35.2, x2:-30.2, z1:17.4, z2:18.9, when:()=>S.oil.open}, {x1:-35.2, x2:-30.2, z1:20.7, z2:22.2, when:()=>S.oil.open});
   // funcionários
   const oilWorkers = {};
@@ -2575,7 +2607,13 @@ function createWorld(){
     if(O.s1){ pipe(-55.6, 19.8, -40.9, 19.8); for(const k of ['1','2','3','4']) if(O['p'+k]){ const [x,z] = OPX['p'+k]; pipe(x-1.75, z, x-1.75, 19.8); }
       pipe(-40.9, 19.8, -40.9, 16.6); if(O.s2) pipe(-40.9, 19.8, -40.9, 23.0);
       oilPaths.crude = [new THREE.Vector3(-54,0.6,19.8), new THREE.Vector3(-40.9,0.6,19.8), new THREE.Vector3(-40.9,0.6,16.6)];
-      oilPaths.drum = [new THREE.Vector3(-36.3,0.5,16.6), new THREE.Vector3(-34,0.5,17.6), new THREE.Vector3(-33.4,0.5,18.2)]; }
+      // esteira dos barris: do separador 1 passando ao lado dos paletes
+      beltSeg(oilLinks, -36.0, 16.75, -30.2, 16.75, 0.75);
+      oilPaths.drum = [new THREE.Vector3(-36.0,1.05,16.75), new THREE.Vector3(-31.8,1.05,16.75), new THREE.Vector3(-32.6,0.75,17.9)]; }
+    if(O.s2){   // esteira do separador 2 até os paletes de trás
+      beltSeg(oilLinks, -36.0, 22.85, -30.2, 22.85, 0.75);
+      oilPaths.drum2 = [new THREE.Vector3(-36.0,1.05,22.85), new THREE.Vector3(-31.8,1.05,22.85), new THREE.Vector3(-32.6,0.75,21.7)]; }
+    else delete oilPaths.drum2;
     if(O.ps){ beltSeg(oilLinks, -16.2, 22.4, -9.8, 22.4, 1.4); pipe(-21.9, 17.2, -18.8, 17.2, 0.6);
       oilPaths.gal = [new THREE.Vector3(-16.2,1.65,22.4), new THREE.Vector3(-9.8,1.65,22.4)]; }
     oilLinks.userData.texs = beltTexs.slice(before);
@@ -2617,7 +2655,8 @@ function createWorld(){
     const spawn = (key, ok, col, geo) => { oilT[key] = (oilT[key]||0) + dt; if(ok && oilPaths[key] && oilT[key] > 0.9){ oilT[key] = 0;
       const r = new THREE.Mesh(geo, M(col)); world.add(r); oilRiders.push({r, path:oilPaths[key], d:0}); } };
     spawn('crude', sepsOn() && pumpsOn() && b.crude < CRUDE_MAX - 0.5, '#1b1814', new THREE.SphereGeometry(0.16,8,6));
-    spawn('drum', sepsOn() && b.crude > 0.3 && O.drums < DRUM_CAP, '#2f6fb3', drumGeo);
+    spawn('drum', O.s1 && O.m1 && b.crude > 0.3 && O.drums < DRUM_CAP, '#2f6fb3', drumGeo);
+    spawn('drum2', O.s2 && O.m2 && b.crude > 0.3 && O.drums < DRUM_CAP, '#2f6fb3', drumGeo);
     spawn('gal', O.ps && (O.gal >= 1 || fuelNow > 0.05), '#d93a2a', galGeo);
     for(let k=oilRiders.length-1;k>=0;k--){ const it = oilRiders[k]; it.d += dt*2.2;
       const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,c)=>a+c,0);
