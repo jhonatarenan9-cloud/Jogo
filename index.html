@@ -141,6 +141,27 @@
   .splitBtns button{flex:1;font-size:11px;padding:5px 2px}
   .splitBtns button.on{background:#7a5a1c;border-color:#e0b14a}
   .splitBox small{font-size:11px;color:var(--muted)}
+  .miniSlots{display:inline-flex;gap:3px;vertical-align:middle;margin-left:4px}
+  .miniSlots .slot{width:20px;height:20px;font-size:11px;border-radius:6px}
+  .lvlBtn{flex:none;font-size:12px;font-weight:700;padding:6px 9px;background:#e0b020;color:#2a1e05;border:0;border-bottom:3px solid #a67c12;border-radius:8px}
+  .lvlBtn:hover:not(:disabled){background:#f2c14e}
+  .lvlCard{background:linear-gradient(160deg,#f1e2c4,#e3cfa6);color:#3a2d1c;border-radius:14px;padding:12px;margin-bottom:12px;border:2px solid #c9a86a;box-shadow:inset 0 0 0 3px #f8efdc}
+  .lvlTop{display:flex;align-items:center;gap:10px}
+  .lvlIco{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;background:#d8c39a}
+  .lvlTop small{display:block;font-size:11px;color:#7a6346}
+  .lvlTop b{font-size:18px}
+  .lvlBadge{margin-left:auto;background:#3a2d1c;color:#ffd27a;font-weight:800;border-radius:9px;padding:4px 9px;font-size:13px}
+  .lvlNext{margin-top:10px;background:#d8c39a;border-radius:10px;padding:8px}
+  .lvlNext small{font-size:11px;color:#7a6346}
+  .lvlNext > div:first-of-type{font-weight:700;font-size:13px;margin:2px 0 6px}
+  .lvlNext .progress{background:#b9a27a;height:10px}
+  .lvlNext .progress > div{background:linear-gradient(90deg,#5b4326,#8a6a3a)}
+  .lvlRows{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+  .lvlRows div{display:flex;justify-content:space-between;align-items:center;background:#ecdcbc;border-radius:8px;padding:6px 9px;font-size:13px}
+  .lvlRows b{color:#2a5a1a}
+  .lvlCard .flow{margin-top:10px}
+  .lvlCard .fstep{color:#5b4326}
+  .lvlCard .fico{background:#d8c39a}
   .staffCard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
   .staffCard.locked{opacity:.55}
   .staffHead{display:flex;align-items:center;gap:10px}
@@ -203,7 +224,6 @@
   <nav id="dock">
     <button data-open="shop"><span>🛠️</span>Loja</button>
     <button data-open="inv"><span>🎒</span>Minério<i id="invBadge" hidden></i></button>
-    <button data-open="staff"><span>👷</span>Funcionários</button>
     <button data-open="ach"><span>🏆</span>Conquistas<i id="achBadge" hidden></i></button>
     <button data-open="mines"><span>⛰️</span>Minas</button>
   </nav>
@@ -215,8 +235,6 @@
           <div class="tabs">
             <button data-tab="tools" class="on">Ferramentas</button>
             <button data-tab="upgrades">Melhorias</button>
-            <button data-tab="factory">🏭 Fundição</button>
-            <button data-tab="delivery">🚚 Entregas</button>
           </div>
           <div id="shop"></div>
         </section>
@@ -233,6 +251,7 @@
             <span class="small" id="sellInfo"></span>
           </div>
         </section>
+        <section data-panel="panel"><div id="panelBody"></div></section>
         <section data-panel="ach"><div id="achList"></div></section>
         <section data-panel="mines">
           <div id="mines"></div>
@@ -444,8 +463,8 @@ const MISSIONS = [
   {t:'Compre a Picareta de Ferro', p:()=>[+!!S.tools.ferro, 1], r:500},
   {t:'Contrate o gerente da mina de Cobre', p:()=>[+!!S.staff.cobre.mgr, 1], r:600},
   {t:'Abra a 📦 Área de Entregas (sul do vilarejo)', p:()=>[+!!S.depotOpen, 1], r:300, go:()=>S.money >= DEPOT_COST - (S.paid.depot||0) ? {x:0, z:12} : null},
-  {t:'Compre o primeiro 🚚 caminhão (Loja → Entregas)', p:()=>[S.trucks, 1], r:250},
-  {t:'Contrate o primeiro 🧑‍🏭 carregador (Loja → Entregas)', p:()=>[S.loaders, 1], r:200},
+  {t:'Compre o primeiro 🚚 caminhão (botão ⬆️ do galpão)', p:()=>[S.trucks, 1], r:250},
+  {t:'Contrate o primeiro 🧑‍🏭 carregador (botão ⬆️ do galpão)', p:()=>[S.loaders, 1], r:200},
   {t:'Faça 3 entregas na Metalúrgica Aurora', p:()=>[S.deliveries||0, 3], r:500, go:()=>bagTotal() >= 1 ? {x:-3.4, z:19} : null},
   {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
   {t:'Compre o 🛺 coletador da mina de Cobre', p:()=>[+!!S.collectors.cobre, 1], r:400},
@@ -680,6 +699,131 @@ function hireManager(m){
 }
 
 // ===================== INTERFACE =====================
+// ===================== PAINEL =====================
+// ===================== PAINEL POR MINA / GALPÃO =====================
+let panelTarget = null;   // id da mina ou 'galpao'
+// nível da mina = melhorias compradas nela
+function mineLevelInfo(m){
+  const st = S.staff[m.id];
+  if(m.fuel){
+    const lvl = st.n + (st.tool||0) + (st.mgr?1:0) + S.coalLvl;
+    return {lvl, max:6 + Math.max(6, S.coalLvl+1), next: st.n < 3 ? '👷 Equipe completa (3 ajudantes)' : !st.mgr ? `👔 Gerente (${xf(MANAGER_MULT)} mais rápido)` : (st.tool||0) < 2 ? `${HELPER_TOOLS[(st.tool||0)+1].ico} ${HELPER_TOOLS[(st.tool||0)+1].name}` : '🔩 Brocas de Carvão'};
+  }
+  const lvl = st.n + (st.tool||0) + (st.mgr?1:0) + (S.smelters[m.id]?1:0) + (S.belts[m.id]?1:0) + (S.sellBelts[m.id]?1:0) + (S.collectors[m.id]?1:0);
+  const next = st.n < 3 ? '👷 Equipe completa (3 ajudantes)' : !factoryDone(m) ? `🏭 Fundição completa (${xf(BAR_MULT/ORES_PER_BAR)} o valor)` : !st.mgr ? `👔 Gerente (${xf(MANAGER_MULT)} mais rápido)`
+    : !S.collectors[m.id] ? `🛺 Coletador (Metalúrgica paga ${xf(DELIVERY_MULT)})` : (st.tool||0) < 2 ? `${HELPER_TOOLS[(st.tool||0)+1].ico} ${HELPER_TOOLS[(st.tool||0)+1].name}` : null;
+  return {lvl, max:10, next};
+}
+// custo da melhoria mais barata disponível (para a seta verde no mapa)
+function cheapestUpgrade(m){
+  if(!isUnlocked(m)) return Infinity;
+  const st = S.staff[m.id], c = [];
+  if(st.n < MAX_HELPERS) c.push(helperCost(m));
+  if(!st.mgr) c.push(managerCost(m));
+  if(HELPER_TOOLS[(st.tool||0)+1]) c.push(helperToolCost(m));
+  if(m.fuel) c.push(coalDrillCost());
+  else {
+    if(!S.smelters[m.id]) c.push(smelterLeft(m));
+    else { if(!S.belts[m.id]) c.push(BELT_COST[m.id]); if(!S.sellBelts[m.id]) c.push(SELLBELT_COST[m.id]); }
+    if(S.depotOpen && !S.collectors[m.id]) c.push(COLLECTOR_COST[m.id]);
+  }
+  return Math.min(...c);
+}
+function cheapestDepot(){
+  if(!S.depotOpen) return DEPOT_COST - (S.paid.depot||0);
+  const c = [bagCost()];
+  if(TRUCK_COSTS[S.trucks] !== undefined) c.push(TRUCK_COSTS[S.trucks]);
+  if(LOADER_COSTS[S.loaders] !== undefined) c.push(LOADER_COSTS[S.loaders]);
+  if(S.trucks) c.push(truckCapCost());
+  return Math.min(...c);
+}
+function openPanel(id){ panelTarget = id; openSheet('panel'); }
+function buildPanel(){
+  const el = document.getElementById('panelBody'); el.innerHTML = '';
+  const add = (ico,name,desc,right) => {
+    const d = document.createElement('div'); d.className='item';
+    d.innerHTML = `<div class="ico">${ico}</div><div class="info"><div class="name">${name}</div><div class="desc">${desc}</div></div>`;
+    d.appendChild(right); el.appendChild(d);
+  };
+  const btn = (label, fn, cost) => { const b=document.createElement('button'); b.textContent=label; b.onclick=()=>{ fn(); buildPanel(); render(); }; b.dataset.cost=cost; return b; };
+  const tag = (txt, color) => { const r=document.createElement('div'); r.className='owned'; if(color) r.style.color=color; r.textContent=txt; return r; };
+  const sec = t => el.insertAdjacentHTML('beforeend', `<h3 class="subhead">${t}</h3>`);
+  const step = (on, ico, label) => `<div class="fstep${on?' on':''}"><div class="fico">${ico}</div><div>${label}</div></div>`;
+  const arrow = on => `<div class="farrow${on?' on':''}">➜</div>`;
+
+  if(panelTarget === 'galpao'){
+    document.getElementById('sheetTitle').textContent = '📦 Galpão de Entregas';
+    el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">📦</span><div><small>Metalúrgica Aurora paga</small><b>${xf(DELIVERY_MULT)} o preço do Mercado</b></div></div>
+      <div class="flow">${step(S.depotOpen,'⛏️','Pilha')}${arrow(S.depotOpen)}${step(Object.keys(S.collectors).length>0,'🛺','Coletador')}${arrow(S.depotOpen)}${step(S.depotOpen,'📦','Galpão')}${arrow(S.loaders>0)}${step(S.loaders>0,'🧑‍🏭','Carregador')}${arrow(S.trucks>0 && S.loaders>0)}${step(S.trucks>0,'🚚','Caminhão')}</div>
+      <div class="lvlRows">
+        <div><span>📦 No galpão</span><b>${fmt(depotTotal())} ≈ ${money(depotValue())}</b></div>
+        <div><span>🎒 Mochila</span><b>${fmt(bagTotal())}/${fmt(bagCap())}</b></div>
+        <div><span>🚚 Entregas feitas</span><b>${fmt(S.deliveries||0)}</b></div>
+      </div></div>`);
+    if(!S.depotOpen){ const r = DEPOT_COST - (S.paid.depot||0); add('📦', 'Abrir o Galpão', 'Libera a área de entregas ao sul do vilarejo.', btn(money(r), buyDepot, r)); return; }
+    sec('🚚 Frota');
+    const tc = TRUCK_COSTS[S.trucks];
+    add('🚚', `Caminhão <span class="count">${S.trucks}/${TRUCK_COSTS.length}</span>`, `Leva ${fmt(truckCap())} minérios por viagem até a Metalúrgica.`, tc === undefined ? tag('✔ Frota completa') : btn(money(tc), buyTruck, tc));
+    const lc = LOADER_COSTS[S.loaders];
+    add('🧑‍🏭', `Carregador <span class="count">${S.loaders}/${LOADER_COSTS.length}</span>`, 'Leva as caixas do galpão até a caçamba. Cada caminhão precisa do seu.', lc === undefined ? tag('✔ Equipe completa') : btn(money(lc), buyLoader, lc));
+    if(S.trucks > S.loaders) el.insertAdjacentHTML('beforeend', `<div class="lockedBox">⚠️ ${S.trucks - S.loaders} caminhão(ões) parado(s) sem carregador.</div>`);
+    const cc = truckCapCost();
+    add('🛻', `Caçamba Maior <span class="count">nv ${S.truckLvl}</span>`, '+40% de carga nos caminhões e coletadores', S.trucks ? btn(money(cc), buyTruckCap, cc) : tag('🔒 Caminhão','var(--muted)'));
+    const bc = bagCost();
+    add('🎒', `Mochila Maior <span class="count">nv ${S.bagLvl}</span>`, `Carrega +15 minérios (hoje ${fmt(bagCap())})`, btn(money(bc), buyBag, bc));
+    sec('🛺 Coletadores');
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem o seu coletador: compre no painel da mina (botão <b>⬆️ NÍVEL</b> ao lado do portão). Trabalhando: <b>${MINES.filter(m=>S.collectors[m.id]).map(m=>m.name).join(', ') || 'nenhum'}</b>.</p>`);
+    return;
+  }
+
+  const m = mineById(panelTarget), st = S.staff[m.id], un = isUnlocked(m), info = mineLevelInfo(m);
+  document.getElementById('sheetTitle').textContent = m.fuel ? '⚫ Mina de Carvão' : `⛏️ Mina de ${m.name}`;
+  const rate = mineRate(m) + (m.id === S.active ? machineRate() : 0);
+  const needCoal = !m.fuel && hasBelt(m) ? Math.min(rate*fundShareEff(m), beltRate(m))/ORES_PER_BAR*COAL_PER_BAR : 0;
+  const rows = m.fuel
+    ? `<div><span>⚫ Produz</span><b>${fmt(mineRate(m))} carvão/s</b></div><div><span>🏭 Fundições consomem</span><b style="color:${mineRate(m) >= coalUseMax() ? '#2a7a1a' : '#b3261e'}">até ${fmt(coalUseMax())}/s</b></div><div><span>📦 Estoque</span><b>${fmt(S.ore.carvao)}</b></div>`
+    : `<div><span>⛏️ Produz</span><b>${fmt(rate)} ${m.name.toLowerCase()}/s</b></div>${needCoal ? `<div><span>⚫ Precisa</span><b>${fmt(needCoal)} carvão/s</b></div>` : ''}<div><span>💰 Rende</span><b>≈ ${money(mineIncome(m))}/s</b></div>`;
+  el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco" style="background:${m.color}33">${m.fuel ? '⚫' : '⛏️'}</span>
+      <div><small>Nível da mina</small><b>Nível ${info.lvl}</b></div><span class="lvlBadge">${info.lvl}/${info.max}</span></div>
+    <div class="lvlNext"><small>Próxima grande melhoria</small><div>${info.next || '✔ Mina no máximo'}</div><div class="progress"><div style="width:${Math.min(1,info.lvl/info.max)*100}%"></div></div></div>
+    <div class="lvlRows">${rows}</div></div>`);
+  if(!un){ el.insertAdjacentHTML('beforeend', `<div class="lockedBox">🔒 Abra a mina primeiro: ${toolById(m.tool).name} (Loja → Ferramentas).</div>`); return; }
+
+  sec('👷 Equipe');
+  const slots = Array.from({length:MAX_HELPERS}, (_,k)=>`<span class="slot${k<st.n?' on':''}">${k<st.n?'👷':''}</span>`).join('');
+  add('👷', `Ajudantes <span class="count">${st.n}/${MAX_HELPERS}</span> <span class="miniSlots">${slots}</span>`,
+    `Cada um produz ${fmt(HELPER_RATE*(m.fuel?COAL_HELPER_MULT*coalMult():1))} ${m.fuel?'carvão':m.name.toLowerCase()}/s com picareta.`, st.n >= MAX_HELPERS ? tag('✔ Completo') : btn(money(helperCost(m)), ()=>hireHelper(m), helperCost(m)));
+  const nx = HELPER_TOOLS[(st.tool||0)+1];
+  add(HELPER_TOOLS[st.tool||0].ico, `Ferramenta: ${HELPER_TOOLS[st.tool||0].name} <span class="count">${xf(HELPER_TOOLS[st.tool||0].mult)}</span>`,
+    nx ? `Próxima: ${nx.ico} ${nx.name} (${xf(nx.mult)})` : 'Ferramenta máxima', nx ? btn(money(helperToolCost(m)), ()=>upgradeHelperTool(m), helperToolCost(m)) : tag('✔ Máximo'));
+  add('👔', 'Gerente', `Ajudantes ${xf(MANAGER_MULT)} mais rápidos`, st.mgr ? tag('✔ Contratado') : btn(money(managerCost(m)), ()=>hireManager(m), managerCost(m)));
+
+  if(m.fuel){
+    sec('⚫ Carvão');
+    const dc = coalDrillCost();
+    add('🔩', `Brocas de Carvão <span class="count">nv ${S.coalLvl}</span>`, `+${Math.round(DRILL_BONUS*100)}% de carvão (você e os ajudantes)`, btn(money(dc), buyCoalDrill, dc));
+    add('🛤️', 'Esteira de Carvão', 'Montada sozinha ao abrir a primeira fundição. Leva o carvão por trás das minas.', coalLineOn() ? tag('✔ Funcionando') : tag('⏳ 1ª fundição','var(--muted)'));
+    return;
+  }
+  sec('🏭 Fundição');
+  const has = {sm:!!S.smelters[m.id], belt:!!S.belts[m.id], sell:!!S.sellBelts[m.id]};
+  el.insertAdjacentHTML('beforeend', `<div class="flow" style="margin-bottom:8px">${step(true,'⛏️','Pilha')}${arrow(has.belt)}${step(has.belt,'🛤️','Esteira')}${arrow(has.belt && has.sm)}${step(has.sm,'🏭','Fundição')}${arrow(has.sell)}${step(has.sell,'💵','Venda')}</div>`);
+  add('🏭', 'Fundição', `${ORES_PER_BAR} ${m.name.toLowerCase()} (${money(ORES_PER_BAR*m.value)}) → 1 barra = <b style="color:#9cff7a">${money(barValue(m))}</b>`, has.sm ? tag('✔ Construída') : btn(money(smelterLeft(m)), ()=>buySmelter(m), smelterLeft(m)));
+  add('🛤️', 'Esteira de minério', `Leva ${fmt(beltRate(m))}/s da pilha até a fundição.`, has.belt ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]));
+  add('💵', 'Esteira de venda', 'Leva as barras até a caixa de venda e vende sozinha.', has.sell ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]));
+  if(has.sm && S.ore.carvao <= 0.01) el.insertAdjacentHTML('beforeend', `<div class="lockedBox">⚫ Sem carvão: a fundição está parada. Abasteça a mina de Carvão.</div>`);
+  sec('🛺 Coletador');
+  add('🛺', 'Coletador', `Busca até ${fmt(collectorCap())} na pilha e leva ao galpão. Na Metalúrgica: ${money(m.value*DELIVERY_MULT)} cada.`,
+    S.collectors[m.id] ? tag('✔ Trabalhando') : !S.depotOpen ? tag('🔒 Galpão','var(--muted)') : btn(money(COLLECTOR_COST[m.id]), ()=>buyCollector(m), COLLECTOR_COST[m.id]));
+  if(S.collectors[m.id] && has.belt) el.insertAdjacentHTML('beforeend', splitControl(m));
+}
+const fundShareEff = m => splitOn(m) ? fundShare(m) : 1;
+function mineIncome(m){
+  const r = mineRate(m) + (m.id === S.active ? machineRate() : 0);
+  const toBars = hasBelt(m) ? Math.min(r*fundShareEff(m), beltRate(m)) : 0, toHaul = splitOn(m) ? r*(1-fundShare(m)) : 0;
+  return (r - toBars - toHaul)*m.value + toBars/ORES_PER_BAR*barValue(m) + toHaul*m.value*DELIVERY_MULT;
+}
+
 function buildMines(){
   const el = document.getElementById('mines'); el.innerHTML='';
   MINES.forEach((m,i)=>{
@@ -689,7 +833,9 @@ function buildMines(){
     d.tabIndex = 0;
     d.innerHTML = `<div class="gem" style="background:${m.color}"></div>
       <div class="info"><div class="name">${m.fuel ? '⚫ Mina de Carvão' : 'Nível '+(i+1)+': '+m.name}</div>
-      <div class="sub">${m.fuel ? 'Combustível das fundições' : un ? money(m.value)+' por minério' : '🔒 Requer: '+t.name}</div></div>`;
+      <div class="sub">${m.fuel ? 'Combustível das fundições' : un ? money(m.value)+' por minério' : '🔒 Requer: '+t.name}</div></div>
+      <button class="lvlBtn">⬆️ Nv ${mineLevelInfo(m).lvl}</button>`;
+    d.querySelector('.lvlBtn').onclick = (e)=>{ e.stopPropagation(); openPanel(m.id); };
     d.onclick = ()=>{
       if(!window.world3d) return;
       world3d.guideTo(i);
@@ -698,6 +844,9 @@ function buildMines(){
     };
     el.appendChild(d);
   });
+  const g = document.createElement('div'); g.className = 'mine';
+  g.innerHTML = `<div class="gem" style="background:#3d6fa8"></div><div class="info"><div class="name">📦 Galpão de Entregas</div><div class="sub">${S.depotOpen ? 'Caminhões, carregadores e mochila' : '🔒 Fechado'}</div></div><button class="lvlBtn">⬆️ Abrir</button>`;
+  g.onclick = ()=>openPanel('galpao'); el.appendChild(g);
 }
 function buildStaff(){
   const el = document.getElementById('staff'); el.innerHTML = '';
@@ -855,6 +1004,9 @@ function buildShop(){
     add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, `+${Math.round(TURBO_BONUS*100)}% de velocidade em todas as esteiras`,
       MINES.some(hasBelt) ? btn(money(bc), ()=>{ if(S.money<bc) return; S.money-=bc; S.beltLvl++; buildShop(); render(); save(); }, bc) : tag('🔒','var(--muted)'));
   } else {
+    const tb = beltSpeedCost();
+    add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, `+${Math.round(TURBO_BONUS*100)}% de velocidade em todas as esteiras`,
+      MINES.some(hasBelt) ? btn(money(tb), ()=>{ if(S.money<tb) return; S.money-=tb; S.beltLvl++; buildShop(); render(); save(); }, tb) : tag('🔒 Esteira','var(--muted)'));
     const sc = sharpenCost();
     add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, `+${Math.round(SHARPEN_BONUS*100)}% de minério por golpe`, btn(money(sc), ()=>{ if(S.money<sc)return; S.money-=sc; S.sharpen++; buildShop(); render(); save(); }, sc));
     const bc = boostCost();
@@ -890,7 +1042,7 @@ function render(){
   const sb = MINES.filter(hasSellBelt).map(m=>m.name);
   if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
   else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
-  document.querySelectorAll('#shop button, #staff button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
+  document.querySelectorAll('#shop button, #staff button[data-cost], #panelBody button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
   checkMissions();
   checkAchievements();
   { const b = document.getElementById('achBadge'); b.hidden = !S.achNew; b.textContent = S.achNew; }
@@ -898,10 +1050,10 @@ function render(){
   let pct, txt;
   if(next){ const r = remaining(next); pct = Math.min(1, (S.money + next.cost - r)/next.cost);
     txt = needsFactory(next)
-      ? `🏭 Para liberar a próxima mina, compre na mina de <b>${prevMine(next).name}</b>: ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(Loja → Fundição)</span>`
+      ? `🏭 Para liberar a próxima mina, compre na mina de <b>${prevMine(next).name}</b>: ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(botão ⬆️ NÍVEL da mina)</span>`
       : `Próxima ferramenta: <b>${next.name}</b> — ` + (S.money >= r ? 'já dá para comprar! Siga a seta.' : `falta ${money(r - S.money)}`);
     if(needsFactory(next)){ const pm = prevMine(next); pct = (3 - factoryMissing(pm).length)/3; }
-    if(factoryTip(next) && S.money < r) txt += `<br>💡 A fundição da mina de <b>${prevMine(next).name}</b> rende 4x: falta ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(Loja → Fundição)</span>`; }
+    if(factoryTip(next) && S.money < r) txt += `<br>💡 A fundição da mina de <b>${prevMine(next).name}</b> rende 4x: falta ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(botão ⬆️ NÍVEL da mina)</span>`; }
   else { pct = Math.min(1, S.mined.esmeralda/GOAL); txt = S.won ? '🏆 Você venceu! Continue minerando e enriquecendo.' : `Minere <b>${fmt(GOAL)}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(GOAL)}`; }
   // missão atual em destaque; a próxima mina fica numa linha menor
   const ms = MISSIONS[S.mission];
@@ -914,6 +1066,7 @@ function render(){
   document.getElementById('goalText').innerHTML = txt;
   document.getElementById('goalBar').style.width = (pct*100)+'%';
   document.querySelectorAll('.mine').forEach((d,i)=>{
+    if(!MINES[i]) return;
     d.classList.toggle('active', MINES[i].id===S.active);
     d.classList.toggle('locked', !isUnlocked(MINES[i]));
   });
@@ -2044,6 +2197,22 @@ function createWorld(){
     trophy.cups.forEach((g,i)=>{ if(g.visible){ g.rotation.y = t*0.8 + i; } });
   }
 
+  // botões de nível (abrem o painel da mina / galpão)
+  const lvlBtns = [];
+  MINES3.forEach(o=>{ const bx = o.m.fuel ? o.x - 5.0 : o.x - 3.4; lvlBtns.push({id:o.m.id, tile:makeTile(bx, -6.2), x:bx, z:-6.2}); });
+  lvlBtns.push({id:'galpao', tile:makeTile(-4.0, 12.2), x:-4.0, z:12.2});
+  const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
+  function updateLvlBtns(t){
+    lvlBtns.forEach((b,k)=>{
+      let lvl, cost, open = true;
+      if(b.id === 'galpao'){ lvl = (S.depotOpen?1:0) + S.trucks + S.loaders + S.truckLvl + S.bagLvl; cost = cheapestDepot(); }
+      else { const m = mineById(b.id); open = isUnlocked(m); lvl = mineLevelInfo(m).lvl; cost = cheapestUpgrade(m); }
+      b.tile.draw(open ? '⬆️' : '🔒', 'NÍVEL ' + lvl, 0, !open);
+      const can = open && S.money >= cost;
+      upArrows[k].visible = can; if(can){ upArrows[k].position.y = 1.3 + Math.abs(Math.sin(t*4 + k))*0.35; upArrows[k].rotation.y = t*2; }
+    });
+  }
+
   // máquinas (aparecem quando compradas)
   function makeLoader(){
     const g = new THREE.Group();
@@ -2119,8 +2288,12 @@ function createWorld(){
   const joyEl = document.getElementById('joy'), knob = document.getElementById('knob');
   let joy = null;
   const cv = R.domElement;
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   cv.addEventListener('pointerdown', e=>{
     const r = sceneEl.getBoundingClientRect();
+    ndc.set((e.clientX-r.left)/r.width*2-1, -((e.clientY-r.top)/r.height*2-1)); ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(lvlBtns.map(b=>b.tile.mesh).concat(upArrows.filter(a=>a.visible)))[0];
+    if(hit){ const k = Math.max(lvlBtns.findIndex(b=>b.tile.mesh===hit.object), upArrows.indexOf(hit.object)); if(k >= 0){ openPanel(lvlBtns[k].id); return; } }
     joy = {id:e.pointerId, x:e.clientX, y:e.clientY, dx:0, dy:0};
     joyEl.style.left = (e.clientX-r.left)+'px'; joyEl.style.top = (e.clientY-r.top)+'px'; joyEl.hidden = false;
     knob.style.transform = ''; try{ cv.setPointerCapture(e.pointerId); }catch(_){}
@@ -2207,11 +2380,13 @@ function createWorld(){
     if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
     else if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
+    else if(lvlBtns.some(b=>b.tile.inside(p))) z = 'lvl:' + lvlBtns.find(b=>b.tile.inside(p)).id;
     else if(MINES3.some(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p))) z = 'factory:' + MINES3.find(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p)).i;
     else for(const o of MINES3) if(o.tile && o.tile.mesh.visible && o.tile.inside(p)) z = 'buy:'+o.i;
     if(z !== zone){ zone = z; zoneT = 0;
       if(z === 'market') doSell();
       if(z === 'shop') openShop();
+      if(z && z.startsWith('lvl:')) openPanel(z.slice(4));
       if(z && z.startsWith('buy:')){ const t = MINES3[+z.slice(4)].tool;
         if(needsFactory(t)) toast(`🏭 Antes complete a fundição da mina de ${prevMine(t).name}: ${factoryMissing(prevMine(t)).join(', ')}.`); }
     } else zoneT += dt;
@@ -2221,6 +2396,7 @@ function createWorld(){
     if(z === 'depot') payDepot(dt);
     updateDelivery(dt, p);
     updateTrophies(npcT);
+    updateLvlBtns(npcT);
     updateFactory(dt, npcT);
 
     for(const o of MINES3) if(o.tile && o.tile.mesh.visible){
@@ -2321,16 +2497,17 @@ function frame(now){
 })();
 
 // ---------- janelas dentro do jogo ----------
-const SHEETS = {ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+const SHEETS = {panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
 let sheetOpen = null;
 function openSheet(name){
   sheetOpen = name;
-  document.getElementById('sheetTitle').textContent = SHEETS[name];
+  if(SHEETS[name]) document.getElementById('sheetTitle').textContent = SHEETS[name];
   document.querySelectorAll('[data-panel]').forEach(s=>s.hidden = s.dataset.panel !== name);
   if(name==='shop') buildShop();
   if(name==='mines') buildMines();
   if(name==='staff') buildStaff();
   if(name==='ach') buildAch();
+  if(name==='panel') buildPanel();
   render();
   document.getElementById('sheet').hidden = false;
 }

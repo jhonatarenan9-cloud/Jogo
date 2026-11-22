@@ -6,6 +6,7 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
 - Arraste o dedo na tela (joystick) ou use WASD/setas para andar com o mineiro pelo mapa.
 - Pare perto das pedras de uma mina aberta: o mineiro golpeia sozinho e o minério cai na pilha ao lado.
 - Pise no quadrado **💰 VENDER** do Mercado para vender tudo, ou no **🛠️ LOJA** para abrir a loja.
+- Cada mina e o galpão têm um botão **⬆️ NÍVEL** no chão, ao lado do portão: pise nele (ou toque) para abrir o painel com todas as melhorias daquele lugar (equipe, ferramenta, gerente, fundição, esteiras, coletador, caminhões, carregadores).
 - O jogo ocupa a tela toda. Os botões Loja, Minério, Funcionários e Minas, embaixo, abrem janelas por cima do mapa.
 - Cada mina fechada tem um quadrado com o preço da ferramenta na frente do portão. Fique em cima dele para ir pagando; quando completar, o portão abre.
 - Cada mina nova é cara. Vale a pena completar a fundição da mina atual (fundição, esteira de minério e esteira de venda), que custa pouco e quadruplica o que você ganha, antes de comprar a próxima.
