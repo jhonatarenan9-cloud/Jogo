@@ -183,6 +183,7 @@
             <button data-tab="tools" class="on">Ferramentas</button>
             <button data-tab="upgrades">Melhorias</button>
             <button data-tab="factory">🏭 Fundição</button>
+            <button data-tab="delivery">🚚 Entregas</button>
           </div>
           <div id="shop"></div>
         </section>
@@ -192,6 +193,7 @@
         </section>
         <section data-panel="inv">
           <div class="inv" id="inv"></div>
+          <div id="bagBox" hidden><h3 class="subhead">Mochila e galpão de entregas</h3><p class="small" id="bagInfo" style="margin:0"></p></div>
           <div id="barsBox" hidden><h3 class="subhead">Barras da fundição</h3><div class="inv" id="bars"></div></div>
           <div class="row">
             <button class="primary" id="sellBtn">Vender tudo</button>
@@ -251,6 +253,13 @@ const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // m
 const SMELTER_COST = {cobre:400, ferro:12000, ouro:350000, diamante:9000000, esmeralda:200000000};
 const BELT_COST    = {cobre:200, ferro:6000, ouro:180000, diamante:4500000, esmeralda:100000000};
 const SELLBELT_COST = {cobre:300, ferro:9000, ouro:260000, diamante:7000000, esmeralda:150000000};
+// Área de Entregas: o mineiro leva minério na mochila até o galpão; caminhões levam até a Metalúrgica Aurora
+const DEPOT_COST = 1500, DELIVERY_MULT = 1.6, PICK_RATE = 14, DROP_RATE = 30;
+const TRUCK_COSTS = [800, 3000, 12000, 45000], TRUCK_SPEED = 8, TRUCK_AWAY = 6;
+const bagCap = () => 20 + 15*S.bagLvl;
+const bagCost = () => Math.ceil(250 * Math.pow(2.6, S.bagLvl));
+const truckCap = () => Math.round(30 * (1 + 0.4*S.truckLvl));
+const truckCapCost = () => Math.ceil(1500 * Math.pow(3, S.truckLvl));
 const GOAL = 1000; // esmeraldas para vencer
 
 // ===================== ESTADO =====================
@@ -264,6 +273,8 @@ function newState(){
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false, tool:0}])),
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
+    depotOpen:false, trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
+    bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
   };
 }
@@ -272,6 +283,7 @@ try{
   const raw = localStorage.getItem(SAVE_KEY);
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
+    S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
     S.paid = d.paid || {}; S.belts = d.belts || {}; S.smelters = d.smelters || {}; S.sellBelts = d.sellBelts || {}; S.bars = Object.assign(newState().bars, d.bars);
     if(d.smelter !== undefined){ // fundição central antiga: devolve o dinheiro gasto e recomeça no modelo por mina
       const OLD_BELT = {cobre:100000, ferro:200000, ouro:400000, diamante:800000, esmeralda:1600000};
@@ -389,6 +401,9 @@ const MISSIONS = [
   {t:'Ganhe $2.000 em vendas', p:()=>[S.earned, 2000], r:300},
   {t:'Compre a Picareta de Ferro', p:()=>[+!!S.tools.ferro, 1], r:500},
   {t:'Contrate o gerente da mina de Cobre', p:()=>[+!!S.staff.cobre.mgr, 1], r:600},
+  {t:'Abra a 📦 Área de Entregas (sul do vilarejo)', p:()=>[+!!S.depotOpen, 1], r:300, go:()=>S.money >= DEPOT_COST - (S.paid.depot||0) ? {x:0, z:12} : null},
+  {t:'Compre o primeiro 🚚 caminhão (Loja → Entregas)', p:()=>[S.trucks, 1], r:250},
+  {t:'Faça 3 entregas na Metalúrgica Aurora', p:()=>[S.deliveries||0, 3], r:500, go:()=>bagTotal() >= 1 ? {x:-3.4, z:19} : null},
   {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
   {t:'Contrate 3 ajudantes na mina de Ferro', p:()=>[S.staff.ferro.n, 3], r:2000},
   {t:'Complete a fundição do Ferro (3 itens)', p:()=>[3-factoryMissing(MINES[1]).length, 3], r:6000},
@@ -423,6 +438,24 @@ function checkMissions(){
   }
   if(done) save();
 }
+
+// ===================== ENTREGAS =====================
+const bagTotal = () => MINES.reduce((a,m)=>a + (S.bag[m.id]||0), 0);
+const depotTotal = () => MINES.reduce((a,m)=>a + (S.depot[m.id]||0), 0);
+const depotValue = () => MINES.reduce((a,m)=>a + (S.depot[m.id]||0)*m.value*DELIVERY_MULT, 0);
+function openDepot(){
+  S.depotOpen = true; delete S.paid.depot;
+  toast('📦 Área de Entregas aberta! Pegue minério nas pilhas das minas e leve até o galpão. Depois compre um caminhão.');
+  buildShop(); render(); save();
+}
+function buyDepot(){ const r = DEPOT_COST - (S.paid.depot||0); if(S.depotOpen || S.money < r) return; S.money -= r; openDepot(); }
+function buyTruck(){
+  const c = TRUCK_COSTS[S.trucks]; if(!S.depotOpen || c === undefined || S.money < c) return;
+  S.money -= c; S.trucks++; toast(`🚚 Caminhão ${S.trucks} comprado! Ele leva o estoque do galpão até a Metalúrgica Aurora.`);
+  buildShop(); render(); save();
+}
+function buyTruckCap(){ const c = truckCapCost(); if(!S.trucks || S.money < c) return; S.money -= c; S.truckLvl++; buildShop(); render(); save(); }
+function buyBag(){ const c = bagCost(); if(S.money < c) return; S.money -= c; S.bagLvl++; buildShop(); render(); save(); }
 
 // ===================== AÇÕES =====================
 function addOre(id, amt){
@@ -572,6 +605,29 @@ function buildShop(){
       const warn = factoryTip(t) ? `<br><span style="color:var(--gold)">💡 Dica: complete a fundição da mina de ${prevMine(t).name} (barras valem 4x) para juntar o dinheiro mais rápido.</span>` : '';
       add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}${warn}`, right);
     });
+  } else if(tab==='delivery'){
+    const card = document.createElement('div'); card.className = 'flowCard';
+    const step = (on, ico, label) => `<div class="fstep${on?' on':''}"><div class="fico">${ico}</div><div>${label}</div></div>`;
+    const arrow = on => `<div class="farrow${on?' on':''}">➜</div>`;
+    card.innerHTML = `<div class="flowHead"><b>📦 Área de Entregas</b><span class="flowPct">paga ${xf(DELIVERY_MULT)} o Mercado</span></div>
+      <div class="flow">${step(S.depotOpen,'⛏️','Pilha')}${arrow(S.depotOpen)}${step(S.depotOpen,'🎒','Mochila')}${arrow(S.depotOpen)}${step(S.depotOpen,'📦','Galpão')}${arrow(S.trucks>0)}${step(S.trucks>0,'🚚','Caminhão')}</div>
+      <div class="flowStats">
+        <div><small>Mochila</small><b>${fmt(bagTotal())}/${fmt(bagCap())}</b><small>minério</small></div>
+        <div><small>Galpão</small><b>${fmt(depotTotal())}</b><small>≈ ${money(depotValue())}</small></div>
+        <div><small>Caminhões</small><b>${S.trucks}/${TRUCK_COSTS.length}</b><small>${fmt(truckCap())} cada</small></div>
+        <div><small>Entregas</small><b>${fmt(S.deliveries||0)}</b><small>feitas</small></div>
+      </div>`;
+    el.appendChild(card);
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Pare em cima da pilha de minério de uma mina para encher a 🎒 mochila, leve até o quadrado <b>📦 DEPOSITAR</b> do galpão (sul do vilarejo) e os caminhões levam tudo até a <b>Metalúrgica Aurora</b>, que paga <b style="color:#9cff7a">${xf(DELIVERY_MULT)}</b> o preço do Mercado. Carvão não é aceito.</p>`);
+    const r = DEPOT_COST - (S.paid.depot||0);
+    add('📦', 'Galpão de Entregas', 'Abre a área de entregas ao sul do vilarejo. Também dá para pagar pisando no quadrado do portão.', S.depotOpen ? tag('✔ Aberto') : btn(money(r), buyDepot, r));
+    const tc = TRUCK_COSTS[S.trucks];
+    add('🚚', `Caminhão <span class="count">${S.trucks}/${TRUCK_COSTS.length}</span>`, `Leva ${fmt(truckCap())} minérios por viagem do galpão até a Metalúrgica.`,
+      !S.depotOpen ? tag('🔒 Galpão','var(--muted)') : tc === undefined ? tag('✔ Frota completa') : btn(money(tc), buyTruck, tc));
+    const cc = truckCapCost();
+    add('🛻', `Caçamba Maior <span class="count">nv ${S.truckLvl}</span>`, '+40% de carga em todos os caminhões', S.trucks ? btn(money(cc), buyTruckCap, cc) : tag('🔒 Caminhão','var(--muted)'));
+    const bc2 = bagCost();
+    add('🎒', `Mochila Maior <span class="count">nv ${S.bagLvl}</span>`, `Carrega +15 minérios (hoje ${fmt(bagCap())})`, S.depotOpen ? btn(money(bc2), buyBag, bc2) : tag('🔒 Galpão','var(--muted)'));
   } else if(tab==='factory'){
     // sub-abas: uma por mina
     if(!factoryMine || !MINES.find(m=>m.id===factoryMine)) factoryMine = (coalLineOn() && S.ore.carvao < 1) ? 'carvao' : (MINES.find(m=>!m.fuel && isUnlocked(m) && !factoryDone(m)) || MINES[0]).id;
@@ -655,7 +711,7 @@ function render(){
   document.getElementById('money').textContent = money(S.money);
   document.getElementById('rate').textContent = `+${money(incomePerSec())}/s em minério`;
   document.getElementById('hud').innerHTML =
-    `${bestTool().ico} ${bestTool().name} · <b>${fmt(clickPower())}</b>/golpe<br>Mina ativa: <b style="color:${m.fuel ? '#cfcfd6' : m.color}">${m.name}</b> · ⚫ ${fmt(S.ore.carvao)}` +
+    `${bestTool().ico} ${bestTool().name} · <b>${fmt(clickPower())}</b>/golpe${S.depotOpen ? ` · 🎒 <b>${fmt(bagTotal())}/${fmt(bagCap())}</b>` : ''}<br>Mina ativa: <b style="color:${m.fuel ? '#cfcfd6' : m.color}">${m.name}</b> · ⚫ ${fmt(S.ore.carvao)}` +
     (MINES.some(x=>hasBelt(x) && S.ore[x.id] > 0.5 && !FUEL[x.id]) ? `<br><b style="color:#ff9b7a">⚠️ Fundições sem carvão!</b>` : '');
   const inv = document.getElementById('inv'); inv.innerHTML='';
   MINES.forEach(x=>{
@@ -664,6 +720,8 @@ function render(){
   });
   const anySm = MINES.some(m=>S.smelters[m.id]);
   document.getElementById('barsBox').hidden = !anySm;
+  document.getElementById('bagBox').hidden = !S.depotOpen;
+  if(S.depotOpen) document.getElementById('bagInfo').innerHTML = `🎒 Mochila: <b>${fmt(bagTotal())}/${fmt(bagCap())}</b> · 📦 Galpão: <b>${fmt(depotTotal())}</b> (≈ ${money(depotValue())} na Metalúrgica) · 🚚 ${S.trucks} caminhão(ões)`;
   if(anySm){
     const bars = document.getElementById('bars'); bars.innerHTML = '';
     MINES.forEach(x=>bars.insertAdjacentHTML('beforeend', `<div class="invItem" style="${hasBelt(x)?'':'opacity:.35'}"><div class="gem" style="background:${x.color};clip-path:polygon(15% 0,85% 0,100% 100%,0 100%)"></div>
@@ -759,7 +817,7 @@ function createWorld(){
   // ---------- colisões ----------
   const circles = [], rects = [];
   function blocked(x,z){
-    if(x<-63.5 || x>33.5 || z<BACK_Z+0.2 || z>11.5) return true;
+    if(x<-63.5 || x>33.5 || z<BACK_Z+0.2 || z>26.6) return true;
     for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
     for(const r of rects){ if(r.when && !r.when()) continue;
       if(x>r.x1-0.32 && x<r.x2+0.32 && z>r.z1-0.32 && z<r.z2+0.32) return true; }
@@ -1104,7 +1162,9 @@ function createWorld(){
   // árvores entre as minas
   [-35,-21,-7,7,21,35].forEach((x,k)=>{ pine(x, -14.5, 1.1); pine(x+0.3, -11.2, 0.95); roundTree(x-0.2, -8.6, 0.8); });
   // contorno do mapa
-  for(let x=-63; x<=33; x+=3.3){ (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
+  for(let x=-63; x<=33; x+=3.3){ if(Math.abs(x) < 13) continue; (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
+  for(let x=-40; x<=40; x+=3.6) (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 29 + rnd()*1.5, 0.9 + rnd()*0.35);
+  for(let z=15; z<=23; z+=3.4){ pine(-13.5, z, 1); roundTree(-17, z+1.5, 0.9); }
   for(let z=-1; z<=11; z+=3.2){ pine(-35.2, z, 1); pine(35.2, z+1, 1); }
   [[-26,9.5],[-13,10],[-3.5,9.8],[3.5,10.2],[11,9.3],[29,9],[-30,1.5],[30,2.5],[-14,2.8],[13.2,2.2]].forEach(([x,z],k)=>(k%2?pine:roundTree)(x,z,0.95));
 
@@ -1158,6 +1218,8 @@ function createWorld(){
   // canteiros de flores e tufos de grama (instanciados)
   function freeSpot(x, z){
     if(z > -2.2 && z < 7.2 && Math.abs(x) < 9) return false;          // vilarejo
+    if(z > 8 && Math.abs(x) < 14) return false;                        // área de entregas
+    if(z > 23.5 && x > 8) return false;                                // estrada dos caminhões
     if(z > -5.8 && z < -2.2) return false;                             // estrada
     if(Math.hypot(x+19, z-5.6) < 4.2) return false;                    // lago
     if(z < -7) return false;                                           // minas
@@ -1503,6 +1565,200 @@ function createWorld(){
     }
   }
 
+  // ---------- área de entregas (sul do vilarejo) ----------
+  const YX1 = -10, YX2 = 10, YZ1 = 14, YZ2 = 24;      // pátio cercado
+  const DROP = {x:-3.4, z:19.0};
+  const depotTile = makeTile(0, 12.0);
+  const dropTile = makeTile(DROP.x, DROP.z); dropTile.draw('📦', 'DEPOSITAR', 0, false);
+  {
+    pathRect(-1.3, 6.8, 1.3, YZ1);                                    // caminho do vilarejo até o pátio
+    pathRect(YX1+0.2, YZ1, YX2+0.5, YZ2, M('#8f8b84'), 0.02, M('#77736c'));   // piso de concreto
+    pathRect(YX2+0.5, 14.6, 13.2, 26.8);                              // saída dos caminhões
+    pathRect(13.2, 24.4, 72, 26.8);                                   // estrada até a empresa compradora
+    for(let x=15; x<72; x+=4) mesh(new THREE.BoxGeometry(1.6,0.05,0.18), M('#ffffff'), x, 0.05, 25.6).castShadow = false;
+    // cerca do pátio (lado leste aberto para os caminhões)
+    const fm = M('#c9ccd1');
+    function fence(x1,z1,x2,z2){
+      const len = Math.hypot(x2-x1, z2-z1), n = Math.max(1, Math.round(len/1.4));
+      for(let k=0;k<=n;k++) mesh(new THREE.BoxGeometry(0.12,1.1,0.12), fm, x1+(x2-x1)*k/n, 0.55, z1+(z2-z1)*k/n);
+      for(const y of [0.45,0.95]){ const r = mesh(new THREE.BoxGeometry(len,0.06,0.06), fm, (x1+x2)/2, y, (z1+z2)/2); r.rotation.y = -Math.atan2(z2-z1, x2-x1); }
+    }
+    fence(YX1,YZ1,-1.4,YZ1); fence(1.4,YZ1,YX2,YZ1); fence(YX1,YZ1,YX1,YZ2); fence(YX1,YZ2,YX2,YZ2);
+    rects.push({x1:YX1-0.1,x2:-1.35,z1:YZ1-0.1,z2:YZ1+0.1},{x1:1.35,x2:YX2+0.1,z1:YZ1-0.1,z2:YZ1+0.1},
+               {x1:YX1-0.1,x2:YX1+0.1,z1:YZ1,z2:YZ2},{x1:YX1,x2:YX2,z1:YZ2-0.1,z2:YZ2+0.1},
+               {x1:-1.4,x2:1.4,z1:YZ1-0.1,z2:YZ1+0.1, when:()=>!S.depotOpen});
+  }
+  let depotSign = null, depotSignKey = '';
+  const depotGate = new THREE.Group(); world.add(depotGate);
+  for(const y of [0.35,0.7,1.05]) mesh(new THREE.BoxGeometry(2.8,0.14,0.1), M('#e0a43a'), 0, y, YZ1, depotGate);
+  // galpão de entregas (lado oeste do pátio, aberto para o leste, para não tapar a câmera)
+  {
+    const X1 = -9.6, X2 = -5.0, Z1 = 15.2, Z2 = 22.8, CX = (X1+X2)/2, CZ = (Z1+Z2)/2;
+    const wall = M('#3d6fa8');
+    mesh(new THREE.BoxGeometry(0.25,2.6,Z2-Z1), wall, X1, 1.3, CZ);
+    mesh(new THREE.BoxGeometry(X2-X1,2.6,0.25), wall, CX, 1.3, Z1);
+    mesh(new THREE.BoxGeometry(X2-X1,2.6,0.25), wall, CX, 1.3, Z2);
+    const roof = mesh(new THREE.BoxGeometry(X2-X1+1.2,0.2,Z2-Z1+0.6), M('#8e98a3'), CX+0.2, 2.85, CZ); roof.rotation.z = 0.1;
+    mesh(new THREE.BoxGeometry(0.15,0.32,Z2-Z1), M('#f2b632'), X2+0.05, 2.45, CZ);
+    for(const z of [Z1, Z2]) mesh(new THREE.BoxGeometry(0.3,2.6,0.3), M('#2f5a8c'), X2, 1.3, z);
+    mesh(new THREE.BoxGeometry(1.0,0.28,Z2-Z1-0.6), M('#8c8f96'), X2+0.5, 0.14, CZ);          // plataforma de carga
+    rects.push({x1:X1-0.1, x2:X2-0.05, z1:Z1-0.1, z2:Z2+0.1});
+    depotSign = labelSprite(4.4); depotSign.position.set(CX, 4.0, CZ); depotSign.userData.draw('📦 Galpão de Entregas', '#9fd0ff');
+    // empilhadeira decorativa
+    const fk = new THREE.Group(); fk.position.set(-2.4, 0, 22.6); fk.rotation.y = -0.6; world.add(fk);
+    mesh(new THREE.BoxGeometry(1.0,0.6,1.4), M('#f2b632'), 0, 0.55, 0, fk);
+    mesh(new THREE.BoxGeometry(0.9,0.8,0.6), M('#2b2b2b'), 0, 1.25, -0.25, fk);
+    for(const s2 of [-0.3,0.3]) mesh(new THREE.BoxGeometry(0.08,1.6,0.08), M('#555555'), s2, 0.8, 0.75, fk);
+    for(const s2 of [-0.25,0.25]) mesh(new THREE.BoxGeometry(0.1,0.05,0.7), M('#555555'), s2, 0.15, 1.05, fk);
+    for(const [a,b] of [[-0.5,0.45],[0.5,0.45],[-0.5,-0.45],[0.5,-0.45]]){ const w = mesh(new THREE.CylinderGeometry(0.22,0.22,0.18,10), M('#1b1b1b'), a, 0.22, b, fk); w.rotation.z = Math.PI/2; }
+    circles.push({x:-2.4, z:22.6, r:0.9});
+  }
+  // estoque do galpão: caixas coloridas dentro
+  const DEP_N = 60, depotBoxes = new THREE.InstancedMesh(new THREE.BoxGeometry(0.62,0.5,0.62), M('#ffffff'), DEP_N);
+  {
+    const d = new THREE.Object3D();
+    for(let k=0;k<DEP_N;k++){ const l = Math.floor(k/20), r = k%20;
+      d.position.set(-9.0 + Math.floor(r/10)*0.8, 0.27 + l*0.52, 15.9 + (r%10)*0.72); d.rotation.y = (k%3-1)*0.06; d.updateMatrix(); depotBoxes.setMatrixAt(k, d.matrix);
+      depotBoxes.setColorAt(k, new THREE.Color('#ffffff')); }
+    depotBoxes.count = 0; depotBoxes.castShadow = true; world.add(depotBoxes);
+  }
+  // placa da empresa compradora na saída
+  { const b = labelSprite(4.8); b.position.set(16, 3.2, 27.6); b.userData.draw('🏢 Metalúrgica Aurora ➜', '#ffd27a');
+    for(const s of [-1.6,1.6]) mesh(new THREE.BoxGeometry(0.15,2.4,0.15), M('#5b5f66'), 16+s, 1.2, 27.6); }
+  // vagas e caminhões
+  const SLOTS = [15.8, 18.2, 20.6, 23.0];
+  function makeTruck(color){
+    const g = new THREE.Group();
+    mesh(new THREE.BoxGeometry(1.1,1.05,1.3), M(color), 1.25, 0.95, 0, g);
+    mesh(new THREE.BoxGeometry(0.08,0.5,1.0), M('#bfe6f7'), 1.81, 1.15, 0, g);
+    mesh(new THREE.BoxGeometry(2.4,0.22,1.4), M('#3b3f45'), -0.55, 0.55, 0, g);
+    for(const s of [-0.68,0.68]) mesh(new THREE.BoxGeometry(2.4,0.35,0.06), M('#8c8f96'), -0.55, 0.82, s, g);
+    mesh(new THREE.BoxGeometry(0.06,0.35,1.4), M('#8c8f96'), -1.75, 0.82, 0, g);
+    for(const [x,z] of [[1.2,0.68],[1.2,-0.68],[-0.3,0.68],[-0.3,-0.68],[-1.2,0.68],[-1.2,-0.68]]){
+      const w = mesh(new THREE.CylinderGeometry(0.3,0.3,0.22,12), M('#1b1b1b'), x, 0.3, z, g); w.rotation.x = Math.PI/2; }
+    const load = new THREE.Group(); load.position.set(-0.55, 0.66, 0); g.add(load);
+    const boxes = [];
+    for(let k=0;k<6;k++){ const b = mesh(new THREE.BoxGeometry(0.62,0.5,0.55), M('#9b6a3c'), -0.75+(k%3)*0.75, 0.25+Math.floor(k/3)*0.0, k<3 ? -0.33 : 0.33, load); b.visible = false; boxes.push(b); }
+    g.userData.boxes = boxes;
+    return g;
+  }
+  const TRUCK_COLORS = ['#d94a4a','#2f80ed','#3aa35a','#8e5bd6'];
+  const trucks = [];   // estado só visual/temporário: {g, slot, state, t, load, value, path, d}
+  function syncTrucks(){
+    while(trucks.length < S.trucks){
+      const k = trucks.length, g = makeTruck(TRUCK_COLORS[k % 4]);
+      g.position.set(6.8, 0, SLOTS[k]); g.rotation.y = 0; world.add(g);
+      trucks.push({g, slot:k, state:'parked', t:0, load:{}, value:0, d:0});
+      burstBills(6.8, SLOTS[k], 10);
+    }
+  }
+  function truckPath(k){
+    const z = SLOTS[k];
+    return [new THREE.Vector3(6.8,0,z), new THREE.Vector3(11.8,0,z), new THREE.Vector3(11.8,0,25.6), new THREE.Vector3(74,0,25.6)];
+  }
+  function moveAlong(tr, dist, reverse){
+    const path = reverse ? tr.path.slice().reverse() : tr.path;
+    const lens = path.slice(1).map((v,i)=>v.distanceTo(path[i])), total = lens.reduce((a,b)=>a+b,0);
+    let d = Math.min(dist, total), s = 0; while(s < lens.length-1 && d > lens[s]){ d -= lens[s]; s++; }
+    const a = path[s], b = path[s+1];
+    tr.g.position.lerpVectors(a, b, lens[s] ? d/lens[s] : 1);
+    const dir = new THREE.Vector3().subVectors(b, a);
+    if(dir.lengthSq() > 0.001) tr.g.rotation.y = Math.atan2(-dir.z, dir.x);
+    return dist >= total;
+  }
+  // mochila nas costas do mineiro
+  const bagGroup = new THREE.Group(); bagGroup.position.set(0, 0.95, -0.3); player.add(bagGroup);
+  const bagCubes = [];
+  for(let k=0;k<12;k++){ const c = mesh(new THREE.BoxGeometry(0.26,0.2,0.22), M('#ffffff'), ((k%2)-0.5)*0.27, Math.floor(k/2)*0.21, 0, bagGroup); c.visible = false; bagCubes.push(c); }
+  let bagKey = '', pickT = 0, dropT = 0;
+  function refreshBagVisual(){
+    const tot = bagTotal(), cap = bagCap(), n = tot <= 0 ? 0 : Math.max(1, Math.round(tot/cap*12));
+    const key = n + '|' + MINES.map(m=>Math.round(S.bag[m.id]||0)).join(',');
+    if(key === bagKey) return; bagKey = key;
+    // cores proporcionais ao conteúdo da mochila
+    const cols = []; MINES.forEach(m=>{ const c = Math.round((S.bag[m.id]||0)/Math.max(tot,1e-9)*n); for(let i=0;i<c;i++) cols.push(m.color); });
+    while(cols.length < n) cols.push(cols[cols.length-1] || '#ffffff');
+    bagCubes.forEach((c,k)=>{ c.visible = k < n; if(k < n) c.material = M(cols[k]); });
+  }
+  function updateDelivery(dt, p){
+    depotGate.visible = !S.depotOpen;
+    depotTile.mesh.visible = !S.depotOpen;
+    dropTile.mesh.visible = S.depotOpen;
+    if(!S.depotOpen){
+      const r = Math.max(0, DEPOT_COST - (S.paid.depot||0));
+      depotTile.draw('📦', money(r), 1 - r/DEPOT_COST, false);
+    }
+    // pegar minério nas pilhas das minas (exceto carvão)
+    if(S.depotOpen){
+      pickT += dt;
+      for(const o of MINES3){
+        if(o.m.fuel || !o.pilePos) continue;
+        if(Math.hypot(p.x - o.pilePos.x, p.z - o.pilePos.z) > 1.9) continue;
+        const room = bagCap() - bagTotal(); if(room <= 0.001 || S.ore[o.m.id] < 0.01) continue;
+        const take = Math.min(room, S.ore[o.m.id], PICK_RATE*dt);
+        S.ore[o.m.id] -= take; S.bag[o.m.id] = (S.bag[o.m.id]||0) + take;
+        if(pickT > 0.35){ pickT = 0; flyOre(o.pilePos.clone(), p.clone().setY(1.2), o.m.color); }
+        if(bagCap() - bagTotal() <= 0.001) floatText('🎒 Mochila cheia!', p.clone().setY(2.3), '#ffd27a');
+      }
+      // depositar no galpão
+      if(Math.abs(p.x-DROP.x) < 1.15 && Math.abs(p.z-DROP.z) < 1.15 && bagTotal() > 0){
+        dropT += dt;
+        for(const m of MINES){ const a = S.bag[m.id]||0; if(a <= 0) continue;
+          const mv = Math.min(a, DROP_RATE*dt); S.bag[m.id] -= mv; S.depot[m.id] = (S.depot[m.id]||0) + mv; }
+        if(dropT > 0.25){ dropT = 0; flyOre(p.clone().setY(1.2), new THREE.Vector3(-7.2,1,19), '#ffffff'); }
+      }
+    }
+    refreshBagVisual();
+    // estoque visível no galpão
+    const dt2 = depotTotal();
+    { const key = S.depotOpen ? fmt(dt2) : '-'; if(key !== depotSignKey){ depotSignKey = key; depotSign.userData.draw(S.depotOpen ? `📦 Galpão · ${key} minérios` : '📦 Galpão de Entregas 🔒', '#9fd0ff'); } }
+    const nBox = dt2 < 0.5 ? 0 : Math.min(DEP_N, Math.ceil(dt2/5));
+    if(depotBoxes.count !== nBox){
+      depotBoxes.count = nBox;
+      const cols = []; MINES.forEach(m=>{ const c = Math.round((S.depot[m.id]||0)/Math.max(dt2,1e-9)*nBox); for(let i=0;i<c;i++) cols.push(m.color); });
+      for(let k=0;k<nBox;k++) depotBoxes.setColorAt(k, new THREE.Color(cols[k] || '#c9a26a'));
+      if(depotBoxes.instanceColor) depotBoxes.instanceColor.needsUpdate = true;
+    }
+    // caminhões
+    syncTrucks();
+    trucks.forEach(tr=>{
+      tr.t += dt;
+      if(tr.state === 'parked'){
+        if(depotTotal() >= 1 && tr.t > 1){
+          const cap = truckCap(); let left = cap, value = 0; tr.load = {};
+          const tot = depotTotal();
+          for(const m of MINES){ const a = S.depot[m.id]||0; if(a <= 0) continue;
+            const take = Math.min(a, cap * a/tot, left); S.depot[m.id] -= take; left -= take; tr.load[m.id] = take; value += take*m.value*DELIVERY_MULT; }
+          tr.value = value; tr.state = 'loading'; tr.t = 0;
+          const fill = (cap-left)/cap;
+          tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < Math.max(1, Math.round(fill*6)); });
+        }
+      } else if(tr.state === 'loading'){
+        if(tr.t > 1.5){ tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); }
+      } else if(tr.state === 'going'){
+        tr.d += dt*TRUCK_SPEED;
+        if(moveAlong(tr, tr.d, false)){ tr.state = 'away'; tr.t = 0; tr.g.visible = false; }
+      } else if(tr.state === 'away'){
+        if(tr.t > TRUCK_AWAY){
+          S.money += tr.value; S.earned += tr.value; S.deliveries = (S.deliveries||0) + 1;
+          toast(`🚚 Entrega na Metalúrgica Aurora: +${money(tr.value)}`);
+          tr.g.userData.boxes.forEach(b=>b.visible = false);
+          tr.state = 'returning'; tr.d = 0; tr.g.visible = true; save();
+        }
+      } else if(tr.state === 'returning'){
+        tr.d += dt*TRUCK_SPEED;
+        if(moveAlong(tr, tr.d, true)){ tr.state = 'parked'; tr.t = 0; tr.g.rotation.y = 0; }
+      }
+    });
+  }
+  function payDepot(dt){
+    if(S.depotOpen || S.money <= 0) return;
+    const r = DEPOT_COST - (S.paid.depot||0), pay = Math.min(S.money, r, Math.max(DEPOT_COST*dt/1.6, 1));
+    S.money -= pay; S.paid.depot = (S.paid.depot||0) + pay;
+    if(Math.random() < dt*8) burstBills(0, 12, 1);
+    if(DEPOT_COST - S.paid.depot <= 0.0001) openDepot();
+  }
+
   // máquinas (aparecem quando compradas)
   function makeLoader(){
     const g = new THREE.Group();
@@ -1663,7 +1919,8 @@ function createWorld(){
 
     // zonas: quadrados de compra, mercado, loja
     let z = null;
-    if(marketTile.inside(p)) z = 'market';
+    if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
+    else if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
     else if(MINES3.some(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p))) z = 'factory:' + MINES3.find(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p)).i;
     else for(const o of MINES3) if(o.tile && o.tile.mesh.visible && o.tile.inside(p)) z = 'buy:'+o.i;
@@ -1676,6 +1933,8 @@ function createWorld(){
     if(z === 'market' && zoneT > 1){ zoneT = 0; doSell(true); }
     if(z && z.startsWith('buy:')) payTile(MINES3[+z.slice(4)], dt);
     if(z && z.startsWith('factory:')) payFactory(MINES3[+z.slice(8)], dt);
+    if(z === 'depot') payDepot(dt);
+    updateDelivery(dt, p);
     updateFactory(dt, npcT);
 
     for(const o of MINES3) if(o.tile && o.tile.mesh.visible){
@@ -1705,6 +1964,7 @@ function createWorld(){
 
     // seta guia: destino escolhido, ou o próximo portão quando der para pagar
     let g = guide;
+    if(!g){ const ms = MISSIONS[S.mission]; if(ms && ms.go) g = ms.go(); }
     if(!g){ const next = TOOLS.find(t=>!S.tools[t.id]);
       if(next && canBuy(next) && S.money >= remaining(next)){ const o = MINES3.find(o=>o.tool===next); g = {x:o.x, z:-6.3}; }
       else { const o = MINES3.find(o=>canBuildSmelter(o.m) && S.money >= smelterLeft(o.m) && (!next || prevMine(next) === o.m)); if(o) g = {x:o.smX, z:o.smZ}; } }

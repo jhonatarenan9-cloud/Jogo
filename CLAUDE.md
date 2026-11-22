@@ -27,6 +27,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `COAL_*`: mina de carvão (combustível das fundições).
 - `SHARPEN_BONUS`, `BOOST_BONUS`, `TURBO_BONUS`, `DRILL_BONUS`: bônus por nível das melhorias (mantenha baixos).
 - `sharpenCost`, `boostCost`, `AUTOSELL_COST`, `beltSpeedCost`, `coalDrillCost`: melhorias.
+- `DEPOT_COST`, `DELIVERY_MULT`, `TRUCK_COSTS`, `bagCap`, `truckCap`: área de entregas.
 - `MISSIONS`: sequência de missões e recompensas.
 
 ## Testes
