@@ -3,7 +3,9 @@
 O jogo inteiro está em `index.html` (HTML + CSS + JS, mundo 3D com three.js r128).
 
 ## Publicação (sempre as duas)
-- **App (GitHub Pages):** o repositório é servido direto pelo GitHub Pages, que atualiza sozinho a cada push.
+- **App (GitHub Pages):** o GitHub Pages publica o branch `(root)` (nome com parênteses, é o branch padrão do repositório).
+  O usuário autorizou: depois de cada push no branch de trabalho, envie também para ele com
+  `git push origin 'HEAD:refs/heads/(root)'`, para o app no celular atualizar sozinho.
   O app usa `three.min.js` local, `manifest.webmanifest`, ícones e `sw.js` (offline; o `index.html` vem da rede
   primeiro, para as atualizações chegarem). Se mudar a lista de arquivos do jogo, atualize `FILES` em `sw.js`
   e troque o nome do `CACHE`.
