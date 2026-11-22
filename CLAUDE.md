@@ -25,6 +25,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `STAFF_COST`, `HELPER_RATE`, `HELPER_TOOLS`, `MANAGER_*`: funcionários.
 - `SMELTER_COST`, `BELT_COST`, `SELLBELT_COST`, `BELT_RATE`, `BAR_MULT`: fundição.
 - `COAL_*`: mina de carvão (combustível das fundições).
+- `SHARPEN_BONUS`, `BOOST_BONUS`, `TURBO_BONUS`, `DRILL_BONUS`: bônus por nível das melhorias (mantenha baixos).
 - `sharpenCost`, `boostCost`, `AUTOSELL_COST`, `beltSpeedCost`, `coalDrillCost`: melhorias.
 - `MISSIONS`: sequência de missões e recompensas.
 

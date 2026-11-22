@@ -187,7 +187,7 @@
           <div id="shop"></div>
         </section>
         <section data-panel="staff">
-          <p class="small" style="margin-top:0">Cada mina aceita até 3 ajudantes. O gerente faz os ajudantes da mina dele trabalharem 2x mais rápido.</p>
+          <p class="small" style="margin-top:0">Cada mina aceita até 3 ajudantes. O gerente faz os ajudantes da mina dele trabalharem 1,5x mais rápido.</p>
           <div id="staff"></div>
         </section>
         <section data-panel="inv">
@@ -233,10 +233,10 @@ const STAFF_COST = {carvao:80, cobre:60, ferro:900, ouro:9000, diamante:90000, e
 // ferramenta dos ajudantes (por mina): picareta -> martelete -> rompedor
 const HELPER_TOOLS = [
   {name:'Picareta', ico:'⛏️', mult:1, costMult:0},
-  {name:'Martelete', ico:'🔩', mult:2, costMult:20},
-  {name:'Rompedor', ico:'💥', mult:4, costMult:150},
+  {name:'Martelete', ico:'🔩', mult:1.4, costMult:20},
+  {name:'Rompedor', ico:'💥', mult:2, costMult:150},
 ];
-const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 2, MANAGER_COST_MULT = 40;
+const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 1.5, MANAGER_COST_MULT = 40;
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
 const ORES_PER_BAR = 5, BAR_MULT = 20;
@@ -244,7 +244,7 @@ const ORES_PER_BAR = 5, BAR_MULT = 20;
 const COAL_PER_BAR = 1, COAL_HELPER_MULT = 3;
 // a esteira de carvão é montada sozinha quando a primeira fundição abre
 const coalLineOn = () => MINES.some(m=>!m.fuel && S.smelters[m.id]);
-const coalMult = () => 1 + 0.5*S.coalLvl;
+const coalMult = () => 1 + DRILL_BONUS*S.coalLvl;
 const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
 const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
 const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // minério/s de cada esteira
@@ -305,10 +305,11 @@ const factoryTip = t => toolIndex(t) > 0 && !!S.tools[TOOLS[toolIndex(t)-1].id] 
 const canBuy = t => toolIndex(t) === 0 || !!S.tools[TOOLS[toolIndex(t)-1].id];
 const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
-function clickPower(){ return bestTool().power * (1 + 0.3*S.sharpen); }
+const SHARPEN_BONUS = 0.15, BOOST_BONUS = 0.08, TURBO_BONUS = 0.25, DRILL_BONUS = 0.25;   // bônus por nível das melhorias
+function clickPower(){ return bestTool().power * (1 + SHARPEN_BONUS*S.sharpen); }
 function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.5, S.staff[m.id].n)); }
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
-const boostMult = () => 1 + 0.15*S.boost;
+const boostMult = () => 1 + BOOST_BONUS*S.boost;
 // minério/s de uma mina vindo dos ajudantes
 function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) : 0; }
 // minério/s das máquinas (vai para a mina ativa)
@@ -341,11 +342,12 @@ function fmt(n){
   return n.toFixed(n<10?2:n<100?1:0).replace('.',',') + u[i];
 }
 const money = n => '$' + fmt(n);
+const xf = v => String(Math.round(v*100)/100).replace('.', ',') + 'x';   // multiplicador em pt-BR (1,5x)
 const barValue = m => m.value * BAR_MULT;
 const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 // valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
 const oreValue = (auto) => MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
-const beltRate = m => BELT_RATE[m.id] * (1 + 0.5*S.beltLvl);
+const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl);
 const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
 const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
 const SOLD = {};   // vendido pela esteira de venda (para mostrar o dinheiro subindo no mapa)
@@ -492,13 +494,13 @@ function upgradeHelperTool(m){
   const st = S.staff[m.id], lvl = st.tool||0, nx = HELPER_TOOLS[lvl+1], c = helperToolCost(m);
   if(!nx || !isUnlocked(m) || S.money < c) return;
   S.money -= c; st.tool = lvl+1; buildStaff(); render(); save();
-  toast(`${nx.ico} Ajudantes da mina de ${m.name} agora usam ${nx.name}! Produção ${nx.mult}x.`);
+  toast(`${nx.ico} Ajudantes da mina de ${m.name} agora usam ${nx.name}! Produção ${xf(nx.mult)}.`);
 }
 function hireManager(m){
   const st = S.staff[m.id], c = managerCost(m);
   if(!isUnlocked(m) || st.mgr || S.money < c) return;
   S.money -= c; st.mgr = true; buildStaff(); render(); save();
-  toast(`👔 Gerente contratado! Os ajudantes da mina de ${m.name} trabalham ${MANAGER_MULT}x mais rápido.`);
+  toast(`👔 Gerente contratado! Os ajudantes da mina de ${m.name} trabalham ${xf(MANAGER_MULT)} mais rápido.`);
 }
 
 // ===================== INTERFACE =====================
@@ -533,8 +535,8 @@ function buildStaff(){
       <div class="sub">${un ? (rate>0 ? (m.fuel ? `${fmt(rate)} carvão/s (combustível)` : `${fmt(rate)} ${m.name.toLowerCase()}/s ≈ ${money(rate*m.value)}/s`) : 'Sem funcionários') : '🔒 Abra a mina primeiro'}</div></div></div>
       <div class="staffRow"><div class="slots">${slots}</div></div>
       <div class="staffRow toolRow"><div><b>🧰 Ferramenta dos ajudantes</b>
-        <div class="toolChips">${HELPER_TOOLS.map((t,k)=>`<span class="tchip${k<=(st.tool||0)?' on':''}${k===(st.tool||0)?' cur':''}">${t.ico} ${t.name} <small>${t.mult}x</small></span>`).join('<span class="tarrow">➜</span>')}</div></div></div>
-      <div class="staffRow mgrRow"><div><b>👔 Gerente</b><div class="sub">${st.mgr ? 'Ajudantes '+MANAGER_MULT+'x mais rápidos' : 'Deixa os ajudantes '+MANAGER_MULT+'x mais rápidos'}</div></div></div>`;
+        <div class="toolChips">${HELPER_TOOLS.map((t,k)=>`<span class="tchip${k<=(st.tool||0)?' on':''}${k===(st.tool||0)?' cur':''}">${t.ico} ${t.name} <small>${xf(t.mult)}</small></span>`).join('<span class="tarrow">➜</span>')}</div></div></div>
+      <div class="staffRow mgrRow"><div><b>👔 Gerente</b><div class="sub">${st.mgr ? 'Ajudantes '+xf(MANAGER_MULT)+' mais rápidos' : 'Deixa os ajudantes '+xf(MANAGER_MULT)+' mais rápidos'}</div></div></div>`;
     const r1 = card.querySelectorAll('.staffRow')[0], rT = card.querySelector('.toolRow'), r2 = card.querySelector('.mgrRow');
     const mk = (label, cost, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; if(cost!=null) b.dataset.cost = cost; else b.disabled = true; return b; };
     if(!un) r1.appendChild(mk('🔒', null));
@@ -603,7 +605,7 @@ function buildShop(){
       add('🛤️', 'Esteira de Carvão', 'Montada automaticamente quando você abre a primeira fundição. Leva o carvão acumulado por trás das minas até todas as fundições.',
         coalLineOn() ? tag('✔ Funcionando') : tag('⏳ 1ª fundição','var(--muted)'));
       const dc = coalDrillCost();
-      add('🔩', `Brocas de Carvão <span class="count">nv ${S.coalLvl}</span>`, '+50% de carvão (você e os ajudantes da mina de Carvão)', btn(money(dc), buyCoalDrill, dc));
+      add('🔩', `Brocas de Carvão <span class="count">nv ${S.coalLvl}</span>`, `+${Math.round(DRILL_BONUS*100)}% de carvão (você e os ajudantes da mina de Carvão)`, btn(money(dc), buyCoalDrill, dc));
       return;
     }
     const m = mineById(factoryMine), un = isUnlocked(m);
@@ -637,13 +639,13 @@ function buildShop(){
     }
     el.insertAdjacentHTML('beforeend', `<h3 class="subhead">Todas as minas</h3>`);
     const bc = beltSpeedCost();
-    add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, '+50% de velocidade em todas as esteiras',
+    add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, `+${Math.round(TURBO_BONUS*100)}% de velocidade em todas as esteiras`,
       MINES.some(hasBelt) ? btn(money(bc), ()=>{ if(S.money<bc) return; S.money-=bc; S.beltLvl++; buildShop(); render(); save(); }, bc) : tag('🔒','var(--muted)'));
   } else {
     const sc = sharpenCost();
-    add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, '+30% de minério por golpe', btn(money(sc), ()=>{ if(S.money<sc)return; S.money-=sc; S.sharpen++; buildShop(); render(); save(); }, sc));
+    add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, `+${Math.round(SHARPEN_BONUS*100)}% de minério por golpe`, btn(money(sc), ()=>{ if(S.money<sc)return; S.money-=sc; S.sharpen++; buildShop(); render(); save(); }, sc));
     const bc = boostCost();
-    add('⚙️', `Manutenção <span class="count">nv ${S.boost}</span>`, '+15% na produção dos funcionários e máquinas', btn(money(bc), ()=>{ if(S.money<bc)return; S.money-=bc; S.boost++; buildShop(); render(); save(); }, bc));
+    add('⚙️', `Manutenção <span class="count">nv ${S.boost}</span>`, `+${Math.round(BOOST_BONUS*100)}% na produção dos funcionários e máquinas`, btn(money(bc), ()=>{ if(S.money<bc)return; S.money-=bc; S.boost++; buildShop(); render(); save(); }, bc));
     add('💼', 'Vendedor Automático', 'Vende todo minério automaticamente', S.autoSell ? tag('✔ Ativo') :
       btn(money(AUTOSELL_COST), ()=>{ if(S.money<AUTOSELL_COST)return; S.money-=AUTOSELL_COST; S.autoSell=true; sellAll(true); buildShop(); render(); save(); }, AUTOSELL_COST));
   }
@@ -1469,7 +1471,7 @@ function createWorld(){
     }
     const parts = [];
     if(st.n) parts.push(`👷 ${st.n}/${MAX_HELPERS} ${HELPER_TOOLS[lvl].ico}`);
-    if(st.mgr) parts.push(`👔 ${MANAGER_MULT}x`);
+    if(st.mgr) parts.push(`👔 ${xf(MANAGER_MULT)}`);
     o.staffSign = o.staffSign || labelSprite(3);
     o.staffSign.visible = parts.length > 0;
     if(parts.length){ if(o.signPos) o.staffSign.position.copy(o.signPos); else o.staffSign.position.set(o.x+3.6, 2.7, -9); o.staffSign.userData.draw(parts.join('  '), '#ffffff'); }
