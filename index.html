@@ -1701,6 +1701,13 @@ function createWorld(){
         p.x = c.x + nx*min; p.z = c.z + nz*min;
       }
     }
+    // se ainda estiver dentro de algo (ex.: máquina retangular construída em cima dele), procura o lugar livre mais perto
+    if(blocked(p.x, p.z)){
+      for(let r = 0.25; r <= 8; r += 0.25){
+        for(let k = 0; k < 24; k++){ const a = k/24*Math.PI*2, x = p.x + Math.cos(a)*r, z = p.z + Math.sin(a)*r;
+          if(!blocked(x, z)){ p.x = x; p.z = z; return; } }
+      }
+    }
   }
 
   // ---------- etiquetas ----------
@@ -3530,7 +3537,7 @@ function createWorld(){
     onPowerChanged(){ refreshPower(); refreshGenerators(); burstBills(player.position.x, player.position.z, 10); },
     celebrate(){ burstBills(player.position.x, player.position.z, 18); },
     onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },
-    debug:{player},
+    debug:{player, blocked, pushOut},
   };
 }
 
