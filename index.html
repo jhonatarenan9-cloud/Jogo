@@ -8,16 +8,19 @@
   :root{
     --bg:#16120f; --panel:#221c17; --panel2:#2c241d; --line:#3d3229;
     --text:#f1e7dc; --muted:#a8998a; --gold:#f2c14e; --ok:#5fbf6a; --bad:#d9634f;
+    color-scheme:dark;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background-image:radial-gradient(ellipse at top,#2a2018 0%,var(--bg) 70%);min-height:100vh}
   header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-    padding:12px 16px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.25);position:sticky;top:0;z-index:5;backdrop-filter:blur(4px)}
+    padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:rgba(0,0,0,.25);position:sticky;top:env(safe-area-inset-top,0px);z-index:5;backdrop-filter:blur(4px)}
   h1{font-size:20px;margin:0;letter-spacing:.5px}
   .money{font-size:22px;font-weight:700;color:var(--gold)}
   .rate{font-size:13px;color:var(--muted)}
-  main{display:grid;grid-template-columns:260px 1fr 340px;gap:16px;padding:16px;max-width:1300px;margin:0 auto}
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+  main > *{min-width:0}
+  main{display:grid;grid-template-columns:260px 1fr 340px;gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1300px;margin:0 auto}
   @media (max-width:1000px){main{grid-template-columns:1fr}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
   .panel h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 10px}
@@ -41,6 +44,7 @@
   #rock.hit{animation:shake .15s}
   @keyframes shake{25%{transform:translateX(-4px) rotate(-2deg)}75%{transform:translateX(4px) rotate(2deg)}}
   .floater{position:absolute;pointer-events:none;font-weight:700;font-size:18px;animation:up 1s ease-out forwards;text-shadow:0 2px 4px #000}
+  @media (prefers-reduced-motion:reduce){#rock.hit,.floater,.chip{animation-duration:.01s}}
   @keyframes up{to{transform:translateY(-70px);opacity:0}}
   .chip{position:absolute;width:8px;height:8px;pointer-events:none;border-radius:2px;animation:chip .6s ease-out forwards}
   @keyframes chip{to{transform:translate(var(--dx),var(--dy)) rotate(200deg);opacity:0}}
@@ -53,6 +57,7 @@
   .invItem .v{font-size:11px;color:var(--muted)}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
   button{font:inherit;color:var(--text);background:#3a2f26;border:1px solid #5a4838;border-radius:8px;padding:8px 12px;cursor:pointer}
+  button:focus-visible,.mine:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   button:hover:not(:disabled){background:#4a3c30}
   button:disabled{opacity:.45;cursor:not-allowed}
   button.primary{background:#7a5a1c;border-color:#a67c2a}
@@ -70,7 +75,7 @@
   .count{font-size:12px;color:var(--gold)}
   .progress{height:8px;background:#0e0b09;border-radius:99px;overflow:hidden;margin-top:6px}
   .progress > div{height:100%;background:linear-gradient(90deg,#a67c2a,var(--gold));width:0}
-  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
+  #toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
     padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:10;max-width:90vw;text-align:center}
   #toast.show{opacity:1}
   .small{font-size:12px;color:var(--muted)}
@@ -124,7 +129,7 @@
       <button data-tab="upgrades">Melhorias</button>
     </div>
     <div id="shop"></div>
-    <p style="margin-top:14px"><a class="reset" id="reset">Recomeçar jogo</a></p>
+    <p style="margin-top:14px"><a class="reset" id="reset" href="#" onclick="event.preventDefault()">Recomeçar jogo</a></p>
   </section>
 </main>
 <div id="toast"></div>
@@ -377,7 +382,13 @@ document.getElementById('sellBtn').onclick = ()=>{ sellAll(); render(); save(); 
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
   tab=b.dataset.tab; document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b)); buildShop(); render();
 });
-document.getElementById('reset').onclick = ()=>{ if(confirm('Apagar todo o progresso?')){ S=newState(); save(); buildMines(); buildShop(); drawRock(); render(); } };
+let resetArmed = null;
+document.getElementById('reset').onclick = ()=>{
+  const a = document.getElementById('reset');
+  if(!resetArmed){ a.textContent='Clique de novo para apagar todo o progresso'; resetArmed=setTimeout(()=>{resetArmed=null;a.textContent='Recomeçar jogo';},4000); return; }
+  clearTimeout(resetArmed); resetArmed=null; a.textContent='Recomeçar jogo';
+  S=newState(); save(); buildMines(); buildShop(); drawRock(); render(); toast('Jogo reiniciado');
+};
 window.addEventListener('beforeunload', save);
 
 buildMines(); buildShop(); drawRock(); render();
