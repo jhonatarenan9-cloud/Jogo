@@ -25,6 +25,9 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
 - Melhorias: afiar ferramenta, manutenção e vendedor automático.
 - O progresso é salvo no navegador, e você ganha minério mesmo offline (25%, até 4h).
 - **📦 Área de Entregas** (sul do vilarejo): desbloqueie o galpão e leve minério até ele na 🎒 mochila ou com os 🛺 **coletadores** (um por mina, buscam o minério na pilha). Os 🧑‍🏭 **carregadores** (até 4, um por caminhão) põem as caixas nos 🚚 **caminhões** (até 4), que levam tudo à Metalúrgica Aurora. Ela paga 5x o preço do Mercado, um pouco mais que a barra da fundição (4x). Nas minas com fundição e coletador, a pilha é dividida (padrão 50% / 50%, ajustável em 25%, 50% ou 75% para a fundição).
-- **🏆 Conquistas e Troféus:** 49 medalhas (bronze, prata e ouro) em 17 categorias, com pequenas recompensas, título de minerador e um pódio de troféus na praça.
+- **📊 Estatísticas:** quanto cada mina rende por minuto e a comparação Mercado × Fundição × Galpão.
+- **🔧 Manutenção:** fundições e caminhões se desgastam e rendem menos (até 50%); conserte no painel da mina ou do galpão.
+- **💎 Gemas raras:** caem ao minerar com a picareta e nas entregas. Compre itens especiais na Loja → Gemas.
+- **🏆 Conquistas e Troféus:** 52 medalhas (bronze, prata e ouro) em 18 categorias, com pequenas recompensas, título de minerador e um pódio de troféus na praça.
 - **🎯 Missões:** uma sequência de 32 objetivos com recompensa em dinheiro, sempre mostrando a próxima conquista no topo da tela.
 - Objetivo final: minerar 1.000 esmeraldas e virar Magnata da Mineração.

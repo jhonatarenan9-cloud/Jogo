@@ -141,6 +141,29 @@
   .splitBtns button{flex:1;font-size:11px;padding:5px 2px}
   .splitBtns button.on{background:#7a5a1c;border-color:#e0b14a}
   .splitBox small{font-size:11px;color:var(--muted)}
+  .gemCount{font-size:13px;font-weight:800;color:#bff3ff;margin-left:6px;text-shadow:0 0 8px rgba(127,233,247,.6)}
+  .gemHead{display:flex;align-items:center;gap:10px;background:linear-gradient(150deg,#123a44,#1c2a33);border:1px solid #2f7f92;border-radius:14px;padding:12px;margin-bottom:10px}
+  .gemHead span{font-size:32px;filter:drop-shadow(0 0 8px #7fe9f7)}
+  .gemHead b{font-size:18px;color:#bff3ff;display:block}
+  .gemHead small{font-size:11px;color:#9fc4cc}
+  .gemBtn{background:#185a6a;border-color:#2f9fb8;min-width:96px}
+  .gemBtn:hover:not(:disabled){background:#1f7084}
+  .statTot{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+  .statTot div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .statTot small{display:block;font-size:11px;color:var(--muted)}
+  .statTot b{font-size:16px;font-variant-numeric:tabular-nums}
+  .statMine{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px}
+  .statMine .top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .statMine .top b{flex:1}
+  .statMine .top span{font-size:13px;color:#9cff7a;font-variant-numeric:tabular-nums}
+  .bar{height:10px;background:#1a1410;border-radius:99px;overflow:hidden;margin-bottom:8px}
+  .bar > div{height:100%;border-radius:99px}
+  .cmp{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+  .cmp div{background:#1a1410;border-radius:8px;padding:5px;text-align:center;font-size:11px;color:var(--muted)}
+  .cmp div b{display:block;font-size:13px;color:var(--text)}
+  .cmp div.best{outline:1px solid #9cff7a}
+  .cmp div.best b{color:#9cff7a}
+  .condRow{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px}
   .miniSlots{display:inline-flex;gap:3px;vertical-align:middle;margin-left:4px}
   .miniSlots .slot{width:20px;height:20px;font-size:11px;border-radius:6px}
   .lvlBtn{flex:none;font-size:12px;font-weight:700;padding:6px 9px;background:#e0b020;color:#2a1e05;border:0;border-bottom:3px solid #a67c12;border-radius:8px}
@@ -216,7 +239,7 @@
 <div class="scene" id="scene">
   <div id="topbar">
     <div id="hud"></div>
-    <div class="moneyPill"><span class="bill">💵</span><div><div class="money" id="money">$0</div><div class="rate" id="rate"></div></div></div>
+    <div class="moneyPill"><span class="bill">💵</span><div><div class="money" id="money">$0</div><div class="rate" id="rate"></div></div><div class="gemCount" id="gemCount" hidden>💎 0</div></div>
   </div>
   <div id="goalBox"><div id="goalText"></div><div class="progress"><div id="goalBar"></div></div></div>
   <div id="joy" hidden><div id="knob"></div></div>
@@ -224,6 +247,7 @@
   <nav id="dock">
     <button data-open="shop"><span>🛠️</span>Loja</button>
     <button data-open="inv"><span>🎒</span>Minério<i id="invBadge" hidden></i></button>
+    <button data-open="stats"><span>📊</span>Estatísticas</button>
     <button data-open="ach"><span>🏆</span>Conquistas<i id="achBadge" hidden></i></button>
     <button data-open="mines"><span>⛰️</span>Minas</button>
   </nav>
@@ -235,6 +259,7 @@
           <div class="tabs">
             <button data-tab="tools" class="on">Ferramentas</button>
             <button data-tab="upgrades">Melhorias</button>
+            <button data-tab="gems">💎 Gemas</button>
           </div>
           <div id="shop"></div>
         </section>
@@ -252,6 +277,7 @@
           </div>
         </section>
         <section data-panel="panel"><div id="panelBody"></div></section>
+        <section data-panel="stats"><div id="statsBody"></div></section>
         <section data-panel="ach"><div id="achList"></div></section>
         <section data-panel="mines">
           <div id="mines"></div>
@@ -314,10 +340,45 @@ const COLLECTOR_COST = {cobre:1500, ferro:35000, ouro:1000000, diamante:28000000
 const COLLECTOR_SPEED = 7, LOADER_TRIP = 2.4, LOADER_TRIPS = 3;
 const collectorCap = () => Math.round(20 * (1 + 0.4*S.truckLvl));
 const TRUCK_COSTS = [1200, 4500, 16000, 60000], TRUCK_SPEED = 8, TRUCK_AWAY = 6;
-const bagCap = () => 20 + 15*S.bagLvl;
+const bagCap = () => 20 + 15*S.bagLvl + (S.gemItems.mochila ? 25 : 0);
 const bagCost = () => Math.ceil(250 * Math.pow(2.6, S.bagLvl));
 const truckCap = () => Math.round(30 * (1 + 0.4*S.truckLvl));
 const truckCapCost = () => Math.ceil(1500 * Math.pow(3, S.truckLvl));
+// ===== manutenção: fundições e caminhões se desgastam =====
+const SM_WEAR_TIME = 900;            // segundos trabalhando para ir de 100% a 0%
+const TRUCK_WEAR_TRIP = 0.05;        // desgaste por viagem
+const MIN_EFF = 0.5;                 // rendimento mínimo com a máquina toda gasta
+const cond = key => S.cond[key] ?? 1;
+const effOf = key => MIN_EFF + (1-MIN_EFF)*cond(key);
+const wearMult = () => S.gemItems.kit ? 0.5 : 1;
+const smRepairCost = m => Math.ceil(SMELTER_COST[m.id] * 0.15 * (1 - cond('sm_'+m.id)));
+const truckRepairCost = k => Math.ceil(TRUCK_COSTS[k] * 0.2 * (1 - cond('truck_'+k)));
+function repair(key, cost){ if(S.money < cost || cost <= 0) return; S.money -= cost; S.cond[key] = 1; toast('🔧 Consertado! Rendimento 100%.'); if(window.world3d) world3d.celebrate(); render(); save(); }
+// ===== gemas raras =====
+const GEM_CHANCE = 0.005, GEM_DELIVERY_CHANCE = 0.04;
+const gemChance = () => GEM_CHANCE * (S.gemItems.lupa ? 2 : 1);
+const GEM_ITEMS = [
+  {id:'capacete', ico:'⛑️', name:'Capacete Dourado',  desc:'+10% de minério por golpe', cost:5},
+  {id:'botas',    ico:'👟', name:'Botas de Corrida',  desc:'O mineiro anda 20% mais rápido', cost:4},
+  {id:'mochila',  ico:'🎒', name:'Mochila de Couro',  desc:'+25 de espaço na mochila', cost:4},
+  {id:'kit',      ico:'🧰', name:'Kit de Ferramentas',desc:'Fundições e caminhões se desgastam 50% mais devagar', cost:6},
+  {id:'lupa',     ico:'🔍', name:'Lupa do Garimpeiro',desc:'Chance de achar gemas dobrada', cost:8},
+  {id:'dourado',  ico:'🚛', name:'Caminhão Dourado',  desc:'Caminhões 25% mais rápidos', cost:10},
+  {id:'vip',      ico:'📜', name:'Contrato VIP',      desc:'A Metalúrgica paga +10%', cost:12},
+];
+const delivMult = () => DELIVERY_MULT * (S.gemItems.vip ? 1.1 : 1);
+function findGem(pos){
+  S.gems++; S.gemsFound = (S.gemsFound||0) + 1;
+  toast('💎 Gema rara encontrada! Use na Loja → Gemas.');
+  if(window.world3d && pos) world3d.gemFx(pos);
+}
+function buyGemItem(it){
+  if(S.gemItems[it.id] || S.gems < it.cost) return;
+  S.gems -= it.cost; S.gemItems[it.id] = true;
+  toast(`${it.ico} ${it.name} comprado!`);
+  if(window.world3d) world3d.onGemItem(it.id);
+  buildShop(); render(); save();
+}
 const GOAL = 1000; // esmeraldas para vencer
 
 // ===================== ESTADO =====================
@@ -331,7 +392,7 @@ function newState(){
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false, tool:0}])),
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
-    ach:{}, achNew:0, swings:0,
+    ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
@@ -379,7 +440,7 @@ const canBuy = t => toolIndex(t) === 0 || !!S.tools[TOOLS[toolIndex(t)-1].id];
 const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
 const SHARPEN_BONUS = 0.15, BOOST_BONUS = 0.08, TURBO_BONUS = 0.25, DRILL_BONUS = 0.25;   // bônus por nível das melhorias
-function clickPower(){ return bestTool().power * (1 + SHARPEN_BONUS*S.sharpen); }
+function clickPower(){ return bestTool().power * (1 + SHARPEN_BONUS*S.sharpen) * (S.gemItems.capacete ? 1.1 : 1); }
 function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.5, S.staff[m.id].n)); }
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
 const boostMult = () => 1 + BOOST_BONUS*S.boost;
@@ -440,7 +501,8 @@ function smelt(sec){
     const coalOk = coalLineOn() && S.ore.carvao > 0.0001;
     FUEL[m.id] = coalOk;
     if(!coalOk || S.ore[m.id] <= 0) continue;
-    const take = Math.min(S.ore[m.id], beltRate(m)*sec, S.ore.carvao/COAL_PER_BAR*ORES_PER_BAR);
+    const take = Math.min(S.ore[m.id], beltRate(m)*effOf('sm_'+m.id)*sec, S.ore.carvao/COAL_PER_BAR*ORES_PER_BAR);
+    S.cond['sm_'+m.id] = Math.max(0, cond('sm_'+m.id) - sec/SM_WEAR_TIME*wearMult());
     S.ore.carvao = Math.max(0, S.ore.carvao - take/ORES_PER_BAR*COAL_PER_BAR);
     S.ore[m.id] -= take; S.bars[m.id] += take/ORES_PER_BAR;
   }
@@ -507,6 +569,7 @@ const ACHS = [
   {id:'frota',   ico:'🛻', name:'Frota',                 desc:'Caminhões comprados',              v:()=>S.trucks||0,        t:[1,2,4],            r:[100,1500,20000]},
   {id:'explor',  ico:'🗺️', name:'Explorador',            desc:'Minas abertas',                    v:countOpenMines,         t:[3,4,6],            r:[300,10000,1000000]},
   {id:'missao',  ico:'🎯', name:'Cumpridor de Missões',  desc:'Missões concluídas',               v:()=>S.mission||0,       t:[10,20,30],         r:[200,20000,2000000]},
+  {id:'gemas',   ico:'💎', name:'Garimpeiro',            desc:'Gemas raras encontradas',          v:()=>S.gemsFound||0,     t:[1,10,40],          r:[100,5000,500000]},
   {id:'magnata', ico:'🏆', name:'Magnata',               desc:'Minere 1.000 esmeraldas',          v:()=>+!!S.won,           t:[1],                r:[10000000], gold:true},
 ];
 const ACH_TOTAL = ACHS.reduce((a,x)=>a + x.t.length, 0);
@@ -580,7 +643,7 @@ function checkMissions(){
 // ===================== ENTREGAS =====================
 const bagTotal = () => MINES.reduce((a,m)=>a + (S.bag[m.id]||0), 0);
 const depotTotal = () => MINES.reduce((a,m)=>a + (S.depot[m.id]||0), 0);
-const depotValue = () => MINES.reduce((a,m)=>a + (S.depot[m.id]||0)*m.value*DELIVERY_MULT, 0);
+const depotValue = () => MINES.reduce((a,m)=>a + (S.depot[m.id]||0)*m.value*delivMult(), 0);
 function openDepot(){
   S.depotOpen = true; delete S.paid.depot;
   toast('📦 Área de Entregas aberta! Pegue minério nas pilhas das minas e leve até o galpão. Depois compre um caminhão.');
@@ -771,6 +834,10 @@ function buildPanel(){
     add('🛻', `Caçamba Maior <span class="count">nv ${S.truckLvl}</span>`, '+40% de carga nos caminhões e coletadores', S.trucks ? btn(money(cc), buyTruckCap, cc) : tag('🔒 Caminhão','var(--muted)'));
     const bc = bagCost();
     add('🎒', `Mochila Maior <span class="count">nv ${S.bagLvl}</span>`, `Carrega +15 minérios (hoje ${fmt(bagCap())})`, btn(money(bc), buyBag, bc));
+    if(S.trucks){ sec('🔧 Manutenção da frota');
+      for(let k=0;k<S.trucks;k++){ const c = cond('truck_'+k), rc = truckRepairCost(k);
+        add('🚚', `Caminhão ${k+1} <span class="count" style="color:${c<0.5?'#ff9b7a':c<0.8?'#ffd27a':'#9cff7a'}">${Math.round(c*100)}%</span>`,
+          `Carga e velocidade a ${Math.round(effOf('truck_'+k)*100)}%. Gasta ${Math.round(TRUCK_WEAR_TRIP*wearMult()*100)}% por viagem.`, rc > 0 ? btn('Consertar ' + money(rc), ()=>repair('truck_'+k, rc), rc) : tag('✔ Novo')); } }
     sec('🛺 Coletadores');
     el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem o seu coletador: compre no painel da mina (botão <b>⬆️ NÍVEL</b> ao lado do portão). Trabalhando: <b>${MINES.filter(m=>S.collectors[m.id]).map(m=>m.name).join(', ') || 'nenhum'}</b>.</p>`);
     return;
@@ -811,6 +878,9 @@ function buildPanel(){
   add('🏭', 'Fundição', `${ORES_PER_BAR} ${m.name.toLowerCase()} (${money(ORES_PER_BAR*m.value)}) → 1 barra = <b style="color:#9cff7a">${money(barValue(m))}</b>`, has.sm ? tag('✔ Construída') : btn(money(smelterLeft(m)), ()=>buySmelter(m), smelterLeft(m)));
   add('🛤️', 'Esteira de minério', `Leva ${fmt(beltRate(m))}/s da pilha até a fundição.`, has.belt ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]));
   add('💵', 'Esteira de venda', 'Leva as barras até a caixa de venda e vende sozinha.', has.sell ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]));
+  if(has.sm){ const c = cond('sm_'+m.id), rc = smRepairCost(m);
+    add('🔧', `Manutenção da fundição <span class="count" style="color:${c<0.5?'#ff9b7a':c<0.8?'#ffd27a':'#9cff7a'}">${Math.round(c*100)}%</span>`,
+      `Rendimento ${Math.round(effOf('sm_'+m.id)*100)}%. A fundição se desgasta enquanto trabalha.`, rc > 0 ? btn('Consertar ' + money(rc), ()=>repair('sm_'+m.id, rc), rc) : tag('✔ Nova')); }
   if(has.sm && S.ore.carvao <= 0.01) el.insertAdjacentHTML('beforeend', `<div class="lockedBox">⚫ Sem carvão: a fundição está parada. Abasteça a mina de Carvão.</div>`);
   sec('🛺 Coletador');
   add('🛺', 'Coletador', `Busca até ${fmt(collectorCap())} na pilha e leva ao galpão. Na Metalúrgica: ${money(m.value*DELIVERY_MULT)} cada.`,
@@ -822,6 +892,34 @@ function mineIncome(m){
   const r = mineRate(m) + (m.id === S.active ? machineRate() : 0);
   const toBars = hasBelt(m) ? Math.min(r*fundShareEff(m), beltRate(m)) : 0, toHaul = splitOn(m) ? r*(1-fundShare(m)) : 0;
   return (r - toBars - toHaul)*m.value + toBars/ORES_PER_BAR*barValue(m) + toHaul*m.value*DELIVERY_MULT;
+}
+
+function buildStats(){
+  const el = document.getElementById('statsBody');
+  const inc = MINES.filter(m=>!m.fuel).map(m=>({m, v:isUnlocked(m) ? mineIncome(m) : 0}));
+  const total = inc.reduce((a,x)=>a+x.v,0), maxV = Math.max(...inc.map(x=>x.v), 1e-9);
+  const best = inc.reduce((b,x)=>x.v > b.v ? x : b, inc[0]);
+  let h = `<div class="statTot">
+    <div><small>Renda dos funcionários</small><b>${money(total*60)}/min</b></div>
+    <div><small>Total ganho em vendas</small><b>${money(S.earned||0)}</b></div>
+    <div><small>Mina que mais rende</small><b>${total > 0 ? best.m.name : '—'}</b></div>
+    <div><small>Entregas · Gemas</small><b>${fmt(S.deliveries||0)} · 💎 ${S.gemsFound||0}</b></div>
+  </div><h3 class="subhead">Renda por mina</h3>`;
+  inc.forEach(({m,v})=>{
+    const un = isUnlocked(m), r = mineRate(m)*60;
+    const opt = [['💰 Mercado', 1], ['🏭 Fundição', BAR_MULT/ORES_PER_BAR], ['📦 Galpão', delivMult()]].map(([n,x])=>({n, v:r*m.value*x}));
+    const bi = opt.reduce((b,o,i)=>o.v > opt[b].v ? i : b, 0);
+    const smC = S.smelters[m.id] ? `<div class="condRow"><span>🔧 Fundição ${Math.round(cond('sm_'+m.id)*100)}%</span><span>rendimento ${Math.round(effOf('sm_'+m.id)*100)}%</span></div>` : '';
+    h += `<div class="statMine"${un?'':' style="opacity:.45"'}><div class="top"><span class="gem" style="width:18px;height:18px;background:${m.color}"></span><b>${m.name}</b><span>${un ? money(v*60)+'/min' : '🔒'}</span></div>
+      <div class="bar"><div style="width:${v/maxV*100}%;background:${m.color}"></div></div>
+      ${un ? `<small style="font-size:11px;color:var(--muted)">Produção: ${fmt(r)} ${m.name.toLowerCase()}/min. Se tudo fosse vendido em:</small>
+      <div class="cmp">${opt.map((o,i)=>`<div class="${i===bi && r>0?'best':''}">${o.n}<b>${money(o.v)}/min</b></div>`).join('')}</div>${smC}` : ''}</div>`;
+  });
+  const c = mineById('carvao');
+  h += `<h3 class="subhead">Carvão e frota</h3><div class="statTot">
+    <div><small>⚫ Carvão</small><b>${fmt(mineRate(c)*60)}/min</b><small>consumo até ${fmt(coalUseMax()*60)}/min</small></div>
+    <div><small>🚚 Frota</small><b>${S.trucks} caminhão(ões)</b><small>${Array.from({length:S.trucks},(_,k)=>Math.round(cond('truck_'+k)*100)+'%').join(' · ') || 'sem caminhões'}</small></div></div>`;
+  el.innerHTML = h;
 }
 
 function buildMines(){
@@ -1003,6 +1101,12 @@ function buildShop(){
     const bc = beltSpeedCost();
     add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, `+${Math.round(TURBO_BONUS*100)}% de velocidade em todas as esteiras`,
       MINES.some(hasBelt) ? btn(money(bc), ()=>{ if(S.money<bc) return; S.money-=bc; S.beltLvl++; buildShop(); render(); save(); }, bc) : tag('🔒','var(--muted)'));
+  } else if(tab==='gems'){
+    el.insertAdjacentHTML('beforeend', `<div class="gemHead"><span>💎</span><div><b>${S.gems} gema${S.gems===1?'':'s'}</b><small>Gemas raras caem de vez em quando ao minerar com a picareta e nas entregas da Metalúrgica.</small></div></div>`);
+    GEM_ITEMS.forEach(it=>{
+      const b = document.createElement('button'); b.className = 'gemBtn'; b.textContent = `💎 ${it.cost}`; b.disabled = S.gems < it.cost; b.onclick = ()=>buyGemItem(it);
+      add(it.ico, it.name, it.desc, S.gemItems[it.id] ? tag('✔ Seu') : b);
+    });
   } else {
     const tb = beltSpeedCost();
     add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, `+${Math.round(TURBO_BONUS*100)}% de velocidade em todas as esteiras`,
@@ -1018,6 +1122,7 @@ function buildShop(){
 function render(){
   const m = mineById(S.active);
   document.getElementById('money').textContent = money(S.money);
+  { const g = document.getElementById('gemCount'); g.hidden = !S.gemsFound; g.textContent = '💎 ' + S.gems; }
   document.getElementById('rate').textContent = `+${money(incomePerSec())}/s em minério`;
   document.getElementById('hud').innerHTML =
     `${bestTool().ico} ${bestTool().name} · <b>${fmt(clickPower())}</b>/golpe${S.depotOpen ? ` · 🎒 <b>${fmt(bagTotal())}/${fmt(bagCap())}</b>` : ''}<br>Mina ativa: <b style="color:${m.fuel ? '#cfcfd6' : m.color}">${m.name}</b> · ⚫ ${fmt(S.ore.carvao)}` +
@@ -1042,7 +1147,7 @@ function render(){
   const sb = MINES.filter(hasSellBelt).map(m=>m.name);
   if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
   else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
-  document.querySelectorAll('#shop button, #staff button[data-cost], #panelBody button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
+  document.querySelectorAll('#shop button[data-cost], #staff button[data-cost], #panelBody button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
   checkMissions();
   checkAchievements();
   { const b = document.getElementById('achBadge'); b.hidden = !S.achNew; b.textContent = S.achNew; }
@@ -1714,7 +1819,10 @@ function createWorld(){
           if((SOLD[id]||0) > 0){ floatText('+' + money(SOLD[id]), o.sellBox, '#9cff7a'); burstBills(o.sellBox.x, o.sellBox.z, 2); SOLD[id] = 0; } }
       } else SOLD[id] = 0;
       const working = on && S.ore[id] > 0.01 && FUEL[id];
-      o.smoke.forEach((s,k)=>{ const u = (t*0.5 + k/3) % 1; s.position.y = 3.3 + u*1.8; s.position.x = -0.6 + Math.sin(u*5+k)*0.25;
+      const wc = cond('sm_'+id);
+      if(S.smelters[id]){ o.wrench = o.wrench || labelSprite(2.4); o.wrench.position.set(o.smX, 4.4, o.smZ); o.wrench.visible = wc < 0.6;
+        const wk = Math.round(wc*20); if(o.wrench.visible && wk !== o.wrenchK){ o.wrenchK = wk; o.wrench.userData.draw(`🔧 ${Math.round(wc*100)}%`, wc < 0.3 ? '#ff7a6a' : '#ffd27a'); } }
+      o.smoke.forEach((s,k)=>{ s.material.color.setHSL(0, 0, 0.35 + 0.5*wc); const u = (t*0.5 + k/3) % 1; s.position.y = 3.3 + u*1.8; s.position.x = -0.6 + Math.sin(u*5+k)*0.25;
         s.scale.setScalar(0.6 + u*1.1); s.material.opacity = working ? 0.55*(1-u) : 0; });
       o.fire.color.setHSL(0.07, 1, working ? 0.55 + Math.sin(t*9 + o.i)*0.08 : 0.3);
       const b = S.bars[id] || 0;
@@ -1767,8 +1875,9 @@ function createWorld(){
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.55,0.68,32), new THREE.MeshBasicMaterial({color:'#7ff0ff', transparent:true, opacity:.8}));
   ring.rotation.x = -Math.PI/2; ring.position.y = 0.07; world.add(ring);
   const PICK_COL = {madeira:'#8b5a2b', ferro:'#c7ccd3', britadeira:'#ffcf3f', carregadeira:'#7fe9f7', escavadeira:'#2ee67a'};
+  function refreshHelmet(){ if(S.gemItems.capacete) player.traverse(o=>{ if(o.isMesh && o.material === M('#ffcf3f')) o.material = M('#ffd700', {shininess:110, specular:new THREE.Color('#ffffff'), emissive:new THREE.Color('#5a4400')}); }); }
   function refreshPick(){ player.userData.pickHead.material = M(PICK_COL[bestTool().id]); }
-  refreshPick();
+  refreshPick(); refreshHelmet();
 
   // funcionários visuais: até 3 ajudantes + 1 gerente em cada mina
   const HELPER_SPOTS = [[-4.3,-9.3],[1.1,-10.3],[0.5,-11.9]];
@@ -2040,10 +2149,10 @@ function createWorld(){
       tr.t += dt;
       if(tr.state === 'parked'){
         if(depotTotal() >= 1 && tr.t > 1 && tr.slot < S.loaders){
-          const cap = truckCap(); let left = cap, value = 0; tr.load = {};
+          const cap = truckCap()*effOf('truck_'+tr.slot); let left = cap, value = 0; tr.load = {};
           const tot = depotTotal();
           for(const m of MINES){ const a = S.depot[m.id]||0; if(a <= 0) continue;
-            const take = Math.min(a, cap * a/tot, left); S.depot[m.id] -= take; left -= take; tr.load[m.id] = take; value += take*m.value*DELIVERY_MULT; }
+            const take = Math.min(a, cap * a/tot, left); S.depot[m.id] -= take; left -= take; tr.load[m.id] = take; value += take*m.value*delivMult(); }
           tr.value = value; tr.state = 'loading'; tr.t = 0;
           tr.fillBoxes = Math.max(1, Math.round((cap-left)/cap*6));
           tr.g.userData.boxes.forEach(b=>b.visible = false);
@@ -2056,17 +2165,19 @@ function createWorld(){
         tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < shown; });
         if(trip >= LOADER_TRIPS){ tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < tr.fillBoxes; }); if(l) idleLoader(l); tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); }
       } else if(tr.state === 'going'){
-        tr.d += dt*TRUCK_SPEED;
+        tr.d += dt*TRUCK_SPEED*(S.gemItems.dourado ? 1.25 : 1)*(0.6 + 0.4*cond('truck_'+tr.slot));
         if(moveAlong(tr, tr.d, false)){ tr.state = 'away'; tr.t = 0; tr.g.visible = false; }
       } else if(tr.state === 'away'){
         if(tr.t > TRUCK_AWAY){
           S.money += tr.value; S.earned += tr.value; S.deliveries = (S.deliveries||0) + 1;
+          S.cond['truck_'+tr.slot] = Math.max(0, cond('truck_'+tr.slot) - TRUCK_WEAR_TRIP*wearMult());
+          if(Math.random() < GEM_DELIVERY_CHANCE * (S.gemItems.lupa ? 2 : 1)) findGem(null);
           toast(`🚚 Entrega na Metalúrgica Aurora: +${money(tr.value)}`);
           tr.g.userData.boxes.forEach(b=>b.visible = false);
           tr.state = 'returning'; tr.d = 0; tr.g.visible = true; save();
         }
       } else if(tr.state === 'returning'){
-        tr.d += dt*TRUCK_SPEED;
+        tr.d += dt*TRUCK_SPEED*(S.gemItems.dourado ? 1.25 : 1)*(0.6 + 0.4*cond('truck_'+tr.slot));
         if(moveAlong(tr, tr.d, true)){ tr.state = 'parked'; tr.t = 0; tr.g.rotation.y = 0; }
       }
     });
@@ -2334,7 +2445,7 @@ function createWorld(){
     pushOut(p);
     if(moving){
       if(!hintGone){ hintGone = true; document.getElementById('mapHint').hidden = true; }
-      const sp = 6.2*mag*dt;
+      const sp = 6.2*mag*dt*(S.gemItems.botas ? 1.2 : 1);
       if(!blocked(p.x + ix*sp, p.z)) p.x += ix*sp;
       if(!blocked(p.x, p.z + iz*sp)) p.z += iz*sp;
       heading += angTo(Math.atan2(ix, iz))*Math.min(1, dt*14);
@@ -2352,6 +2463,7 @@ function createWorld(){
         const amt = clickPower() * (mine.m.fuel ? 2*coalMult() : 1);
         if(S.active !== mine.m.id){ S.active = mine.m.id; buildMines(); }
         addOre(mine.m.id, amt); S.swings = (S.swings||0) + 1;
+        if(!mine.m.fuel && Math.random() < gemChance()) findGem(rock.position.clone().setY(1.2));
         rock.userData.shake = 0.18;
         const from = rock.position.clone().setY(1.0);
         for(let k=0;k<3;k++) flyOre(from, mine.pilePos, mine.m.color);
@@ -2470,6 +2582,14 @@ function createWorld(){
     update,
     guideTo(i){ const o = MINES3[i]; guide = isUnlocked(o.m) ? {x:o.x, z:-9} : {x:o.x, z:-6.3}; },
     onToolBought(){ MINES3.forEach(o=>o.refresh()); refreshPick(); refreshMachines(); refreshFactory(); burstBills(player.position.x, player.position.z, 16); },
+    gemFx(pos){
+      const g = new THREE.Mesh(new THREE.OctahedronGeometry(0.35,0), new THREE.MeshPhongMaterial({color:'#7fe9f7', emissive:'#2aa6b8', shininess:120, flatShading:true}));
+      g.position.copy(pos); world.add(g); const p0 = pos.clone(), t0 = performance.now();
+      anims.push(function fx(){ const u = (performance.now()-t0)/1400; if(u > 1){ world.remove(g); anims.splice(anims.indexOf(fx),1); return; }
+        g.position.set(p0.x, p0.y + u*2.2, p0.z); g.rotation.y = u*12; g.scale.setScalar(1 + Math.sin(u*Math.PI)*0.6); });
+      floatText('💎 Gema!', pos.clone().setY(2.6), '#bff3ff');
+    },
+    onGemItem(id){ if(id === 'capacete') refreshHelmet(); burstBills(player.position.x, player.position.z, 10); },
     celebrate(){ burstBills(player.position.x, player.position.z, 18); },
     onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },
     debug:{player},
@@ -2497,7 +2617,7 @@ function frame(now){
 })();
 
 // ---------- janelas dentro do jogo ----------
-const SHEETS = {panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+const SHEETS = {stats:'📊 Estatísticas', panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
 let sheetOpen = null;
 function openSheet(name){
   sheetOpen = name;
@@ -2508,6 +2628,7 @@ function openSheet(name){
   if(name==='staff') buildStaff();
   if(name==='ach') buildAch();
   if(name==='panel') buildPanel();
+  if(name==='stats') buildStats();
   render();
   document.getElementById('sheet').hidden = false;
 }
