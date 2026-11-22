@@ -198,9 +198,9 @@ const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 2, MANAGER_COST_MULT = 
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
 const ORES_PER_BAR = 5, BAR_MULT = 8, BELT_RATE = 1;
-const SMELTER_COST = {cobre:400000, ferro:1500000, ouro:5000000, diamante:15000000, esmeralda:40000000};
-const BELT_COST    = {cobre:150000, ferro:600000,  ouro:2000000, diamante:6000000,  esmeralda:16000000};
-const SELLBELT_COST = {cobre:120000, ferro:450000, ouro:1500000, diamante:4500000, esmeralda:12000000};
+const SMELTER_COST = {cobre:150, ferro:6000, ouro:180000, diamante:5000000, esmeralda:120000000};
+const BELT_COST    = {cobre:80,  ferro:3000, ouro:90000,  diamante:2500000, esmeralda:60000000};
+const SELLBELT_COST = {cobre:120, ferro:4500, ouro:130000, diamante:3500000, esmeralda:90000000};
 const GOAL = 1000; // esmeraldas para vencer
 
 // ===================== ESTADO =====================
@@ -245,7 +245,12 @@ const mineById = id => MINES.find(m=>m.id===id);
 const toolById = id => TOOLS.find(t=>t.id===id);
 const isUnlocked = m => !!S.tools[m.tool];
 const toolIndex = t => TOOLS.indexOf(t);
-const canBuy = t => toolIndex(t) === 0 || !!S.tools[TOOLS[toolIndex(t)-1].id];
+// fundição completa = fundição + esteira de minério + esteira de venda
+const factoryDone = m => !!(S.smelters[m.id] && S.belts[m.id] && S.sellBelts[m.id]);
+const factoryMissing = m => [!S.smelters[m.id] && 'fundição', !S.belts[m.id] && 'esteira de minério', !S.sellBelts[m.id] && 'esteira de venda'].filter(Boolean);
+const prevMine = t => MINES[toolIndex(t)-1];
+const needsFactory = t => toolIndex(t) > 0 && !!S.tools[TOOLS[toolIndex(t)-1].id] && !factoryDone(prevMine(t));
+const canBuy = t => toolIndex(t) === 0 || (!!S.tools[TOOLS[toolIndex(t)-1].id] && factoryDone(prevMine(t)));
 const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
 function clickPower(){ return bestTool().power * (1 + 0.3*S.sharpen); }
@@ -327,7 +332,7 @@ function buyTool(t){
   S.money -= r; completeTool(t);
 }
 const smelterLeft = m => Math.max(0, SMELTER_COST[m.id] - (S.paid['sm_'+m.id]||0));
-const canBuildSmelter = m => !!S.tools.escavadeira && isUnlocked(m) && !S.smelters[m.id];
+const canBuildSmelter = m => isUnlocked(m) && !S.smelters[m.id];
 function completeSmelter(m){
   S.smelters[m.id] = true; delete S.paid['sm_'+m.id];
   toast(`🏭 Fundição da mina de ${m.name} construída! Compre a esteira para levar o minério até ela.`);
@@ -425,16 +430,14 @@ function buildShop(){
     TOOLS.forEach(t=>{
       let right;
       if(S.tools[t.id]) right = tag('✔ Possui');
+      else if(needsFactory(t)) right = tag('🏭 Falta fundição','var(--gold)');
       else if(!canBuy(t)) right = tag('🔒','var(--muted)');
       else right = btn(money(remaining(t)), ()=>buyTool(t), remaining(t));
-      add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}`, right);
+      const warn = needsFactory(t) ? `<br><span style="color:var(--gold)">Antes complete na mina de ${prevMine(t).name}: ${factoryMissing(prevMine(t)).join(', ')}.</span>` : '';
+      add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}${warn}`, right);
     });
   } else if(tab==='factory'){
-    if(!S.tools.escavadeira){
-      el.innerHTML = '<div class="lockedBox">🔒 A Fundição é liberada quando você abrir a última mina, a de <b>Esmeralda</b>.<br><br>Com ela você compra esteiras que levam o minério até uma máquina que transforma '+ORES_PER_BAR+' minérios em 1 barra valendo '+BAR_MULT+'x.</div>';
-      return;
-    }
-    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem a sua fundição, dentro do cercado. Ela transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério. Você também pode pagar pisando no quadrado 🏭 dentro da mina.</p>`);
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem a sua fundição, dentro do cercado. Ela transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério. <b style="color:var(--gold)">Para liberar a próxima mina, compre os 3 itens da mina atual: fundição, esteira e esteira de venda.</b> A fundição também pode ser paga pisando no quadrado 🏭 dentro da mina.</p>`);
     MINES.forEach(m=>{
       const gem = `<span class="gem" style="display:inline-block;width:24px;height:24px;background:${m.color}"></span>`;
       let r1, r2;
@@ -492,7 +495,10 @@ function render(){
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
   if(next){ const r = remaining(next); pct = Math.min(1, (S.money + next.cost - r)/next.cost);
-    txt = `Próxima ferramenta: <b>${next.name}</b> — ` + (S.money >= r ? 'já dá para comprar! Siga a seta.' : `falta ${money(r - S.money)}`); }
+    txt = needsFactory(next)
+      ? `🏭 Para liberar a próxima mina, compre na mina de <b>${prevMine(next).name}</b>: ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(Loja → Fundição)</span>`
+      : `Próxima ferramenta: <b>${next.name}</b> — ` + (S.money >= r ? 'já dá para comprar! Siga a seta.' : `falta ${money(r - S.money)}`);
+    if(needsFactory(next)){ const pm = prevMine(next); pct = (3 - factoryMissing(pm).length)/3; } }
   else { pct = Math.min(1, S.mined.esmeralda/GOAL); txt = S.won ? '🏆 Você venceu! Continue minerando e enriquecendo.' : `Minere <b>${fmt(GOAL)}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(GOAL)}`; }
   document.getElementById('goalText').innerHTML = txt;
   document.getElementById('goalBar').style.width = (pct*100)+'%';
@@ -956,7 +962,7 @@ function createWorld(){
       sm.visible = built;
       bg.visible = built && !!S.belts[id];
       sg.visible = built && !!S.sellBelts[id];
-      o.smTile.mesh.visible = !built && !!S.tools.escavadeira && isUnlocked(o.m);
+      o.smTile.mesh.visible = !built && isUnlocked(o.m);
     };
     o.refreshFactory();
   });
@@ -1273,6 +1279,8 @@ function createWorld(){
     if(z !== zone){ zone = z; zoneT = 0;
       if(z === 'market') doSell();
       if(z === 'shop') openShop();
+      if(z && z.startsWith('buy:')){ const t = MINES3[+z.slice(4)].tool;
+        if(needsFactory(t)) toast(`🏭 Antes complete a fundição da mina de ${prevMine(t).name}: ${factoryMissing(prevMine(t)).join(', ')}.`); }
     } else zoneT += dt;
     if(z === 'market' && zoneT > 1){ zoneT = 0; doSell(true); }
     if(z && z.startsWith('buy:')) payTile(MINES3[+z.slice(4)], dt);
@@ -1281,7 +1289,7 @@ function createWorld(){
 
     for(const o of MINES3) if(o.tile && o.tile.mesh.visible){
       const t = o.tool, ok = canBuy(t);
-      o.tile.draw(ok ? t.ico : '🔒', ok ? money(remaining(t)) : 'Bloqueado', 1 - remaining(t)/t.cost, !ok);
+      o.tile.draw(ok ? t.ico : needsFactory(t) ? '🏭' : '🔒', ok ? money(remaining(t)) : needsFactory(t) ? 'Fundição' : 'Bloqueado', 1 - remaining(t)/t.cost, !ok);
     }
     for(const o of MINES3){ const amt = S.ore[o.m.id]; o.pile.count = amt < 1 ? 0 : Math.min(90, Math.ceil(Math.sqrt(amt)*4)); }
 
@@ -1301,7 +1309,7 @@ function createWorld(){
     let g = guide;
     if(!g){ const next = TOOLS.find(t=>!S.tools[t.id]);
       if(next && canBuy(next) && S.money >= remaining(next)){ const o = MINES3.find(o=>o.tool===next); g = {x:o.x, z:-6.3}; }
-      else if(!next){ const o = MINES3.find(o=>canBuildSmelter(o.m) && S.money >= smelterLeft(o.m)); if(o) g = {x:o.smX, z:o.smZ}; } }
+      else { const o = MINES3.find(o=>canBuildSmelter(o.m) && S.money >= smelterLeft(o.m) && (!next || prevMine(next) === o.m)); if(o) g = {x:o.smX, z:o.smZ}; } }
     if(g){
       const dx = g.x - p.x, dz = g.z - p.z;
       if(Math.hypot(dx,dz) < 2){ arrow.visible = false; guide = null; }
@@ -1319,8 +1327,9 @@ function createWorld(){
     else if(!quiet) toast(S.autoSell ? '💼 O vendedor automático já vende tudo' : '💰 Mercado: mine e volte aqui para vender');
   }
   function openShop(){
-    tab = 'tools';
-    document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on', x.dataset.tab==='tools'));
+    const next = TOOLS.find(t=>!S.tools[t.id]);
+    tab = next && needsFactory(next) ? 'factory' : 'tools';
+    document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on', x.dataset.tab===tab));
     openSheet('shop');
   }
   function payFactory(o, dt){
