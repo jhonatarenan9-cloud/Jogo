@@ -1979,7 +1979,11 @@ function createWorld(){
 
   const MATS = {};
   const M = (color, extra) => { const k = color + (extra?JSON.stringify(extra):''); return MATS[k] || (MATS[k] = new THREE.MeshPhongMaterial(Object.assign({color, flatShading:true, shininess:12}, extra))); };
+  // peças redondas (canos, tanques, rodas, cabeças) ficam lisas e com brilho; pedras e árvores continuam facetadas
+  const SMOOTH = new Map();
+  function smoothOf(mat){ let s2 = SMOOTH.get(mat); if(!s2){ s2 = mat.clone(); s2.flatShading = false; s2.shininess = 38; s2.specular = new THREE.Color('#3a3a3a'); s2.needsUpdate = true; SMOOTH.set(mat, s2); } return s2; }
   function mesh(geo, mat, x=0, y=0, z=0, parent=world){
+    if(mat && mat.flatShading && mat.isMeshPhongMaterial && (geo.type === 'CylinderGeometry' || geo.type === 'SphereGeometry' || geo.type === 'TorusGeometry')) mat = smoothOf(mat);
     const m = new THREE.Mesh(geo, mat); m.position.set(x,y,z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
   }
   function rrPath(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
@@ -2478,16 +2482,30 @@ function createWorld(){
   const beltTexBase = (()=>{ const c = document.createElement('canvas'); c.width = 64; c.height = 32; const g = c.getContext('2d');
     g.fillStyle = '#2f3236'; g.fillRect(0,0,64,32); g.fillStyle = '#4a4e55'; g.fillRect(0,0,24,32); return c; })();
   const beltTexs = [];
+  // esteira: lona com textura, perfis de aço, rolos por baixo, pernas com travessa e sapata, curvas arredondadas nas pontas
+  const beltDiscGeo = new THREE.CylinderGeometry(0.33,0.33,0.1,24), beltRimGeo = new THREE.TorusGeometry(0.36,0.045,8,28), rollerGeo = new THREE.CylinderGeometry(0.06,0.06,0.62,10);
   function beltSeg(parent, x1, z1, x2, z2, y=BELT_Y){
     const len = Math.hypot(x2-x1, z2-z1);
     const g = new THREE.Group(); g.position.set((x1+x2)/2, y, (z1+z2)/2); g.rotation.y = -Math.atan2(z2-z1, x2-x1); parent.add(g);
     const tex = new THREE.CanvasTexture(beltTexBase); tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(len/0.6, 1); beltTexs.push(tex);
-    mesh(new THREE.BoxGeometry(len, 0.12, 0.7), new THREE.MeshLambertMaterial({map:tex}), 0, 0, 0, g);
-    for(const s of [-0.4,0.4]) mesh(new THREE.BoxGeometry(len, 0.18, 0.08), M('#f2b632'), 0, 0.06, s, g);
+    mesh(new THREE.BoxGeometry(len, 0.1, 0.62), new THREE.MeshLambertMaterial({map:tex}), 0, 0, 0, g);
+    for(const s of [-0.35,0.35]){ mesh(new THREE.BoxGeometry(len, 0.24, 0.07), M('#4a4f57'), 0, -0.04, s, g); mesh(new THREE.BoxGeometry(len, 0.05, 0.1), M('#f2b632'), 0, 0.1, s*1.06, g); }
+    for(let r = -len/2 + 0.45; r < len/2 - 0.3; r += 1.1){ const ro = mesh(rollerGeo, M('#9aa0a8'), r, -0.12, 0, g); ro.rotation.x = Math.PI/2; ro.castShadow = false; }
+    for(const e of [-len/2, len/2]){ mesh(beltDiscGeo, M('#2f3236'), e, 0, 0, g); const rim = mesh(beltRimGeo, M('#f2b632'), e, 0.07, 0, g); rim.rotation.x = Math.PI/2; rim.castShadow = false; }
     const n = Math.max(1, Math.floor(len/2.2));
-    for(let k=0;k<=n;k++){ const t = k/n - 0.5; mesh(new THREE.BoxGeometry(0.14, y, 0.14), M('#6f747c'), t*len, -y/2, 0, g); }
+    for(let k=0;k<=n;k++){ const t = (k/n - 0.5)*Math.max(0, len - 0.5);
+      for(const s of [-0.27,0.27]) mesh(new THREE.BoxGeometry(0.09, y, 0.09), M('#6f747c'), t, -y/2 - 0.05, s, g);
+      mesh(new THREE.BoxGeometry(0.06, 0.06, 0.56), M('#5b6068'), t, -y*0.55, 0, g);
+      mesh(new THREE.BoxGeometry(0.3, 0.04, 0.72), M('#3b3f45'), t, -y + 0.02, 0, g).castShadow = false; }
   }
+  // itens nas esteiras: crescem ao sair da máquina e encolhem ao entrar na próxima (nada fica flutuando)
+  const riderScale = (d, tot) => Math.max(0.05, Math.min(1, d/0.45, (tot - d)/0.55));
   const fireMats = [];
+  // textura de tijolos (fornalhas e fornos)
+  const brickMat = (()=>{ const c = document.createElement('canvas'); c.width = 128; c.height = 128; const g = c.getContext('2d');
+    g.fillStyle = '#6e3a2c'; g.fillRect(0,0,128,128);
+    for(let r=0;r<8;r++) for(let k=-1;k<5;k++){ const x = k*32 + (r%2)*16, y = r*16; g.fillStyle = ['#a5523a','#b25d40','#9a4a35','#b8674a'][(r*7+k*3)&3]; g.fillRect(x+1.5, y+1.5, 29, 13); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return new THREE.MeshLambertMaterial({map:t}); })();
   MINES3.forEach(o=>{
     if(o.m.fuel) return;
     const id = o.m.id, x = o.x;
@@ -2496,12 +2514,20 @@ function createWorld(){
     // fornalha
     const sm = new THREE.Group(); sm.position.set(o.smX, 0, o.smZ); world.add(sm); o.smelter = sm;
     const fire = new THREE.MeshBasicMaterial({color:'#ff8a2a'}); fireMats.push(fire); o.fire = fire;
-    mesh(new THREE.BoxGeometry(2.2,1.6,1.8), M('#5b5f66'), 0, 0.8, 0, sm);
-    mesh(new THREE.BoxGeometry(2.4,0.22,2.0), M('#44474d'), 0, 1.7, 0, sm);
-    mesh(new THREE.BoxGeometry(0.9,0.7,0.08), fire, -0.2, 0.6, 0.92, sm).castShadow = false;
-    mesh(new THREE.BoxGeometry(1.1,0.16,0.25), M('#2f3236'), -0.2, 1.05, 0.95, sm);
-    mesh(new THREE.CylinderGeometry(0.26,0.32,1.8,10), M('#6f747c'), -0.6, 2.6, -0.4, sm);
-    mesh(new THREE.CylinderGeometry(0.34,0.34,0.18,10), M(o.m.color), -0.6, 2.95, -0.4, sm);
+    mesh(new THREE.BoxGeometry(2.5,0.18,2.1), M('#3b3f45'), 0, 0.09, 0, sm);                                  // base de concreto
+    mesh(new THREE.BoxGeometry(2.2,1.45,1.8), brickMat, 0, 0.9, 0, sm);                                      // corpo de tijolos
+    for(const y of [0.35, 1.25]) mesh(new THREE.BoxGeometry(2.26,0.1,1.86), M('#44474d'), 0, y, 0, sm);     // cintas de aço
+    for(const [cx,cz] of [[-1.1,-0.9],[1.1,-0.9],[-1.1,0.9],[1.1,0.9]]) mesh(new THREE.BoxGeometry(0.14,1.5,0.14), M('#44474d'), cx, 0.9, cz, sm);
+    mesh(new THREE.BoxGeometry(2.4,0.2,2.0), M('#44474d'), 0, 1.72, 0, sm);
+    mesh(new THREE.CylinderGeometry(0.46,0.46,0.1,20,1,false,0,Math.PI), M('#2f3236'), -0.2, 0.95, 0.9, sm).rotation.set(Math.PI/2, 0, Math.PI/2);   // arco da porta
+    mesh(new THREE.BoxGeometry(0.92,0.6,0.08), M('#2f3236'), -0.2, 0.62, 0.92, sm);
+    mesh(new THREE.BoxGeometry(0.72,0.48,0.06), fire, -0.2, 0.62, 0.95, sm).castShadow = false;               // fogo pela porta
+    mesh(new THREE.CylinderGeometry(0.36,0.36,0.04,20,1,false,0,Math.PI), fire, -0.2, 0.93, 0.94, sm).rotation.set(Math.PI/2, 0, Math.PI/2);
+    for(const dx of [-0.42,0.02]) mesh(new THREE.BoxGeometry(0.06,0.6,0.06), M('#1c1c22'), -0.2+dx+0.2, 0.62, 0.99, sm);   // grade
+    mesh(new THREE.CylinderGeometry(0.24,0.3,1.9,16), M('#7a8088'), -0.6, 2.65, -0.4, sm);                   // chaminé de aço
+    for(const y of [2.1, 2.9]) mesh(new THREE.CylinderGeometry(0.31,0.31,0.08,16), M('#4a4f57'), -0.6, y, -0.4, sm);
+    mesh(new THREE.CylinderGeometry(0.36,0.32,0.18,16), M(o.m.color), -0.6, 3.6, -0.4, sm);
+    mesh(new THREE.BoxGeometry(0.5,0.35,0.5), M('#4a4f57'), 0.75, 1.95, 0, sm);                             // boca do funil
     mesh(new THREE.ConeGeometry(0.55,0.6,4,1,true), M('#f2b632'), 0.75, 2.05, 0, sm).rotation.set(Math.PI,Math.PI/4,0);
     o.smoke = [0,1,2].map(k=>{ const s = mesh(new THREE.SphereGeometry(0.28,8,6), new THREE.MeshLambertMaterial({color:'#d8d8d8', transparent:true, opacity:0}), -0.6, 3.4, -0.4, sm); s.castShadow = false; return s; });
     // barras prontas na frente da fornalha
@@ -2612,7 +2638,7 @@ function createWorld(){
       const wc = cond('sm_'+id);
       if(S.smelters[id]){ o.wrench = o.wrench || labelSprite(2.4); o.wrench.position.set(o.smX, 4.4, o.smZ); o.wrench.visible = wc < 0.6;
         const wk = Math.round(wc*20); if(o.wrench.visible && wk !== o.wrenchK){ o.wrenchK = wk; o.wrench.userData.draw(`🔧 ${Math.round(wc*100)}%`, wc < 0.3 ? '#ff7a6a' : '#ffd27a'); } }
-      o.smoke.forEach((s,k)=>{ s.material.color.setHSL(0, 0, 0.35 + 0.5*wc); const u = (t*0.5 + k/3) % 1; s.position.y = 3.3 + u*1.8; s.position.x = -0.6 + Math.sin(u*5+k)*0.25;
+      o.smoke.forEach((s,k)=>{ s.material.color.setHSL(0, 0, 0.35 + 0.5*wc); const u = (t*0.5 + k/3) % 1; s.position.y = 3.75 + u*1.8; s.position.x = -0.6 + Math.sin(u*5+k)*0.25;
         s.scale.setScalar(0.6 + u*1.1); s.material.opacity = working ? 0.55*(1-u) : 0; });
       o.fire.color.setHSL(0.07, 1, working ? 0.55 + Math.sin(t*9 + o.i)*0.08 : 0.3);
       const b = S.bars[id] || 0;
@@ -2627,7 +2653,7 @@ function createWorld(){
       const path = it.coal ? o.coalPath : it.sell ? o.sellPath : o.beltPath, lens = it.coal ? o.coalLens : it.sell ? o.sellLens : o.beltLens, total = it.coal ? o.coalTotal : it.sell ? o.sellTotal : o.beltTotal;
       if(!path || it.d >= total || !(it.coal ? coalLineOn() : it.sell ? hasSellBelt(o.m) : hasBelt(o.m))){ world.remove(it.r); riders.splice(k,1); continue; }
       let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; }
-      it.r.position.lerpVectors(path[s], path[s+1], d/lens[s]);
+      it.r.position.lerpVectors(path[s], path[s+1], d/lens[s]); it.r.scale.setScalar(riderScale(it.d, total));
     }
   }
 
@@ -2789,12 +2815,11 @@ function createWorld(){
     spawn('coal', P.brA && P.opA && S.ore.carvao > 0.05 && b.moido < POWER_BUF_MAX - 1, '#26262c');
     spawn('coal2', P.brB && P.opB && S.ore.carvao > 0.05 && b.moido < POWER_BUF_MAX - 1, '#26262c');
     spawn('cr', P.lv && P.maq && b.moido > 0.3, '#4a4a52');
-    spawn('st', P.tb && b.vapor > 0.1, '#ffffff', new THREE.SphereGeometry(0.18,8,6));
     const sp = BELT_SPEED*(1 + POWER_BELT_BONUS*ratio);
     for(let k=pwRiders.length-1;k>=0;k--){ const it = pwRiders[k]; it.d += dt*sp;
       const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,c)=>a+c,0);
       if(it.d >= tot){ world.remove(it.r); pwRiders.splice(k,1); continue; }
-      let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; } it.r.position.lerpVectors(it.path[s], it.path[s+1], d/lens[s]); }
+      let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; } it.r.position.lerpVectors(it.path[s], it.path[s+1], d/lens[s]); it.r.scale.setScalar(riderScale(it.d, tot)); }
   }
   function payPower(dt){
     const P = S.power; if(S.money <= 0) return;
@@ -2997,14 +3022,13 @@ function createWorld(){
       const k = Math.round(O.fuel) + '|' + Math.floor(O.gal); if(k !== ps.P.gaugeKey){ ps.P.gaugeKey = k; ps.P.gauge.userData.draw(`⛽ ${fmt(O.fuel)} L · ${Math.floor(O.gal)} galões`, O.fuel >= TRUCK_FUEL ? '#9cff7a' : '#ff9b7a'); } }
     const spawn = (key, ok, col, geo) => { oilT[key] = (oilT[key]||0) + dt; if(ok && oilPaths[key] && oilT[key] > 0.9){ oilT[key] = 0;
       const r = new THREE.Mesh(geo, M(col)); world.add(r); oilRiders.push({r, path:oilPaths[key], d:0}); } };
-    spawn('crude', sepsOn() && pumpsOn() && b.crude < CRUDE_MAX - 0.5, '#1b1814', new THREE.SphereGeometry(0.16,8,6));
     spawn('drum', O.s1 && O.m1 && b.crude > 0.3 && O.drums < DRUM_CAP, '#2f6fb3', drumGeo);
     spawn('drum2', O.s2 && O.m2 && b.crude > 0.3 && O.drums < DRUM_CAP, '#2f6fb3', drumGeo);
     spawn('gal', O.ps && (O.gal >= 1 || fuelNow > 0.05), '#d93a2a', galGeo);
     for(let k=oilRiders.length-1;k>=0;k--){ const it = oilRiders[k]; it.d += dt*2.2;
       const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,c)=>a+c,0);
       if(it.d >= tot){ world.remove(it.r); oilRiders.splice(k,1); continue; }
-      let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; } it.r.position.lerpVectors(it.path[s], it.path[s+1], d/lens[s]); }
+      let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; } it.r.position.lerpVectors(it.path[s], it.path[s+1], d/lens[s]); it.r.scale.setScalar(riderScale(it.d, tot)); }
   }
   function payOil(dt){
     const O = S.oil; if(S.money <= 0) return;
@@ -3067,7 +3091,9 @@ function createWorld(){
     } else if(id === 'cv'){                   // carvoaria: fornos de tijolo em cúpula
       P.smoke = [];
       for(let k=0;k<3;k++){ const fx = -2.2 + k*2.2;
-        mesh(new THREE.SphereGeometry(0.95,14,8,0,Math.PI*2,0,Math.PI/2), M('#b5523b'), fx, 0, 0, g);
+        mesh(new THREE.SphereGeometry(0.95,18,10,0,Math.PI*2,0,Math.PI/2), brickMat, fx, 0, 0, g);
+        mesh(new THREE.TorusGeometry(0.95,0.06,8,28), M('#4a4f57'), fx, 0.05, 0, g).rotation.x = Math.PI/2;
+        mesh(new THREE.CylinderGeometry(0.12,0.14,0.35,10), M('#4a4f57'), fx, 1.0, 0, g);
         mesh(new THREE.BoxGeometry(0.5,0.55,0.1), M('#2b1a14'), fx, 0.27, 0.92, g);
         for(let j=0;j<2;j++){ const sm = mesh(new THREE.SphereGeometry(0.28,8,6), new THREE.MeshLambertMaterial({color:'#6b6b6b', transparent:true, opacity:0}), fx, 1.2, 0, g); sm.castShadow = false; P.smoke.push(sm); } }
       P.sacks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.42,0.5,0.32), M('#2b2b30'), 30); const d = new THREE.Object3D();
@@ -3106,8 +3132,8 @@ function createWorld(){
     for(const t of forestLinks.userData.texs || []){ const k = beltTexs.indexOf(t); if(k >= 0) beltTexs.splice(k, 1); }
     const F = S.forest, before = beltTexs.length;
     if(F.sr && (F.cv || F.pp)){ beltSeg(forestLinks, 68.6, 3.6, 68.6, 10.6, 1.0); fPaths.lenha = [new THREE.Vector3(68.6,1.25,3.6), new THREE.Vector3(68.6,1.25,10.6)];
-      if(F.cv){ beltSeg(forestLinks, 68.6, 10.6, 64.0, 10.6, 1.0); fPaths.lc = [new THREE.Vector3(68.6,1.25,3.6), new THREE.Vector3(68.6,1.25,10.6), new THREE.Vector3(64.6,1.25,10.6), new THREE.Vector3(64.6,0.6,13.9)]; } else delete fPaths.lc;
-      if(F.pp){ beltSeg(forestLinks, 68.6, 10.6, 70.8, 10.6, 1.0); beltSeg(forestLinks, 70.8, 10.6, 70.8, 13.6, 1.0); fPaths.lp = [new THREE.Vector3(68.6,1.25,3.6), new THREE.Vector3(68.6,1.25,10.6), new THREE.Vector3(70.8,1.25,10.6), new THREE.Vector3(70.8,1.25,13.8)]; } else delete fPaths.lp; }
+      if(F.cv){ beltSeg(forestLinks, 68.6, 10.6, 64.0, 10.6, 1.0); beltSeg(forestLinks, 64.0, 10.6, 64.0, 13.2, 1.0); fPaths.lc = [new THREE.Vector3(68.6,1.2,3.6), new THREE.Vector3(68.6,1.2,10.6), new THREE.Vector3(64.0,1.2,10.6), new THREE.Vector3(64.0,1.2,13.4)]; } else delete fPaths.lc;
+      if(F.pp){ beltSeg(forestLinks, 68.6, 10.6, 70.8, 10.6, 1.0); beltSeg(forestLinks, 70.8, 10.6, 70.8, 13.6, 1.0); fPaths.lp = [new THREE.Vector3(68.6,1.2,3.6), new THREE.Vector3(68.6,1.2,10.6), new THREE.Vector3(70.8,1.2,10.6), new THREE.Vector3(70.8,1.2,14.0)]; } else delete fPaths.lp; }
     forestLinks.userData.texs = beltTexs.slice(before);
   }
   function refreshForest(){
@@ -3156,7 +3182,7 @@ function createWorld(){
     for(let k=fRiders.length-1;k>=0;k--){ const it = fRiders[k]; it.d += dt*2.2;
       const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,c)=>a+c,0);
       if(it.d >= tot){ world.remove(it.r); fRiders.splice(k,1); continue; }
-      let d = it.d, s2 = 0; while(d > lens[s2]){ d -= lens[s2]; s2++; } it.r.position.lerpVectors(it.path[s2], it.path[s2+1], d/lens[s2]); }
+      let d = it.d, s2 = 0; while(d > lens[s2]){ d -= lens[s2]; s2++; } it.r.position.lerpVectors(it.path[s2], it.path[s2+1], d/lens[s2]); it.r.scale.setScalar(riderScale(it.d, tot)); }
   }
   function payForest(dt){
     const F = S.forest; if(S.money <= 0) return;
@@ -3234,12 +3260,12 @@ function createWorld(){
       mesh(new THREE.BoxGeometry(0.32,0.62,0.34), M('#d9481c'), 0, 0.78, 0, g);
       mesh(new THREE.BoxGeometry(0.36,0.12,0.38), M('#2b2b2b'), 0, 0.46, 0, g);
       mesh(new THREE.CylinderGeometry(0.065,0.05,0.42,8), M('#c7ccd3'), 0, 0.2, 0, g);
-      const comp = new THREE.Group(); comp.position.set(0.75, 0, -0.85); w.add(comp);
+      const comp = new THREE.Group(); comp.position.set(0.75, 0, -0.85); w.add(comp); P.comp = comp;
       mesh(new THREE.BoxGeometry(0.75,0.5,0.45), M('#f2b632'), 0, 0.42, 0, comp);
       mesh(new THREE.CylinderGeometry(0.12,0.12,0.5,10), M('#c7ccd3'), 0, 0.78, 0, comp).rotation.z = Math.PI/2;
       for(const s of [-0.28,0.28]){ const wh = mesh(new THREE.CylinderGeometry(0.15,0.15,0.08,10), M('#1b1b1b'), s, 0.15, 0.25, comp); wh.rotation.x = Math.PI/2; }
       const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(0.12,0.9,0.5), new THREE.Vector3(0.6,0.4,0.2), new THREE.Vector3(0.6,0.1,-0.4), new THREE.Vector3(0.6,0.4,-0.65)]);
-      mesh(new THREE.TubeGeometry(curve, 16, 0.035, 6, false), M('#1b1b1f'), 0, 0, 0, w);
+      P.hose = mesh(new THREE.TubeGeometry(curve, 16, 0.035, 6, false), M('#1b1b1f'), 0, 0, 0, w);
     }
     P.armR.rotation.x = P.armL.rotation.x = -1.15;
     P.ptool = g;
@@ -3290,8 +3316,25 @@ function createWorld(){
     syncStaff(o);
     const fast = S.staff[o.m.id].mgr ? MANAGER_MULT : 1;
     o.workers.forEach((w,k)=>{
+      const P = w.obj.userData;
+      if(!w.home) w.home = w.obj.position.clone();
+      if(!P.chunk){ P.chunk = mesh(new THREE.DodecahedronGeometry(0.2,0), M(o.m.color), 0, 1.0, 0.42, w.obj); P.chunk.visible = false; }
+      // depois de alguns golpes o ajudante pega o minério, leva até a pilha e volta
+      if(w.mode === 'carry' || w.mode === 'back'){
+        const tgt = w.mode === 'carry' ? w.pileSpot : w.home, p = w.obj.position, dx = tgt.x - p.x, dz = tgt.z - p.z, d = Math.hypot(dx, dz);
+        if(w.pop < 1){ w.pop = Math.min(1, w.pop + dt/0.45); w.obj.scale.setScalar(0.85*popScale(w.pop)); }
+        if(d > 0.08){ const st = Math.min(d, dt*3.2*fast); p.x += dx/d*st; p.z += dz/d*st; p.y = 0;
+          w.obj.rotation.y = Math.atan2(dx, dz); const sw = Math.sin(time*11 + k); P.legL.rotation.x = sw*0.65; P.legR.rotation.x = -sw*0.65;
+          if(w.mode === 'carry'){ P.armL.rotation.x = P.armR.rotation.x = -1.25; } else { P.armL.rotation.x = -sw*0.5; P.armR.rotation.x = sw*0.5; }
+          return; }
+        P.legL.rotation.x = P.legR.rotation.x = 0;
+        if(w.mode === 'carry'){ P.chunk.visible = false; flyOre(w.obj.localToWorld(new THREE.Vector3(0, 1.0, 0.42)), o.pilePos, o.m.color); w.mode = 'back'; }
+        else { w.mode = 'mine'; w.obj.rotation.y = Math.atan2(w.rock.position.x - p.x, w.rock.position.z - p.z);
+          if(P.ptool){ P.ptool.visible = true; P.armR.rotation.x = P.armL.rotation.x = -1.15; if(P.comp) P.comp.visible = true; if(P.hose) P.hose.visible = true; } else P.pickHead.parent.visible = true; }
+        return;
+      }
       w.ph += dt*0.9*fast*(1 + 0.7*w.lvl);
-      const s = (w.ph + k*0.37) % 1, P = w.obj.userData;
+      const s = (w.ph + k*0.37) % 1;
       if(w.lvl === 0) P.armR.rotation.x = swingAngle(s);
       else {   // ferramenta elétrica: vibra batendo na pedra
         const amp = w.lvl === 1 ? 0.025 : 0.04;
@@ -3299,8 +3342,10 @@ function createWorld(){
         P.armR.rotation.x = P.armL.rotation.x = -1.15 + Math.sin(time*50 + k)*0.03;
         w.obj.position.y = Math.abs(Math.sin(time*25 + k))*0.015*w.lvl;
       }
-      if(s < w.prevS){ w.rock.userData.shake = 0.08 + 0.05*w.lvl; flyOre(w.rock.position.clone().setY(1), o.pilePos, o.m.color);
-        if(w.lvl === 2) flyOre(w.rock.position.clone().setY(0.8), o.pilePos, o.m.color); }
+      if(s < w.prevS){ w.rock.userData.shake = 0.08 + 0.05*w.lvl; w.hits = (w.hits||0) + 1;
+        if(w.hits >= 3 - Math.min(1, w.lvl)){ w.hits = 0; w.mode = 'carry'; P.chunk.visible = true; P.pickHead.parent.visible = false;
+          if(P.ptool){ P.ptool.visible = false; if(P.comp) P.comp.visible = false; if(P.hose) P.hose.visible = false; }
+          const a = Math.atan2(w.obj.position.z - o.pilePos.z, w.obj.position.x - o.pilePos.x); w.pileSpot = new THREE.Vector3(o.pilePos.x + Math.cos(a)*1.55, 0, o.pilePos.z + Math.sin(a)*1.55); } }
       w.prevS = s;
       if(w.pop < 1){ w.pop = Math.min(1, w.pop + dt/0.45); w.obj.scale.setScalar(0.85*popScale(w.pop)); }
     });
