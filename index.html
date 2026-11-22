@@ -715,7 +715,7 @@ const POWER_ITEMS = [
   {id:'bat', kind:'m', name:'Banco de Baterias', ico:'🔋', cost:8000, need:'tb', desc:'Guarda a energia que sobra em baterias para vender.'},
 ];
 const ENERGY_PER_COAL = 25, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POWER_BUF_MAX = 40, WASH_LOSS = 0.1;
-const BATTERY_KWS = 25, BATTERY_VALUE = 160, BATTERY_CAP = 40;           // energia por bateria, preço e capacidade
+const BATTERY_KWS = 25, BATTERY_VALUE = 220, BATTERY_CAP = 100, BATTERY_VIS = 40;           // energia por bateria, preço e capacidade
 const powerStep = () => 0.3 * (1 + 0.5*S.power.lvl);                    // carvão/s por britador, ajudante...
 const boilerCost = () => Math.ceil(20000 * Math.pow(3, S.power.lvl));
 // ===== REDE ELÉTRICA (gerador a carvão + usina + baterias) =====
@@ -806,7 +806,7 @@ const OIL_ITEMS = [
   {id:'rf', kind:'m', name:'Refinaria', ico:'🏭', cost:12000, need:'ld', desc:'Transforma os tambores em combustível.'},
   {id:'ps', kind:'m', name:'Posto de Combustível', ico:'⛽', cost:9000, need:'rf', desc:'Enche galões, que vão ao galpão para abastecer os veículos.'},
 ];
-const CRUDE_MAX = 60, DRUM_UNITS = 5, DRUM_CAP = 48, REF_MAX = 12, GAL_L = 10, GAL_CAP = 40, GAL_VALUE = 140;
+const CRUDE_MAX = 60, DRUM_UNITS = 5, DRUM_CAP = 48, REF_MAX = 12, GAL_L = 10, GAL_CAP = 100, GAL_VALUE = 200, GAL_VIS = 40;
 const SEP_LOSS = 0.2, DRUM_L = 4.5, TRUCK_FUEL = 3, COLLECTOR_FUEL = 1.5;
 const FUEL_BUY_L = 10, FUEL_BUY_PRICE = 150;   // comprar combustível no galpão é caro: o campo de petróleo compensa
 const oilStep = () => 0.25 * (1 + 0.5*S.oil.lvl);
@@ -2419,9 +2419,9 @@ function createWorld(){
       mesh(new THREE.BoxGeometry(4.2,0.2,1.2), M('#3b3f45'), 0, 0.1, 0, g);
       for(const y of [0.75,1.45]) mesh(new THREE.BoxGeometry(4.2,0.08,1.1), M('#6f747c'), 0, y, 0, g);
       for(const s of [-2.05,2.05]) mesh(new THREE.BoxGeometry(0.1,2.1,1.1), M('#6f747c'), s, 1.05, 0, g);
-      const cell = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34,0.5,0.4), M('#3aa35a', {emissive:new THREE.Color('#0f3a12')}), BATTERY_CAP);
+      const cell = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34,0.5,0.4), M('#3aa35a', {emissive:new THREE.Color('#0f3a12')}), BATTERY_VIS);
       const d = new THREE.Object3D();
-      for(let k=0;k<BATTERY_CAP;k++){ const row = Math.floor(k/20), r = k%20, col = r%10, dep = Math.floor(r/10);
+      for(let k=0;k<BATTERY_VIS;k++){ const row = Math.floor(k/20), r = k%20, col = r%10, dep = Math.floor(r/10);
         d.position.set(-1.8 + col*0.4, 0.45 + row*0.7, -0.22 + dep*0.44); d.updateMatrix(); cell.setMatrixAt(k, d.matrix); }
       cell.count = 0; cell.castShadow = true; g.add(cell); P.cells = cell;
       P.lab = labelSprite(2.8); world.remove(P.lab); P.lab.position.set(0, 2.7, 0); g.add(P.lab); P.labKey = '';
@@ -2498,7 +2498,7 @@ function createWorld(){
       } else { U.legL.rotation.x = U.legR.rotation.x = 0; U.armL.rotation.x = U.armR.rotation.x = 0; U.box.visible = false; } });
     // turbina e baterias
     const tb = pwObj.tb; if(tb){ tb.P.fan.rotation.x += dt*(b.vapor > 0.02 ? 14 : 0.4); tb.P.bolt.visible = ratio > 0 && Math.sin(t*6) > -0.3; }
-    const bt = pwObj.bat; if(bt){ bt.P.cells.count = Math.min(BATTERY_CAP, P.batteries||0);
+    const bt = pwObj.bat; if(bt){ bt.P.cells.count = Math.min(BATTERY_VIS, Math.ceil((P.batteries||0)*BATTERY_VIS/BATTERY_CAP));
       const key = (P.batteries||0) + '|' + Math.round((P.charge||0)/BATTERY_KWS*10);
       if(key !== bt.P.labKey){ bt.P.labKey = key; bt.P.lab.userData.draw(`🔋 ${P.batteries||0}/${BATTERY_CAP} · ${Math.round((P.charge||0)/BATTERY_KWS*100)}%`, '#9cff7a'); } }
     // blocos andando
@@ -2583,8 +2583,8 @@ function createWorld(){
       mesh(new THREE.CylinderGeometry(1.32,1.32,0.3,20), M('#ff8a2a'), 0, 1.6, 0, g);
       mesh(new THREE.CylinderGeometry(1.0,1.3,0.4,20), M('#d0d4da'), 0, 2.6, 0, g);
       mesh(new THREE.BoxGeometry(0.7,1.4,0.5), M('#c2453a'), 1.7, 0.7, 1.6, g);                       // bomba de encher galão
-      const gl = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34,0.44,0.2), M('#d93a2a', {shininess:60}), GAL_CAP), dd = new THREE.Object3D();
-      for(let k=0;k<GAL_CAP;k++){ const lay = Math.floor(k/20), r = k%20; dd.position.set(-0.85 + (r%5)*0.42, 0.4 + lay*0.46, 4.0 + Math.floor(r/5)*0.3); dd.updateMatrix(); gl.setMatrixAt(k, dd.matrix); }
+      const gl = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34,0.44,0.2), M('#d93a2a', {shininess:60}), GAL_VIS), dd = new THREE.Object3D();
+      for(let k=0;k<GAL_VIS;k++){ const lay = Math.floor(k/20), r = k%20; dd.position.set(-0.85 + (r%5)*0.42, 0.4 + lay*0.46, 4.0 + Math.floor(r/5)*0.3); dd.updateMatrix(); gl.setMatrixAt(k, dd.matrix); }
       gl.count = 0; gl.castShadow = true; g.add(gl); P.gals = gl;
       P.gauge = labelSprite(2.8); world.remove(P.gauge); P.gauge.position.set(0, 3.6, 0); g.add(P.gauge); P.gaugeKey = '';
       circles.push({x, z, r:1.4}); rects.push({x1:x-1.3, x2:x+1.3, z1:z+3.7, z2:z+5.5});
@@ -2664,7 +2664,7 @@ function createWorld(){
       else { ld.P.load.visible = false; } }
     const rf = oilObj.rf; if(rf){ const w = O.refBuf > 0.05; rf.P.flame.visible = w; rf.P.flame.scale.set(1, 1 + Math.sin(t*12)*0.25, 1); rf.P.flare.color.setHSL(0.07 + Math.sin(t*9)*0.02, 1, 0.55);
       rf.P.intake.count = Math.min(REF_MAX, Math.ceil(O.refBuf)); }
-    const ps = oilObj.ps; if(ps){ ps.P.gals.count = Math.min(GAL_CAP, Math.floor(O.gal));
+    const ps = oilObj.ps; if(ps){ ps.P.gals.count = Math.min(GAL_VIS, Math.ceil(Math.floor(O.gal)*GAL_VIS/GAL_CAP));
       const k = Math.round(O.fuel) + '|' + Math.floor(O.gal); if(k !== ps.P.gaugeKey){ ps.P.gaugeKey = k; ps.P.gauge.userData.draw(`⛽ ${fmt(O.fuel)} L · ${Math.floor(O.gal)} galões`, O.fuel >= TRUCK_FUEL ? '#9cff7a' : '#ff9b7a'); } }
     const spawn = (key, ok, col, geo) => { oilT[key] = (oilT[key]||0) + dt; if(ok && oilPaths[key] && oilT[key] > 0.9){ oilT[key] = 0;
       const r = new THREE.Mesh(geo, M(col)); world.add(r); oilRiders.push({r, path:oilPaths[key], d:0}); } };
