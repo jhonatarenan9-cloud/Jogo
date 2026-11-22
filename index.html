@@ -187,17 +187,18 @@ const MINES = [
 // power = minério por golpe; passive = minério/s extra (máquinas)
 const TOOLS = [
   {id:'madeira',     name:'Picareta de Madeira', ico:'🪵', cost:0,        power:1,  passive:0,   desc:'Ferramenta inicial. Libera a mina de Cobre.'},
-  {id:'ferro',       name:'Picareta de Ferro',   ico:'⛏️', cost:400,      power:2,  passive:0,   desc:'Mais resistente. Libera a mina de Ferro.'},
-  {id:'britadeira',  name:'Britadeira',          ico:'🔨', cost:15000,    power:4,  passive:0.3, desc:'Quebra rocha dura. Libera a mina de Ouro.'},
-  {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:500000,   power:9,  passive:1.5, desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
-  {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:15000000, power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
+  {id:'ferro',       name:'Picareta de Ferro',   ico:'⛏️', cost:3000,     power:2,  passive:0,   desc:'Mais resistente. Libera a mina de Ferro.'},
+  {id:'britadeira',  name:'Britadeira',          ico:'🔨', cost:80000,    power:4,  passive:0.3, desc:'Quebra rocha dura. Libera a mina de Ouro.'},
+  {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:2500000,  power:9,  passive:1.5, desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
+  {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:60000000, power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
 const STAFF_COST = {cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:900000};
 const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 2, MANAGER_COST_MULT = 40;
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
-const ORES_PER_BAR = 5, BAR_MULT = 20, BELT_RATE = 3;   // barra = 4x o valor do minério
+const ORES_PER_BAR = 5, BAR_MULT = 20;   // barra = 4x o valor do minério
+const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // minério/s de cada esteira
 const SMELTER_COST = {cobre:150, ferro:6000, ouro:180000, diamante:5000000, esmeralda:120000000};
 const BELT_COST    = {cobre:80,  ferro:3000, ouro:90000,  diamante:2500000, esmeralda:60000000};
 const SELLBELT_COST = {cobre:120, ferro:4500, ouro:130000, diamante:3500000, esmeralda:90000000};
@@ -249,8 +250,9 @@ const toolIndex = t => TOOLS.indexOf(t);
 const factoryDone = m => !!(S.smelters[m.id] && S.belts[m.id] && S.sellBelts[m.id]);
 const factoryMissing = m => [!S.smelters[m.id] && 'fundição', !S.belts[m.id] && 'esteira de minério', !S.sellBelts[m.id] && 'esteira de venda'].filter(Boolean);
 const prevMine = t => MINES[toolIndex(t)-1];
-const needsFactory = t => toolIndex(t) > 0 && !!S.tools[TOOLS[toolIndex(t)-1].id] && !factoryDone(prevMine(t));
-const canBuy = t => toolIndex(t) === 0 || (!!S.tools[TOOLS[toolIndex(t)-1].id] && factoryDone(prevMine(t)));
+const needsFactory = t => false;   // a próxima mina não exige a fundição, só custa caro
+const factoryTip = t => toolIndex(t) > 0 && !!S.tools[TOOLS[toolIndex(t)-1].id] && !factoryDone(prevMine(t));
+const canBuy = t => toolIndex(t) === 0 || !!S.tools[TOOLS[toolIndex(t)-1].id];
 const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
 function clickPower(){ return bestTool().power * (1 + 0.3*S.sharpen); }
@@ -265,7 +267,7 @@ function incomePerSec(){
   let v = 0;
   for(const m of MINES){
     const r = mineRate(m) + (m.id===S.active ? machineRate() : 0);
-    const toBars = hasBelt(m) ? Math.min(r, beltRate()) : 0;
+    const toBars = hasBelt(m) ? Math.min(r, beltRate(m)) : 0;
     v += (r - toBars)*m.value + toBars/ORES_PER_BAR*barValue(m);
   }
   return v;
@@ -293,7 +295,7 @@ const barValue = m => m.value * BAR_MULT;
 const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 // valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
 const oreValue = (auto) => MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
-const beltRate = () => BELT_RATE * (1 + 0.5*S.beltLvl);
+const beltRate = m => BELT_RATE[m.id] * (1 + 0.5*S.beltLvl);
 const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
 const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
 const SOLD = {};   // vendido pela esteira de venda (para mostrar o dinheiro subindo no mapa)
@@ -309,7 +311,7 @@ function sellByBelts(){
 }
 function smelt(sec){
   for(const m of MINES) if(hasBelt(m) && S.ore[m.id] > 0){
-    const take = Math.min(S.ore[m.id], beltRate()*sec);
+    const take = Math.min(S.ore[m.id], beltRate(m)*sec);
     S.ore[m.id] -= take; S.bars[m.id] += take/ORES_PER_BAR;
   }
 }
@@ -441,11 +443,11 @@ function buildShop(){
       else if(needsFactory(t)) right = tag('🏭 Falta fundição','var(--gold)');
       else if(!canBuy(t)) right = tag('🔒','var(--muted)');
       else right = btn(money(remaining(t)), ()=>buyTool(t), remaining(t));
-      const warn = needsFactory(t) ? `<br><span style="color:var(--gold)">Antes complete na mina de ${prevMine(t).name}: ${factoryMissing(prevMine(t)).join(', ')}.</span>` : '';
+      const warn = factoryTip(t) ? `<br><span style="color:var(--gold)">💡 Dica: complete a fundição da mina de ${prevMine(t).name} (barras valem 4x) para juntar o dinheiro mais rápido.</span>` : '';
       add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}${warn}`, right);
     });
   } else if(tab==='factory'){
-    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem a sua fundição, dentro do cercado. Ela transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério: <b style="color:#9cff7a">${BAR_MULT/ORES_PER_BAR}x mais dinheiro</b> do que vender o minério bruto. <b style="color:var(--gold)">Para liberar a próxima mina, compre os 3 itens da mina atual: fundição, esteira e esteira de venda.</b> A fundição também pode ser paga pisando no quadrado 🏭 dentro da mina.</p>`);
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem a sua fundição, dentro do cercado. Ela transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério: <b style="color:#9cff7a">${BAR_MULT/ORES_PER_BAR}x mais dinheiro</b> do que vender o minério bruto. <b style="color:var(--gold)">Ela custa bem menos que a próxima mina e quadruplica o que você ganha: vale a pena completar a fundição (fundição, esteira e esteira de venda) antes de seguir.</b> A fundição também pode ser paga pisando no quadrado 🏭 dentro da mina.</p>`);
     MINES.forEach(m=>{
       const gem = `<span class="gem" style="display:inline-block;width:24px;height:24px;background:${m.color}"></span>`;
       let r1, r2;
@@ -456,7 +458,7 @@ function buildShop(){
       if(S.belts[m.id]) r2 = tag('✔ Instalada');
       else if(!S.smelters[m.id]) r2 = tag('🔒','var(--muted)');
       else r2 = btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]);
-      add('🛤️', `Esteira · ${m.name}`, `Leva ${fmt(beltRate())} ${m.name.toLowerCase()}/s da pilha até a fundição`, r2);
+      add('🛤️', `Esteira · ${m.name}`, `Leva ${fmt(beltRate(m))} ${m.name.toLowerCase()}/s da pilha até a fundição`, r2);
       let r3;
       if(S.sellBelts[m.id]) r3 = tag('✔ Instalada');
       else if(!S.smelters[m.id]) r3 = tag('🔒','var(--muted)');
@@ -506,7 +508,8 @@ function render(){
     txt = needsFactory(next)
       ? `🏭 Para liberar a próxima mina, compre na mina de <b>${prevMine(next).name}</b>: ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(Loja → Fundição)</span>`
       : `Próxima ferramenta: <b>${next.name}</b> — ` + (S.money >= r ? 'já dá para comprar! Siga a seta.' : `falta ${money(r - S.money)}`);
-    if(needsFactory(next)){ const pm = prevMine(next); pct = (3 - factoryMissing(pm).length)/3; } }
+    if(needsFactory(next)){ const pm = prevMine(next); pct = (3 - factoryMissing(pm).length)/3; }
+    if(factoryTip(next) && S.money < r) txt += `<br>💡 A fundição da mina de <b>${prevMine(next).name}</b> rende 4x: falta ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(Loja → Fundição)</span>`; }
   else { pct = Math.min(1, S.mined.esmeralda/GOAL); txt = S.won ? '🏆 Você venceu! Continue minerando e enriquecendo.' : `Minere <b>${fmt(GOAL)}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(GOAL)}`; }
   document.getElementById('goalText').innerHTML = txt;
   document.getElementById('goalBar').style.width = (pct*100)+'%';
