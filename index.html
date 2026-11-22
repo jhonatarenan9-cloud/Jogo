@@ -254,6 +254,7 @@ function buyTool(t){
 function buyHelper(h){
   const c = helperCost(h); if(S.money < c) return;
   S.money -= c; S.helpers[h.id]++; render(); save();
+  toast(`${h.ico} ${h.name} contratado! Trabalhando na mina de ${mineById(S.active).name}.`);
 }
 
 // ===================== INTERFACE =====================
@@ -328,7 +329,7 @@ function render(){
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
   if(next){ const r = remaining(next); pct = Math.min(1, (S.money + next.cost - r)/next.cost);
-    txt = `Próxima ferramenta: <b>${next.name}</b> — falta ${money(Math.max(0, r - S.money))}`; }
+    txt = `Próxima ferramenta: <b>${next.name}</b> — ` + (S.money >= r ? 'já dá para comprar! Siga a seta.' : `falta ${money(r - S.money)}`); }
   else { pct = Math.min(1, S.mined.esmeralda/GOAL); txt = S.won ? '🏆 Você venceu! Continue minerando e enriquecendo.' : `Minere <b>${fmt(GOAL)}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(GOAL)}`; }
   document.getElementById('goalText').innerHTML = txt;
   document.getElementById('goalBar').style.width = (pct*100)+'%';
@@ -565,9 +566,9 @@ function createWorld(){
   });
 
   // ---------- personagem ----------
-  function makeMiner(shirt, helmet, pants){
+  function makeMiner(shirt, helmet, pants, skinCol){
     const g = new THREE.Group(), P = {};
-    const legMat = M(pants), skin = M('#f2c29b');
+    const legMat = M(pants), skin = M(skinCol || '#f2c29b');
     for(const s of [-1,1]){
       const piv = new THREE.Group(); piv.position.set(s*0.14, 0.62, 0); g.add(piv);
       mesh(new THREE.BoxGeometry(0.2,0.52,0.22), legMat, 0, -0.27, 0, piv);
@@ -601,19 +602,63 @@ function createWorld(){
   function refreshPick(){ player.userData.pickHead.material = M(PICK_COL[bestTool().id]); }
   refreshPick();
 
-  // ajudantes visuais (até 6)
-  const npcs = [];
-  for(let k=0;k<6;k++){ const n = makeMiner('#f08a24', '#ffffff', '#5a6b7a'); n.scale.setScalar(0.85); n.visible = false; world.add(n); npcs.push(n); }
-  const NPC_SPOTS = [[-2.6,-9],[2.6,-10.6],[-1.6,-12],[1.1,-12],[-2.6,-11.2],[0.2,-9.3]];
-  function placeNpcs(){
+  // ajudantes visuais: um boneco por ajudante comprado (até 10), minerando na mina ativa
+  const NPC_LOOK = {
+    mineiro: ['#f08a24','#ffffff','#5a6b7a'],
+    carrinho:['#3aa35a','#ffcf3f','#4a5a3a'],
+    caminhao:['#2f80ed','#ff8a2a','#33415c'],
+    esteira: ['#8e5bd6','#ffffff','#3d3550'],
+    robo:    ['#9aa3ad','#5b6b7a','#6b7480','#c9d1d9'],
+  };
+  const NPC_SPOTS = [[-2.6,-9.2],[2.7,-11.3],[-1.1,-12.1],[1.0,-12.1],[-2.7,-11.0],[0.3,-9.3],[2.4,-12.1],[-2.1,-8.2],[-0.6,-8.9],[2.9,-10.2]];
+  const MAX_NPC = NPC_SPOTS.length;
+  let npcs = [], npcSig = '', npcKeys = new Set();
+  const helperSign = labelSprite(3.2); helperSign.visible = false;
+  function makeCart(color){
+    const g = new THREE.Group();
+    mesh(new THREE.BoxGeometry(0.75,0.4,0.5), M('#7a5230'), 0, 0.42, 0, g);
+    for(let k=0;k<3;k++) mesh(new THREE.BoxGeometry(0.2,0.2,0.2), M(color), -0.2+k*0.2, 0.68, (k%2)*0.1-0.05, g);
+    for(const [x,z] of [[-0.25,0.27],[0.25,0.27],[-0.25,-0.27],[0.25,-0.27]]){
+      const w = mesh(new THREE.CylinderGeometry(0.12,0.12,0.06,10), M('#2b2b2b'), x, 0.14, z, g); w.rotation.x = Math.PI/2;
+    }
+    return g;
+  }
+  function syncNpcs(){
     const o = MINES3[MINES.findIndex(m=>m.id===S.active)];
-    const total = HELPERS.reduce((a,h)=>a+S.helpers[h.id],0);
-    npcs.forEach((n,k)=>{
-      n.visible = k < Math.min(6,total);
-      const [dx,z] = NPC_SPOTS[k]; n.position.set(o.x+dx, 0, z);
-      const tgt = o.rocks.reduce((b,r)=> r.position.distanceTo(n.position) < b.position.distanceTo(n.position) ? r : b);
-      n.rotation.y = Math.atan2(tgt.position.x-n.position.x, tgt.position.z-n.position.z);
+    const sig = S.active+'|'+HELPERS.map(h=>S.helpers[h.id]).join(',');
+    if(sig === npcSig) return;
+    const firstSync = npcSig === '';
+    npcSig = sig;
+    for(const n of npcs) world.remove(n.obj);
+    // intercala os tipos para que todos apareçam
+    const left = HELPERS.map(h=>S.helpers[h.id]), list = [], seen = {};
+    while(list.length < MAX_NPC && left.some(v=>v>0)){
+      for(let t=HELPERS.length-1; t>=0 && list.length<MAX_NPC; t--) if(left[t]>0){
+        left[t]--; const id = HELPERS[t].id; seen[id] = (seen[id]||0)+1; list.push({id, key:id+seen[id]});
+      }
+    }
+    const oldKeys = npcKeys; npcKeys = new Set(list.map(l=>l.key));
+    npcs = list.map((l,k)=>{
+      const [shirt, helmet, pants, skin] = NPC_LOOK[l.id];
+      const obj = new THREE.Group(), miner = makeMiner(shirt, helmet, pants, skin);
+      obj.add(miner);
+      if(l.id === 'robo') miner.userData.pickHead.material = M('#ffcf3f');
+      if(l.id === 'carrinho'){ const c = makeCart(o.m.color); c.position.set(-0.75, 0, -0.1); obj.add(c); }
+      const [dx,z] = NPC_SPOTS[k]; obj.position.set(o.x+dx, 0, z);
+      const rock = o.rocks.reduce((b,r)=> r.position.distanceTo(obj.position) < b.position.distanceTo(obj.position) ? r : b);
+      obj.rotation.y = Math.atan2(rock.position.x-obj.position.x, rock.position.z-obj.position.z);
+      const isNew = !firstSync && !oldKeys.has(l.key);
+      obj.scale.setScalar(isNew ? 0.01 : 0.85);
+      world.add(obj);
+      if(isNew){
+        const h = HELPERS.find(h=>h.id===l.id);
+        setTimeout(()=>floatText(h.ico+' +1', obj.position.clone().setY(2.2), '#ffffff'), 50);
+      }
+      return {obj, miner, rock, prevS:0, pop: isNew ? 0 : 1};
     });
+    const total = HELPERS.reduce((a,h)=>a+S.helpers[h.id],0);
+    helperSign.visible = total > 0;
+    if(total > 0){ helperSign.position.set(o.x+2.1, 2.5, -9); helperSign.userData.draw(`👷 ${fmt(total)} ajudante${total>1?'s':''}`, '#ffffff'); }
   }
 
   // máquinas (aparecem quando compradas)
@@ -716,7 +761,7 @@ function createWorld(){
   new ResizeObserver(resize).observe(sceneEl); resize();
 
   // ---------- lógica por quadro ----------
-  let heading = Math.PI, phase = 0, swingT = 0, zone = null, zoneT = 0, hintGone = false, activeId = null, npcT = 0, payAcc = 0;
+  let heading = Math.PI, phase = 0, swingT = 0, zone = null, zoneT = 0, hintGone = false, npcT = 0, payAcc = 0;
   const camPos = new THREE.Vector3().copy(player.position).add(CAM_OFF);
   const angTo = (want) => { let d = want - heading; while(d > Math.PI) d -= Math.PI*2; while(d < -Math.PI) d += Math.PI*2; return d; };
   const swingAngle = s => s < 0.6 ? -2.6 + s/0.6*0.6 : -2.0 + (s-0.6)/0.4*1.6;
@@ -791,9 +836,16 @@ function createWorld(){
     }
     for(const o of MINES3){ const amt = S.ore[o.m.id]; o.pile.count = amt < 1 ? 0 : Math.min(90, Math.ceil(Math.sqrt(amt)*4)); }
 
-    if(activeId !== S.active){ activeId = S.active; placeNpcs(); }
+    syncNpcs();
     npcT += dt;
-    npcs.forEach((n,k)=>{ if(n.visible) n.userData.armR.rotation.x = swingAngle((npcT*1.6 + k*0.37) % 1); });
+    const am = MINES3[MINES.findIndex(m=>m.id===S.active)];
+    npcs.forEach((n,k)=>{
+      const s = (npcT*1.5 + k*0.37) % 1;
+      n.miner.userData.armR.rotation.x = swingAngle(s);
+      if(s < n.prevS){ n.rock.userData.shake = 0.12; flyOre(n.rock.position.clone().setY(1), am.pilePos, am.m.color); }
+      n.prevS = s;
+      if(n.pop < 1){ n.pop = Math.min(1, n.pop + dt/0.45); const t = n.pop - 1; n.obj.scale.setScalar(0.85*(1 + 2.7*t*t*t + 1.7*t*t)); }
+    });
 
     for(let k=flyers.length-1;k>=0;k--){ const f = flyers[k]; f.t += dt/f.dur;
       if(f.t >= 1){ world.remove(f.m); flyers.splice(k,1); continue; }
