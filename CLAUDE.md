@@ -48,6 +48,9 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   `beltPower` para as esteiras), combustível obrigatório para caminhões e coletadores (`useFuel`, `FUEL_BUY_*` compra cara no galpão).
 - `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `SELL_ITEMS`: aba 💰 Vender (lado direito): preço de venda de cada produto das etapas e dos finais. Cada etapa vale mais que a anterior e menos que terminar a cadeia; carvão bruto bem barato (não pode render mais que um ajudante do Cobre).
+- `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.
+- `DEAL_*`, `dealPool`: pedidos do mercado (quantidade fixa por +40%, 5 min para entregar).
+- `CAR_GAL_MULT`, `carBuy`, `updateCars`: carros da rodovia que param no posto e compram galões (um pouco acima do preço de venda do galão).
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Começo do jogo
