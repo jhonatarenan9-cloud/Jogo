@@ -44,6 +44,10 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `OIL_*`, `oilRate`, `fuelCap`, `pumpCost`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo (combustível dos veículos).
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
+## Bônus de teste
+Há um bônus único de $10 milhões (`TEST_GRANT`, flag `testGrant10M`) colocado a pedido do usuário para testar.
+Remova quando ele terminar os testes.
+
 ## Testes
 O `index.html` usa o `three.min.js` local, então dá para testar com Playwright servindo a pasta
 (`python3 -m http.server`) ou abrindo o arquivo direto.
