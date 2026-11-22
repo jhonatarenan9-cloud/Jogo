@@ -164,6 +164,21 @@
   .cmp div.best{outline:1px solid #9cff7a}
   .cmp div.best b{color:#9cff7a}
   .condRow{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px}
+  .maintHead{display:flex;align-items:center;gap:12px;background:linear-gradient(150deg,#2b3138,#1f242a);border:1px solid #4a5560;border-radius:14px;padding:12px;margin-bottom:10px}
+  .maintHead > div{flex:1;min-width:0}
+  .maintHead small{display:block;font-size:11px;color:var(--muted)}
+  .maintHead b{font-size:22px}
+  .maintHead button{font-size:12px;line-height:1.3;min-width:110px}
+  .maintRow{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;margin-bottom:8px}
+  .mIco{width:40px;height:40px;flex:none;border-radius:10px;border:2px solid;display:flex;align-items:center;justify-content:center;font-size:22px;background:#1a1410}
+  .mInfo{flex:1;min-width:0}
+  .mInfo b{font-size:14px;display:block}
+  .mInfo small{font-size:11px;color:var(--muted)}
+  .mBar{height:8px;background:#1a1410;border-radius:99px;overflow:hidden;margin-top:5px}
+  .mBar > div{height:100%;border-radius:99px}
+  .mRight{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
+  .mRight b{font-size:15px}
+  .mRight button{font-size:12px;padding:6px 10px}
   .miniSlots{display:inline-flex;gap:3px;vertical-align:middle;margin-left:4px}
   .miniSlots .slot{width:20px;height:20px;font-size:11px;border-radius:6px}
   .lvlBtn{flex:none;font-size:12px;font-weight:700;padding:6px 9px;background:#e0b020;color:#2a1e05;border:0;border-bottom:3px solid #a67c12;border-radius:8px}
@@ -205,9 +220,9 @@
   .slot{width:34px;height:34px;border-radius:9px;border:2px dashed #5a4838;display:flex;align-items:center;justify-content:center;font-size:18px}
   .slot.on{border:2px solid var(--gold);background:#3a2f26}
   #dock{gap:8px}
-  #dock button{width:72px;font-size:11px;letter-spacing:-.2px}
-  @media (max-width:430px){#dock{gap:5px} #dock button{width:66px;font-size:10px;padding:7px 2px 6px} #dock button span{font-size:21px}}
-  @media (max-width:360px){#dock button{width:60px;font-size:9.5px}}
+  #dock button{width:70px;font-size:10.5px;letter-spacing:-.3px}
+  @media (max-width:430px){#dock{gap:4px} #dock button{width:58px;font-size:9px;padding:7px 1px 6px;border-radius:13px} #dock button span{font-size:20px}}
+  @media (max-width:360px){#dock button{width:52px;font-size:8.5px}}
   .achHead{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:linear-gradient(150deg,#3a2d12,#231c16);
     border:1px solid #6b5420;border-radius:14px;padding:12px;margin-bottom:10px}
   .achRank{display:flex;align-items:center;gap:10px}
@@ -247,6 +262,7 @@
   <nav id="dock">
     <button data-open="shop"><span>🛠️</span>Loja</button>
     <button data-open="inv"><span>🎒</span>Minério<i id="invBadge" hidden></i></button>
+    <button data-open="maint"><span>🔧</span>Manutenção<i id="maintBadge" hidden></i></button>
     <button data-open="stats"><span>📊</span>Estatísticas</button>
     <button data-open="ach"><span>🏆</span>Conquistas<i id="achBadge" hidden></i></button>
     <button data-open="mines"><span>⛰️</span>Minas</button>
@@ -277,6 +293,7 @@
           </div>
         </section>
         <section data-panel="panel"><div id="panelBody"></div></section>
+        <section data-panel="maint"><div id="maintBody"></div></section>
         <section data-panel="stats"><div id="statsBody"></div></section>
         <section data-panel="ach"><div id="achList"></div></section>
         <section data-panel="mines">
@@ -304,10 +321,10 @@ const MINES = [
 // power = minério por golpe; passive = minério/s extra (máquinas)
 const TOOLS = [
   {id:'madeira',     name:'Picareta de Madeira', ico:'🪵', cost:0,        power:1,  passive:0,   desc:'Ferramenta inicial. Libera a mina de Cobre.'},
-  {id:'ferro',       name:'Picareta de Ferro',   ico:'⛏️', cost:3000,     power:2,  passive:0,   desc:'Mais resistente. Libera a mina de Ferro.'},
-  {id:'britadeira',  name:'Britadeira',          ico:'🔨', cost:80000,    power:4,  passive:0.3, desc:'Quebra rocha dura. Libera a mina de Ouro.'},
-  {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:2500000,  power:9,  passive:1.5, desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
-  {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:60000000, power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
+  {id:'ferro',       name:'Picareta de Ferro',   ico:'⛏️', cost:2600,     power:2,  passive:0,   desc:'Mais resistente. Libera a mina de Ferro.'},
+  {id:'britadeira',  name:'Britadeira',          ico:'🔨', cost:70000,    power:4,  passive:0.3, desc:'Quebra rocha dura. Libera a mina de Ouro.'},
+  {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:2200000,  power:9,  passive:1.5, desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
+  {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:52000000, power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
 const STAFF_COST = {carvao:80, cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:900000};
@@ -317,7 +334,7 @@ const HELPER_TOOLS = [
   {name:'Martelete', ico:'🔩', mult:1.4, costMult:20},
   {name:'Rompedor', ico:'💥', mult:2, costMult:150},
 ];
-const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 1.5, MANAGER_COST_MULT = 40;
+const MAX_HELPERS = 3, HELPER_RATE = 0.22, MANAGER_MULT = 1.5, MANAGER_COST_MULT = 40;
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
 const ORES_PER_BAR = 5, BAR_MULT = 20;
@@ -345,7 +362,7 @@ const bagCost = () => Math.ceil(250 * Math.pow(2.6, S.bagLvl));
 const truckCap = () => Math.round(30 * (1 + 0.4*S.truckLvl));
 const truckCapCost = () => Math.ceil(1500 * Math.pow(3, S.truckLvl));
 // ===== manutenção: fundições e caminhões se desgastam =====
-const SM_WEAR_TIME = 900;            // segundos trabalhando para ir de 100% a 0%
+const SM_WEAR_TIME = 1200;           // segundos trabalhando para ir de 100% a 0%
 const TRUCK_WEAR_TRIP = 0.05;        // desgaste por viagem
 const MIN_EFF = 0.5;                 // rendimento mínimo com a máquina toda gasta
 const cond = key => S.cond[key] ?? 1;
@@ -353,7 +370,7 @@ const effOf = key => MIN_EFF + (1-MIN_EFF)*cond(key);
 const wearMult = () => S.gemItems.kit ? 0.5 : 1;
 const smRepairCost = m => Math.ceil(SMELTER_COST[m.id] * 0.15 * (1 - cond('sm_'+m.id)));
 const truckRepairCost = k => Math.ceil(TRUCK_COSTS[k] * 0.2 * (1 - cond('truck_'+k)));
-function repair(key, cost){ if(S.money < cost || cost <= 0) return; S.money -= cost; S.cond[key] = 1; toast('🔧 Consertado! Rendimento 100%.'); if(window.world3d) world3d.celebrate(); render(); save(); }
+function repair(key, cost){ if(S.money < cost || cost <= 0) return; S.money -= cost; S.cond[key] = 1; toast('🔧 Consertado! Rendimento 100%.'); if(sheetOpen === 'maint') buildMaint(); if(window.world3d) world3d.celebrate(); render(); save(); }
 // ===== gemas raras =====
 const GEM_CHANCE = 0.005, GEM_DELIVERY_CHANCE = 0.04;
 const gemChance = () => GEM_CHANCE * (S.gemItems.lupa ? 2 : 1);
@@ -439,7 +456,7 @@ const factoryTip = t => toolIndex(t) > 0 && !!S.tools[TOOLS[toolIndex(t)-1].id] 
 const canBuy = t => toolIndex(t) === 0 || !!S.tools[TOOLS[toolIndex(t)-1].id];
 const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
-const SHARPEN_BONUS = 0.15, BOOST_BONUS = 0.08, TURBO_BONUS = 0.25, DRILL_BONUS = 0.25;   // bônus por nível das melhorias
+const SHARPEN_BONUS = 0.18, BOOST_BONUS = 0.08, TURBO_BONUS = 0.25, DRILL_BONUS = 0.25;   // bônus por nível das melhorias
 function clickPower(){ return bestTool().power * (1 + SHARPEN_BONUS*S.sharpen) * (S.gemItems.capacete ? 1.1 : 1); }
 function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.5, S.staff[m.id].n)); }
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
@@ -834,10 +851,7 @@ function buildPanel(){
     add('🛻', `Caçamba Maior <span class="count">nv ${S.truckLvl}</span>`, '+40% de carga nos caminhões e coletadores', S.trucks ? btn(money(cc), buyTruckCap, cc) : tag('🔒 Caminhão','var(--muted)'));
     const bc = bagCost();
     add('🎒', `Mochila Maior <span class="count">nv ${S.bagLvl}</span>`, `Carrega +15 minérios (hoje ${fmt(bagCap())})`, btn(money(bc), buyBag, bc));
-    if(S.trucks){ sec('🔧 Manutenção da frota');
-      for(let k=0;k<S.trucks;k++){ const c = cond('truck_'+k), rc = truckRepairCost(k);
-        add('🚚', `Caminhão ${k+1} <span class="count" style="color:${c<0.5?'#ff9b7a':c<0.8?'#ffd27a':'#9cff7a'}">${Math.round(c*100)}%</span>`,
-          `Carga e velocidade a ${Math.round(effOf('truck_'+k)*100)}%. Gasta ${Math.round(TRUCK_WEAR_TRIP*wearMult()*100)}% por viagem.`, rc > 0 ? btn('Consertar ' + money(rc), ()=>repair('truck_'+k, rc), rc) : tag('✔ Novo')); } }
+    if(S.trucks) el.insertAdjacentHTML('beforeend', `<p class="small">🔧 O estado dos caminhões fica no botão <b>Manutenção</b> da barra de baixo.</p>`);
     sec('🛺 Coletadores');
     el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem o seu coletador: compre no painel da mina (botão <b>⬆️ NÍVEL</b> ao lado do portão). Trabalhando: <b>${MINES.filter(m=>S.collectors[m.id]).map(m=>m.name).join(', ') || 'nenhum'}</b>.</p>`);
     return;
@@ -878,9 +892,7 @@ function buildPanel(){
   add('🏭', 'Fundição', `${ORES_PER_BAR} ${m.name.toLowerCase()} (${money(ORES_PER_BAR*m.value)}) → 1 barra = <b style="color:#9cff7a">${money(barValue(m))}</b>`, has.sm ? tag('✔ Construída') : btn(money(smelterLeft(m)), ()=>buySmelter(m), smelterLeft(m)));
   add('🛤️', 'Esteira de minério', `Leva ${fmt(beltRate(m))}/s da pilha até a fundição.`, has.belt ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]));
   add('💵', 'Esteira de venda', 'Leva as barras até a caixa de venda e vende sozinha.', has.sell ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]));
-  if(has.sm){ const c = cond('sm_'+m.id), rc = smRepairCost(m);
-    add('🔧', `Manutenção da fundição <span class="count" style="color:${c<0.5?'#ff9b7a':c<0.8?'#ffd27a':'#9cff7a'}">${Math.round(c*100)}%</span>`,
-      `Rendimento ${Math.round(effOf('sm_'+m.id)*100)}%. A fundição se desgasta enquanto trabalha.`, rc > 0 ? btn('Consertar ' + money(rc), ()=>repair('sm_'+m.id, rc), rc) : tag('✔ Nova')); }
+  if(has.sm && cond('sm_'+m.id) < 0.6) el.insertAdjacentHTML('beforeend', `<div class="lockedBox">🔧 Fundição gasta (${Math.round(cond('sm_'+m.id)*100)}%). Conserte no botão <b>Manutenção</b> da barra de baixo.</div>`);
   if(has.sm && S.ore.carvao <= 0.01) el.insertAdjacentHTML('beforeend', `<div class="lockedBox">⚫ Sem carvão: a fundição está parada. Abasteça a mina de Carvão.</div>`);
   sec('🛺 Coletador');
   add('🛺', 'Coletador', `Busca até ${fmt(collectorCap())} na pilha e leva ao galpão. Na Metalúrgica: ${money(m.value*DELIVERY_MULT)} cada.`,
@@ -892,6 +904,42 @@ function mineIncome(m){
   const r = mineRate(m) + (m.id === S.active ? machineRate() : 0);
   const toBars = hasBelt(m) ? Math.min(r*fundShareEff(m), beltRate(m)) : 0, toHaul = splitOn(m) ? r*(1-fundShare(m)) : 0;
   return (r - toBars - toHaul)*m.value + toBars/ORES_PER_BAR*barValue(m) + toHaul*m.value*DELIVERY_MULT;
+}
+
+// lista de máquinas com desgaste
+function machines(){
+  const list = [];
+  MINES.forEach(m=>{ if(!m.fuel && S.smelters[m.id]) list.push({key:'sm_'+m.id, ico:'🏭', name:'Fundição · '+m.name, color:m.color, cost:smRepairCost(m),
+    info:`Velocidade da fundição ${Math.round(effOf('sm_'+m.id)*100)}% · gasta enquanto trabalha`}); });
+  for(let k=0;k<S.trucks;k++) list.push({key:'truck_'+k, ico:'🚚', name:'Caminhão '+(k+1), color:'#8c8f96', cost:truckRepairCost(k),
+    info:`Carga e velocidade ${Math.round(effOf('truck_'+k)*100)}% · gasta ${Math.round(TRUCK_WEAR_TRIP*wearMult()*100)}% por viagem`});
+  return list;
+}
+const needRepair = () => machines().filter(x=>cond(x.key) < 0.7).length;
+function repairAll(){
+  const list = machines().filter(x=>x.cost > 0), tot = list.reduce((a,x)=>a+x.cost,0);
+  if(!list.length || S.money < tot) return;
+  S.money -= tot; list.forEach(x=>S.cond[x.key] = 1);
+  toast(`🔧 ${list.length} máquina(s) consertada(s) por ${money(tot)}!`); if(window.world3d) world3d.celebrate();
+  buildMaint(); render(); save();
+}
+function buildMaint(){
+  const el = document.getElementById('maintBody'), list = machines();
+  if(!list.length){ el.innerHTML = `<div class="lockedBox">🔧 Nenhuma máquina para cuidar ainda. As fundições e os caminhões aparecem aqui quando você comprar.</div>`; return; }
+  const tot = list.reduce((a,x)=>a+x.cost,0), avg = list.reduce((a,x)=>a+cond(x.key),0)/list.length;
+  let h = `<div class="maintHead"><div><small>Estado médio das máquinas</small><b style="color:${avg<0.5?'#ff9b7a':avg<0.8?'#ffd27a':'#9cff7a'}">${Math.round(avg*100)}%</b>
+      <div class="progress"><div style="width:${avg*100}%"></div></div></div>
+    <button class="primary" id="repairAllBtn" data-cost="${tot}" ${tot<=0?'disabled':''}>${tot>0 ? 'Consertar tudo<br>'+money(tot) : '✔ Tudo novo'}</button></div>
+    <p class="small" style="margin-top:0">Máquinas gastas rendem menos (até ${Math.round(MIN_EFF*100)}%). O conserto custa mais quanto mais gasta a máquina estiver.${S.gemItems.kit ? ' 🧰 Seu Kit de Ferramentas deixa o desgaste 50% mais lento.' : ''}</p>`;
+  list.sort((a,b)=>cond(a.key)-cond(b.key)).forEach(x=>{
+    const c = cond(x.key), col = c<0.5?'#ff9b7a':c<0.8?'#ffd27a':'#9cff7a';
+    h += `<div class="maintRow"><div class="mIco" style="border-color:${x.color}">${x.ico}</div>
+      <div class="mInfo"><b>${x.name}</b><small>${x.info}</small><div class="mBar"><div style="width:${c*100}%;background:${col}"></div></div></div>
+      <div class="mRight"><b style="color:${col}">${Math.round(c*100)}%</b>${x.cost > 0 ? `<button data-key="${x.key}" data-cost="${x.cost}">${money(x.cost)}</button>` : '<span class="owned">✔ Nova</span>'}</div></div>`;
+  });
+  el.innerHTML = h;
+  el.querySelectorAll('.mRight button').forEach(b=>b.onclick=()=>{ repair(b.dataset.key, Number(b.dataset.cost)); });
+  const ra = document.getElementById('repairAllBtn'); if(ra) ra.onclick = repairAll;
 }
 
 function buildStats(){
@@ -1147,9 +1195,10 @@ function render(){
   const sb = MINES.filter(hasSellBelt).map(m=>m.name);
   if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
   else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
-  document.querySelectorAll('#shop button[data-cost], #staff button[data-cost], #panelBody button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
+  document.querySelectorAll('#shop button[data-cost], #staff button[data-cost], #panelBody button[data-cost], #maintBody button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
   checkMissions();
   checkAchievements();
+  { const n = needRepair(), b = document.getElementById('maintBadge'); b.hidden = !n; b.textContent = n; }
   { const b = document.getElementById('achBadge'); b.hidden = !S.achNew; b.textContent = S.achNew; }
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
@@ -2617,7 +2666,7 @@ function frame(now){
 })();
 
 // ---------- janelas dentro do jogo ----------
-const SHEETS = {stats:'📊 Estatísticas', panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+const SHEETS = {maint:'🔧 Oficina de Manutenção', stats:'📊 Estatísticas', panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
 let sheetOpen = null;
 function openSheet(name){
   sheetOpen = name;
@@ -2629,6 +2678,7 @@ function openSheet(name){
   if(name==='ach') buildAch();
   if(name==='panel') buildPanel();
   if(name==='stats') buildStats();
+  if(name==='maint') buildMaint();
   render();
   document.getElementById('sheet').hidden = false;
 }
