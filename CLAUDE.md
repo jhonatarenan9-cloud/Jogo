@@ -46,6 +46,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   (4 bombas com funcionários, 2 separadores com maquinistas, carregadeira, refinaria, posto de galões). Galão rende pouco por segundo de propósito.
 - **Rede integrada:** `gridTick` (energia: `GEN_*` geradores a carvão + usina + baterias; `powerDemand` = esteiras + postes + refinaria;
   `beltPower` para as esteiras), combustível obrigatório para caminhões e coletadores (`useFuel`, `FUEL_BUY_*` compra cara no galpão).
+- `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Começo do jogo

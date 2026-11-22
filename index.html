@@ -640,12 +640,14 @@ function produce(sec){
   for(const m of MINES){ const r = mineRate(m); if(r > 0) gained[m.id] = r*sec; }
   const mr = machineRate(); if(mr > 0) gained[S.active] = (gained[S.active]||0) + mr*sec;
   for(const id in gained) addOre(id, gained[id]);
+  stagePay('carvao', gained.carvao||0);
   shareCoal(sec);
   smelt(sec);
   gridTick(sec, powerTick(sec));
   autoFuelTick();
   oilTick(sec);
   sellByBelts();
+  stageTick(sec);
   return gained;
 }
 function fmt(n){
@@ -675,6 +677,15 @@ function sellByBelts(){
   S.money += total; S.earned += total;
   return total;
 }
+// lucro por etapa: cada etapa do carvão e do petróleo já paga um pouco pelo que processa (bem menos que o produto final)
+const STAGE_PAY = {carvao:0.5, britagem:4, lavagem:6, caldeira:8, extracao:3, separacao:5, refino:25};
+const STAGE_RATE = {};   // $/s de cada etapa (média recente, para os painéis)
+let stageSec = 0, stageAcc = {};
+function stagePay(key, units){ if(units <= 0) return; const v = units*STAGE_PAY[key]; S.money += v; S.earned += v; stageAcc[key] = (stageAcc[key]||0) + v; }
+function stageTick(sec){ stageSec += sec; if(stageSec < 1 && sec < 1) return;
+  for(const k in STAGE_PAY){ const now = (stageAcc[k]||0)/stageSec; STAGE_RATE[k] = sec >= 1 ? now : (STAGE_RATE[k]||0)*0.6 + now*0.4; }
+  stageAcc = {}; stageSec = 0; }
+const stageRate = (...ks) => ks.reduce((a,k)=>a + (STAGE_RATE[k]||0), 0);
 // o carvão é dividido entre fundições e britadores: se faltar, todos recebem a mesma fração (ninguém fica sem)
 let coalShare = 1;
 function shareCoal(sec){
@@ -764,9 +775,9 @@ const batteryValue = () => (S.power.batteries||0) * BATTERY_VALUE;
 function powerTick(sec){
   const P = S.power; if(!P.open || sec <= 0) return 0;
   const r = powerStep()*sec, b = P.buf; let gen = 0;
-  if(crushers()){ const t = Math.max(0, Math.min(S.ore.carvao, Math.min(r*crushers(), POWER_BUF_MAX - b.moido)*coalShare)); S.ore.carvao -= t; b.moido += t; }
-  if(P.lv && P.maq){ const t = Math.max(0, Math.min(b.moido, r*2, POWER_BUF_MAX - b.limpo)); b.moido -= t; b.limpo += t*(1-WASH_LOSS); }
-  if(boilerHands()){ const t = Math.max(0, Math.min(b.limpo, r*boilerHands(), POWER_BUF_MAX - b.vapor)); b.limpo -= t; b.vapor += t; }
+  if(crushers()){ const t = Math.max(0, Math.min(S.ore.carvao, Math.min(r*crushers(), POWER_BUF_MAX - b.moido)*coalShare)); S.ore.carvao -= t; b.moido += t; stagePay('britagem', t); }
+  if(P.lv && P.maq){ const t = Math.max(0, Math.min(b.moido, r*2, POWER_BUF_MAX - b.limpo)); b.moido -= t; b.limpo += t*(1-WASH_LOSS); stagePay('lavagem', t); }
+  if(boilerHands()){ const t = Math.max(0, Math.min(b.limpo, r*boilerHands(), POWER_BUF_MAX - b.vapor)); b.limpo -= t; b.vapor += t; stagePay('caldeira', t); }
   if(P.tb){ const t = Math.min(b.vapor, r*2); b.vapor -= t; gen = t*ENERGY_PER_COAL; }
   return gen;
 }
@@ -823,11 +834,11 @@ let fuelNow = 0;   // litros/s refinados agora
 function oilTick(sec){
   const O = S.oil; if(!O.open || sec <= 0){ fuelNow = 0; return; }
   const r = oilStep()*sec, b = O.buf; let made = 0;
-  if(pumpsOn()) b.crude = Math.min(CRUDE_MAX, b.crude + r*pumpsOn());
-  if(sepsOn()){ const t = Math.max(0, Math.min(b.crude, r*2*sepsOn(), (DRUM_CAP - O.drums)*DRUM_UNITS - b.clean)); b.crude -= t; b.clean += t*(1-SEP_LOSS);
+  if(pumpsOn()){ const c = Math.max(0, Math.min(r*pumpsOn(), CRUDE_MAX - b.crude)); b.crude += c; stagePay('extracao', c); }
+  if(sepsOn()){ const t = Math.max(0, Math.min(b.crude, r*2*sepsOn(), (DRUM_CAP - O.drums)*DRUM_UNITS - b.clean)); b.crude -= t; b.clean += t*(1-SEP_LOSS); stagePay('separacao', t);
     const d = Math.min(Math.floor(b.clean/DRUM_UNITS), DRUM_CAP - Math.floor(O.drums)); if(d > 0){ O.drums += d; b.clean -= d*DRUM_UNITS; } }
   if(O.ld && O.rf){ const t = Math.max(0, Math.min(O.drums, 0.3*(1+0.5*O.lvl)*sec, REF_MAX - O.refBuf)); O.drums -= t; O.refBuf += t; }
-  if(O.rf){ const t = Math.max(0, Math.min(O.refBuf, 0.2*(1+0.5*O.lvl)*sec*gridRatio, (30 - b.diesel)/DRUM_L)); O.refBuf -= t; b.diesel += t*DRUM_L; made = t*DRUM_L; }
+  if(O.rf){ const t = Math.max(0, Math.min(O.refBuf, 0.2*(1+0.5*O.lvl)*sec*gridRatio, (30 - b.diesel)/DRUM_L)); O.refBuf -= t; b.diesel += t*DRUM_L; made = t*DRUM_L; stagePay('refino', t); }
   if(O.ps){ const g = Math.min(Math.floor(b.diesel/GAL_L), GAL_CAP - Math.floor(O.gal)); if(g > 0){ O.gal += g; b.diesel -= g*GAL_L; }
     while(O.gal >= 1 && O.fuel <= fuelCap() - GAL_L){ O.gal -= 1; O.fuel += GAL_L; } }   // galões vão ao galpão abastecer o tanque
   const now = made/sec; fuelNow = sec > 1 ? now : fuelNow + (now - fuelNow)*Math.min(1, sec*2);
@@ -1203,6 +1214,7 @@ function buildPanel(){
         <div><span>🛢️ Tambores nos paletes</span><b>${Math.floor(O.drums)}/${DRUM_CAP}</b></div>
         <div><span>🏭 Refinaria · ⛽ combustível</span><b>${fmt(O.refBuf)} tambores · ${fmt(fuelNow)} L/s</b></div>
         <div><span>⛽ Galões guardados</span><b>${Math.floor(O.gal)}/${GAL_CAP} ≈ ${money(galValue())}</b></div>
+        <div><span>💵 Lucro das etapas</span><b>extração ${money(stageRate('extracao'))}/s · separação ${money(stageRate('separacao'))}/s · refino ${money(stageRate('refino'))}/s</b></div>
       </div></div>`);
     if(!O.open){ const r = oilOpenLeft(); add('🏗️', 'Terreno do Campo de Petróleo', 'Libera a área grande perto do lago, a sudoeste do vilarejo. Também dá para pagar pisando no quadrado da entrada.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openOil(); } }, r)); return; }
     if(O.ps){ const b = document.createElement('button'); b.className = 'primary'; b.style.width = '100%'; b.style.marginBottom = '10px';
@@ -1230,6 +1242,7 @@ function buildPanel(){
         <div><span>Quebrado · Limpo · Vapor</span><b>${fmt(P.buf.moido)} · ${fmt(P.buf.limpo)} · ${fmt(P.buf.vapor)}</b></div>
         <div><span>💡 Postes · 🛤️ Esteiras</span><b>ajudantes +${Math.round(POWER_LIGHT_BONUS*ratio*100)}% · +${Math.round(POWER_BELT_BONUS*ratio*100)}%</b></div>
         <div><span>🔋 Baterias</span><b>${P.batteries||0}/${BATTERY_CAP} ≈ ${money(batteryValue())}</b></div>
+        <div><span>💵 Lucro das etapas</span><b>britagem ${money(stageRate('britagem'))}/s · lavagem ${money(stageRate('lavagem'))}/s · caldeira ${money(stageRate('caldeira'))}/s</b></div>
       </div></div>`);
     if(!P.open){ const r = powerOpenLeft(); add('🏗️', 'Terreno da Usina', 'Libera a área à esquerda da mina de Carvão. Também dá para pagar pisando no quadrado da estrada.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openPower(); } }, r)); return; }
     if(P.bat){ const b = document.createElement('button'); b.className = 'primary'; b.style.width = '100%'; b.style.marginBottom = '10px';
@@ -1281,7 +1294,7 @@ function buildPanel(){
   const rate = mineRate(m) + (m.id === S.active ? machineRate() : 0);
   const needCoal = !m.fuel && hasBelt(m) ? Math.min(rate*fundShareEff(m), beltRate(m))/ORES_PER_BAR*COAL_PER_BAR : 0;
   const rows = m.fuel
-    ? `<div><span>⚫ Produz</span><b>${fmt(mineRate(m))} carvão/s</b></div><div><span>🏭 Fundições consomem</span><b style="color:${mineRate(m) >= coalUseMax() ? '#2a7a1a' : '#b3261e'}">até ${fmt(coalUseMax())}/s</b></div><div><span>📦 Estoque</span><b>${fmt(S.ore.carvao)}</b></div>`
+    ? `<div><span>⚫ Produz</span><b>${fmt(mineRate(m))} carvão/s · rende ${money(mineRate(m)*STAGE_PAY.carvao)}/s</b></div><div><span>🏭 Fundições consomem</span><b style="color:${mineRate(m) >= coalUseMax() ? '#2a7a1a' : '#b3261e'}">até ${fmt(coalUseMax())}/s</b></div><div><span>📦 Estoque</span><b>${fmt(S.ore.carvao)}</b></div>`
     : `<div><span>⛏️ Produz</span><b>${fmt(rate)} ${m.name.toLowerCase()}/s</b></div>${needCoal ? `<div><span>⚫ Precisa</span><b>${fmt(needCoal)} carvão/s</b></div>` : ''}<div><span>💰 Rende</span><b>≈ ${money(mineIncome(m))}/s</b></div>`;
   el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco" style="background:${m.color}33">${m.fuel ? '⚫' : '⛏️'}</span>
       <div><small>Nível da mina</small><b>Nível ${info.lvl}</b></div><span class="lvlBadge">${info.lvl}/${info.max}</span></div>
