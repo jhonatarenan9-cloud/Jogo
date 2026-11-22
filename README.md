@@ -16,6 +16,7 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
   5. Esmeralda — Escavadeira Gigante
 - Na aba **👷 Funcionários**, contrate até 3 ajudantes por mina. Eles mineram sozinhos, cada um na sua mina.
 - Cada mina também pode ter um **👔 Gerente** (mais caro), que faz os ajudantes daquela mina trabalharem 2x mais rápido.
+- Depois de abrir a mina de Esmeralda, a Loja libera a aba **🏭 Fundição**: construa a máquina de fundição e compre esteiras para cada mina. As esteiras levam o minério da pilha até a máquina, que transforma 5 minérios em 1 barra valendo 10x o minério.
 - Melhorias: afiar ferramenta, manutenção e vendedor automático.
 - O progresso é salvo no navegador, e você ganha minério mesmo offline (50%, até 8h).
 - Objetivo final: minerar 1.000 esmeraldas e virar Magnata da Mineração.

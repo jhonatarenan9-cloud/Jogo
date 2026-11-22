@@ -99,6 +99,11 @@
   .owned{color:var(--ok);font-size:13px;font-weight:600;min-width:96px;text-align:center}
   .count{font-size:12px;color:var(--gold)}
   .small{font-size:12px;color:var(--muted)}
+  .lockedBox{background:var(--panel2);border:1px dashed #5a4838;border-radius:12px;padding:16px;font-size:13px;color:var(--muted);line-height:1.5}
+  .lockedBox b{color:#2ee67a}
+  .tabs{flex-wrap:wrap}
+  .tabs button{min-width:30%}
+  h3.subhead{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:14px 0 8px}
   .staffCard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
   .staffCard.locked{opacity:.55}
   .staffHead{display:flex;align-items:center;gap:10px}
@@ -142,6 +147,7 @@
           <div class="tabs">
             <button data-tab="tools" class="on">Ferramentas</button>
             <button data-tab="upgrades">Melhorias</button>
+            <button data-tab="factory">🏭 Fundição</button>
           </div>
           <div id="shop"></div>
         </section>
@@ -151,6 +157,7 @@
         </section>
         <section data-panel="inv">
           <div class="inv" id="inv"></div>
+          <div id="barsBox" hidden><h3 class="subhead">Barras da fundição</h3><div class="inv" id="bars"></div></div>
           <div class="row">
             <button class="primary" id="sellBtn">Vender tudo</button>
             <span class="small" id="sellInfo"></span>
@@ -188,6 +195,9 @@ const TOOLS = [
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
 const STAFF_COST = {cobre:20, ferro:160, ouro:1300, diamante:10000, esmeralda:80000};
 const MAX_HELPERS = 3, HELPER_RATE = 0.5, MANAGER_MULT = 2, MANAGER_COST_MULT = 25;
+// Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
+const SMELTER_COST = 1500000, ORES_PER_BAR = 5, BAR_MULT = 10, BELT_RATE = 2;
+const BELT_COST = {cobre:100000, ferro:200000, ouro:400000, diamante:800000, esmeralda:1600000};
 const GOAL = 1000; // esmeraldas para vencer
 
 // ===================== ESTADO =====================
@@ -199,6 +209,7 @@ function newState(){
     mined:Object.fromEntries(MINES.map(m=>[m.id,0])),
     tools:{madeira:true}, paid:{},
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false}])),
+    smelter:false, belts:{}, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false,
     active:'cobre', won:false, last:Date.now()
   };
@@ -208,7 +219,7 @@ try{
   const raw = localStorage.getItem(SAVE_KEY);
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
-    S.paid = d.paid || {};
+    S.paid = d.paid || {}; S.belts = d.belts || {}; S.bars = Object.assign(newState().bars, d.bars);
     S.staff = newState().staff;
     if(d.staff){ for(const m of MINES) if(d.staff[m.id]) S.staff[m.id] = {n:Math.min(MAX_HELPERS, d.staff[m.id].n|0), mgr:!!d.staff[m.id].mgr}; }
     else if(d.helpers){ // save antigo: converte os ajudantes antigos em ajudantes por mina
@@ -244,6 +255,7 @@ function produce(sec){
   for(const m of MINES){ const r = mineRate(m); if(r > 0) gained[m.id] = r*sec; }
   const mr = machineRate(); if(mr > 0) gained[S.active] = (gained[S.active]||0) + mr*sec;
   for(const id in gained) addOre(id, gained[id]);
+  smelt(sec);
   return gained;
 }
 function fmt(n){
@@ -253,17 +265,29 @@ function fmt(n){
   return n.toFixed(n<10?2:n<100?1:0).replace('.',',') + u[i];
 }
 const money = n => '$' + fmt(n);
-const oreValue = () => MINES.reduce((a,m)=>a + S.ore[m.id]*m.value, 0);
+const barValue = m => m.value * BAR_MULT;
+const hasBelt = m => S.smelter && !!S.belts[m.id];
+// valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
+const oreValue = (auto) => MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
+const beltRate = () => BELT_RATE * (1 + 0.5*S.beltLvl);
+const beltSpeedCost = () => Math.ceil(1000000 * Math.pow(3, S.beltLvl));
+function smelt(sec){
+  if(!S.smelter) return;
+  for(const m of MINES) if(hasBelt(m) && S.ore[m.id] > 0){
+    const take = Math.min(S.ore[m.id], beltRate()*sec);
+    S.ore[m.id] -= take; S.bars[m.id] += take/ORES_PER_BAR;
+  }
+}
 
 // ===================== AÇÕES =====================
 function addOre(id, amt){
   S.ore[id] += amt; S.mined[id] += amt;
-  if(S.autoSell) sellAll(true);
+  if(S.autoSell) sellAll(true, true);
   if(id==='esmeralda' && !S.won && S.mined.esmeralda >= GOAL){ S.won = true; toast('🏆 Parabéns! Você se tornou um Magnata da Mineração!'); }
 }
-function sellAll(silent){
-  const total = oreValue();
-  for(const m of MINES) S.ore[m.id] = 0;
+function sellAll(silent, auto){
+  const total = oreValue(auto);
+  for(const m of MINES){ if(!(auto && hasBelt(m))) S.ore[m.id] = 0; S.bars[m.id] = 0; }
   S.money += total;
   if(!silent && total>0) toast('💰 Vendido por ' + money(total));
   return total;
@@ -279,6 +303,25 @@ function buyTool(t){
   const r = remaining(t);
   if(S.tools[t.id] || !canBuy(t) || S.money < r) return;
   S.money -= r; completeTool(t);
+}
+function completeSmelter(){
+  S.smelter = true; delete S.paid.smelter;
+  toast('🏭 Fundição construída! Agora compre esteiras para levar o minério até ela.');
+  if(window.world3d) world3d.onFactoryChanged();
+  buildShop(); render(); save();
+}
+function buySmelter(){
+  const r = SMELTER_COST - (S.paid.smelter||0);
+  if(S.smelter || !S.tools.escavadeira || S.money < r) return;
+  S.money -= r; completeSmelter();
+}
+function buyBelt(m){
+  const c = BELT_COST[m.id];
+  if(!S.smelter || S.belts[m.id] || !isUnlocked(m) || S.money < c) return;
+  S.money -= c; S.belts[m.id] = true;
+  toast(`🛤️ Esteira da mina de ${m.name} instalada! O minério vai virar barra.`);
+  if(window.world3d) world3d.onFactoryChanged();
+  buildShop(); render(); save();
 }
 function hireHelper(m){
   const st = S.staff[m.id], c = helperCost(m);
@@ -354,6 +397,26 @@ function buildShop(){
       else right = btn(money(remaining(t)), ()=>buyTool(t), remaining(t));
       add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}`, right);
     });
+  } else if(tab==='factory'){
+    if(!S.tools.escavadeira){
+      el.innerHTML = '<div class="lockedBox">🔒 A Fundição é liberada quando você abrir a última mina, a de <b>Esmeralda</b>.<br><br>Com ela você compra esteiras que levam o minério até uma máquina que transforma '+ORES_PER_BAR+' minérios em 1 barra valendo '+BAR_MULT+'x.</div>';
+      return;
+    }
+    const r = SMELTER_COST - (S.paid.smelter||0);
+    add('🏭', 'Máquina de Fundição', `Transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério (o dobro do valor). Fica ao lado da estrada, à direita.`,
+      S.smelter ? tag('✔ Construída') : btn(money(r), buySmelter, r));
+    MINES.forEach(m=>{
+      const c = BELT_COST[m.id];
+      let right;
+      if(S.belts[m.id]) right = tag('✔ Instalada');
+      else if(!S.smelter) right = tag('🔒','var(--muted)');
+      else right = btn(money(c), ()=>buyBelt(m), c);
+      add(`<span class="gem" style="display:inline-block;width:24px;height:24px;background:${m.color}"></span>`, `Esteira · ${m.name}`,
+        `Leva ${fmt(beltRate())} ${m.name.toLowerCase()}/s da pilha até a fundição. Barra de ${m.name}: ${money(barValue(m))}`, right);
+    });
+    const bc = beltSpeedCost();
+    add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, '+50% de velocidade em todas as esteiras',
+      S.smelter ? btn(money(bc), ()=>{ if(S.money<bc) return; S.money-=bc; S.beltLvl++; buildShop(); render(); save(); }, bc) : tag('🔒','var(--muted)'));
   } else {
     const sc = sharpenCost();
     add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, '+50% de minério por golpe', btn(money(sc), ()=>{ if(S.money<sc)return; S.money-=sc; S.sharpen++; buildShop(); render(); save(); }, sc));
@@ -374,6 +437,12 @@ function render(){
     inv.insertAdjacentHTML('beforeend', `<div class="invItem" style="${isUnlocked(x)?'':'opacity:.35'}"><div class="gem" style="background:${x.color}"></div>
       <div class="n">${fmt(S.ore[x.id])}</div><div class="v">${x.name} · ${money(x.value)}</div></div>`);
   });
+  document.getElementById('barsBox').hidden = !S.smelter;
+  if(S.smelter){
+    const bars = document.getElementById('bars'); bars.innerHTML = '';
+    MINES.forEach(x=>bars.insertAdjacentHTML('beforeend', `<div class="invItem" style="${hasBelt(x)?'':'opacity:.35'}"><div class="gem" style="background:${x.color};clip-path:polygon(15% 0,85% 0,100% 100%,0 100%)"></div>
+      <div class="n">${fmt(S.bars[x.id])}</div><div class="v">Barra · ${money(barValue(x))}</div></div>`));
+  }
   const total = oreValue();
   document.getElementById('sellBtn').disabled = total<=0;
   const badge = document.getElementById('invBadge'); badge.hidden = total<=0; badge.textContent = money(total);
@@ -450,7 +519,7 @@ function createWorld(){
   const circles = [], rects = [];
   function blocked(x,z){
     if(x<-33.5 || x>33.5 || z<BACK_Z+0.2 || z>11.5) return true;
-    for(const c of circles) if((x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
+    for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
     for(const r of rects){ if(r.when && !r.when()) continue;
       if(x>r.x1-0.32 && x<r.x2+0.32 && z>r.z1-0.32 && z<r.z2+0.32) return true; }
     return false;
@@ -705,7 +774,7 @@ function createWorld(){
     circles.push({x, z, r:1.6});
   }
   house(19, 6.3, '#f0e2c8', '#3d7bd1', -0.15);
-  house(25.5, 4.2, '#e9c7a0', '#c2453a', 0.25);
+  house(28.8, 6.2, '#e9c7a0', '#c2453a', 0.25);
   house(-27, 5.5, '#dfe7f0', '#2f8f5a', 0.2);
   // cerquinha branca do jardim
   for(let k=0;k<9;k++){ mesh(new THREE.BoxGeometry(0.12,0.5,0.12), M('#f4f1ec'), 16.8+k*0.7, 0.25, 8.4); }
@@ -724,6 +793,7 @@ function createWorld(){
     if(z > -2.2 && z < 7.2 && Math.abs(x) < 9) return false;          // vilarejo
     if(z > -5.8 && z < -2.2) return false;                             // estrada
     if(Math.hypot(x+19, z-5.6) < 4.2) return false;                    // lago
+    if(Math.hypot(x-24.5, z-0.3) < 4.2) return false;                  // fundição
     if(z < -7) return false;                                           // minas
     return !circles.some(c => (x-c.x)**2 + (z-c.z)**2 < (c.r+0.4)**2);
   }
@@ -768,6 +838,111 @@ function createWorld(){
       });
     }
   }
+
+  // ---------- fundição e esteiras ----------
+  const SX = 24.5, SZ = 0.3, BELT_Y = 1.95, TRUNK_Z = -6.8;
+  const factoryTile = makeTile(SX, SZ);
+  const smelter = new THREE.Group(); smelter.position.set(SX, 0, SZ); smelter.visible = false; world.add(smelter);
+  const fire = new THREE.MeshBasicMaterial({color:'#ff8a2a'});
+  const smoke = [];
+  {
+    mesh(new THREE.BoxGeometry(3.2,2.0,2.6), M('#5b5f66'), 0, 1.0, 0, smelter);
+    mesh(new THREE.BoxGeometry(3.4,0.25,2.8), M('#44474d'), 0, 2.1, 0, smelter);
+    mesh(new THREE.BoxGeometry(1.3,0.9,0.1), fire, 0, 0.75, 1.31, smelter).castShadow = false;
+    mesh(new THREE.BoxGeometry(1.6,0.2,0.3), M('#2f3236'), 0, 1.3, 1.35, smelter);
+    mesh(new THREE.BoxGeometry(1.8,0.12,0.9), M('#3b3f45'), 0, 0.06, 1.8, smelter);
+    const ch = mesh(new THREE.CylinderGeometry(0.35,0.42,2.4,10), M('#6f747c'), 1.0, 3.2, -0.5, smelter);
+    mesh(new THREE.CylinderGeometry(0.44,0.44,0.22,10), M('#c2453a'), 1.0, 3.6, -0.5, smelter);
+    mesh(new THREE.ConeGeometry(0.9,0.9,4,1,true), M('#f2b632'), -0.4, 2.7, -0.6, smelter).rotation.set(Math.PI,Math.PI/4,0);
+    for(let k=0;k<4;k++){ const s = mesh(new THREE.SphereGeometry(0.35,8,6), new THREE.MeshLambertMaterial({color:'#d8d8d8', transparent:true, opacity:0.6}), 1.0, 4.4, -0.5, smelter); s.castShadow = false; smoke.push(s); }
+    ch.castShadow = true;
+  }
+  const smelterSign = labelSprite(3.6); smelterSign.position.set(SX, 5.2, SZ); smelterSign.visible = false; smelterSign.userData.draw('🏭 Fundição', '#ffb36b');
+  // pilha de barras
+  const BAR_N = 60, barsPile = new THREE.InstancedMesh(new THREE.BoxGeometry(0.55,0.18,0.26), M('#f2c14e', {shininess:90, specular:new THREE.Color('#ffffff')}), BAR_N);
+  {
+    const d = new THREE.Object3D();
+    for(let k=0;k<BAR_N;k++){ const layer = Math.floor(k/12), j = k%12;
+      d.position.set(SX-2.6 + (j%3)*0.6 - layer*0.05, 0.1 + layer*0.19, SZ+0.4 + Math.floor(j/3)*0.3); d.rotation.set(0, layer%2 ? 0.08 : -0.05, 0); d.updateMatrix(); barsPile.setMatrixAt(k, d.matrix); }
+    barsPile.count = 0; barsPile.castShadow = true; world.add(barsPile);
+  }
+  // esteiras
+  const beltTexBase = (()=>{ const c = document.createElement('canvas'); c.width = 64; c.height = 32; const g = c.getContext('2d');
+    g.fillStyle = '#2f3236'; g.fillRect(0,0,64,32); g.fillStyle = '#4a4e55'; g.fillRect(0,0,24,32); return c; })();
+  const beltTexs = [], beltObjs = [];
+  function beltSeg(x1, z1, x2, z2, y=BELT_Y){
+    const len = Math.hypot(x2-x1, z2-z1); if(len < 0.05) return;
+    const g = new THREE.Group(); g.position.set((x1+x2)/2, y, (z1+z2)/2); g.rotation.y = -Math.atan2(z2-z1, x2-x1); world.add(g);
+    const tex = new THREE.CanvasTexture(beltTexBase); tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(len/0.6, 1); beltTexs.push(tex);
+    mesh(new THREE.BoxGeometry(len, 0.12, 0.7), new THREE.MeshLambertMaterial({map:tex}), 0, 0, 0, g);
+    for(const s of [-0.4,0.4]) mesh(new THREE.BoxGeometry(len, 0.18, 0.08), M('#f2b632'), 0, 0.06, s, g);
+    const n = Math.max(1, Math.floor(len/3.2));
+    for(let k=0;k<=n;k++){ const t = k/n - 0.5; mesh(new THREE.BoxGeometry(0.14, y, 0.14), M('#6f747c'), t*len, -y/2, 0, g); }
+    beltObjs.push(g);
+  }
+  function elevator(x, z){
+    const g = new THREE.Group(); g.position.set(x, 0, z); world.add(g);
+    mesh(new THREE.BoxGeometry(0.6, BELT_Y+0.4, 0.6), M('#f2b632'), 0, (BELT_Y+0.4)/2, 0, g);
+    mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), M('#2f3236'), 0, BELT_Y+0.5, 0, g);
+    beltObjs.push(g);
+  }
+  const FEED_X = MINES.map((m,i)=>MINE_X[i]+4.8);
+  const beltPaths = {};   // caminho percorrido pelos blocos de cada mina
+  function refreshFactory(){
+    const allOpen = !!S.tools.escavadeira;
+    smelter.visible = smelterSign.visible = !!S.smelter;
+    factoryTile.mesh.visible = allOpen && !S.smelter;
+    for(const o of beltObjs) world.remove(o); beltObjs.length = 0; beltTexs.length = 0;
+    if(!S.smelter) return;
+    const fx = MINES.filter(m=>S.belts[m.id]).map(m=>FEED_X[MINES.indexOf(m)]);
+    if(!fx.length) return;
+    const minX = Math.min(...fx), maxX = Math.max(...fx);
+    if(minX < SX) beltSeg(minX, TRUNK_Z, SX, TRUNK_Z);
+    if(maxX > SX) beltSeg(maxX, TRUNK_Z, SX, TRUNK_Z);
+    beltSeg(SX, TRUNK_Z, SX, SZ-1.3);
+    MINES.forEach((m,i)=>{
+      if(!S.belts[m.id]) return;
+      const x = FEED_X[i];
+      elevator(x, -9.0); beltSeg(x, -9.0, x, TRUNK_Z);
+      beltPaths[m.id] = [new THREE.Vector3(x,0.4,-9), new THREE.Vector3(x,BELT_Y+0.15,-9), new THREE.Vector3(x,BELT_Y+0.15,TRUNK_Z),
+        new THREE.Vector3(SX,BELT_Y+0.15,TRUNK_Z), new THREE.Vector3(SX,BELT_Y+0.15,SZ-1.1), new THREE.Vector3(SX-0.4,2.6,SZ-0.6)];
+    });
+  }
+  refreshFactory();
+  const riders = [], riderGeo = new THREE.BoxGeometry(0.26,0.26,0.26), BELT_SPEED = 3.2;
+  const spawnT = {};
+  function updateFactory(dt, t){
+    for(const tex of beltTexs) tex.offset.x -= dt*BELT_SPEED/0.6;
+    // blocos andando nas esteiras (visual)
+    MINES.forEach(m=>{
+      if(!S.smelter || !S.belts[m.id] || !beltPaths[m.id]) return;
+      spawnT[m.id] = (spawnT[m.id]||0) + dt;
+      if(spawnT[m.id] > 0.7 && S.ore[m.id] >= 0.5){
+        spawnT[m.id] = 0;
+        const path = beltPaths[m.id], lens = path.slice(1).map((v,k)=>v.distanceTo(path[k]));
+        const r = new THREE.Mesh(riderGeo, M(m.color)); r.castShadow = true; world.add(r);
+        riders.push({r, path, lens, total: lens.reduce((a,b)=>a+b,0), d:0});
+      }
+    });
+    for(let k=riders.length-1;k>=0;k--){
+      const it = riders[k]; it.d += dt*BELT_SPEED;
+      if(it.d >= it.total || !S.smelter){ world.remove(it.r); riders.splice(k,1); continue; }
+      let d = it.d, s = 0; while(d > it.lens[s]){ d -= it.lens[s]; s++; }
+      it.r.position.lerpVectors(it.path[s], it.path[s+1], d/it.lens[s]);
+    }
+    // fumaça e brilho quando está trabalhando
+    const working = S.smelter && MINES.some(m=>S.belts[m.id] && S.ore[m.id] > 0.01);
+    smoke.forEach((s,k)=>{ const u = (t*0.45 + k/4) % 1; s.position.y = 4.4 + u*2.2; s.position.x = 1.0 + Math.sin(u*5+k)*0.3;
+      s.scale.setScalar(0.6 + u*1.2); s.material.opacity = working ? 0.55*(1-u) : 0; });
+    fire.color.setHSL(0.07, 1, working ? 0.55 + Math.sin(t*9)*0.08 : 0.3);
+    const totalBars = MINES.reduce((a,m)=>a + (S.bars[m.id]||0), 0);
+    barsPile.count = totalBars < 0.2 ? 0 : Math.min(BAR_N, Math.ceil(Math.sqrt(totalBars)*3));
+    if(factoryTile.mesh.visible){
+      const r = Math.max(0, SMELTER_COST - (S.paid.smelter||0));
+      factoryTile.draw('🏭', money(r), 1 - r/SMELTER_COST, false);
+    }
+  }
+  circles.push({x:SX, z:SZ, r:1.8, when:()=>!!S.smelter});
 
   // ---------- personagem ----------
   function makeMiner(shirt, helmet, pants, skinCol){
@@ -1031,6 +1206,7 @@ function createWorld(){
     let z = null;
     if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
+    else if(factoryTile.mesh.visible && factoryTile.inside(p)) z = 'factory';
     else for(const o of MINES3) if(o.tile && o.tile.mesh.visible && o.tile.inside(p)) z = 'buy:'+o.i;
     if(z !== zone){ zone = z; zoneT = 0;
       if(z === 'market') doSell();
@@ -1038,6 +1214,8 @@ function createWorld(){
     } else zoneT += dt;
     if(z === 'market' && zoneT > 1){ zoneT = 0; doSell(true); }
     if(z && z.startsWith('buy:')) payTile(MINES3[+z.slice(4)], dt);
+    if(z === 'factory') payFactory(dt);
+    updateFactory(dt, npcT);
 
     for(const o of MINES3) if(o.tile && o.tile.mesh.visible){
       const t = o.tool, ok = canBuy(t);
@@ -1060,7 +1238,8 @@ function createWorld(){
     // seta guia: destino escolhido, ou o próximo portão quando der para pagar
     let g = guide;
     if(!g){ const next = TOOLS.find(t=>!S.tools[t.id]);
-      if(next && canBuy(next) && S.money >= remaining(next)){ const o = MINES3.find(o=>o.tool===next); g = {x:o.x, z:-6.3}; } }
+      if(next && canBuy(next) && S.money >= remaining(next)){ const o = MINES3.find(o=>o.tool===next); g = {x:o.x, z:-6.3}; }
+      else if(!next && !S.smelter && S.money >= SMELTER_COST - (S.paid.smelter||0)) g = {x:SX, z:SZ}; }
     if(g){
       const dx = g.x - p.x, dz = g.z - p.z;
       if(Math.hypot(dx,dz) < 2){ arrow.visible = false; guide = null; }
@@ -1082,6 +1261,13 @@ function createWorld(){
     document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on', x.dataset.tab==='tools'));
     openSheet('shop');
   }
+  function payFactory(dt){
+    if(S.smelter || !S.tools.escavadeira || S.money <= 0) return;
+    const r = SMELTER_COST - (S.paid.smelter||0), pay = Math.min(S.money, r, Math.max(SMELTER_COST*dt/1.6, 1));
+    S.money -= pay; S.paid.smelter = (S.paid.smelter||0) + pay;
+    payAcc += dt; if(payAcc > 0.12){ payAcc = 0; burstBills(SX, SZ, 1); }
+    if(SMELTER_COST - S.paid.smelter <= 0.0001) completeSmelter();
+  }
   function payTile(o, dt){
     const t = o.tool; if(!canBuy(t) || S.tools[t.id] || S.money <= 0) return;
     const pay = Math.min(S.money, remaining(t), Math.max(t.cost*dt/1.6, 1));
@@ -1092,7 +1278,8 @@ function createWorld(){
   return {
     update,
     guideTo(i){ const o = MINES3[i]; guide = isUnlocked(o.m) ? {x:o.x, z:-9} : {x:o.x, z:-6.3}; },
-    onToolBought(){ MINES3.forEach(o=>o.refresh()); refreshPick(); refreshMachines(); burstBills(player.position.x, player.position.z, 16); },
+    onToolBought(){ MINES3.forEach(o=>o.refresh()); refreshPick(); refreshMachines(); refreshFactory(); burstBills(player.position.x, player.position.z, 16); },
+    onFactoryChanged(){ refreshFactory(); burstBills(SX, SZ, 12); },
     debug:{player},
   };
 }
