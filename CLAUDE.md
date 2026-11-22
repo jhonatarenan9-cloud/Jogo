@@ -44,6 +44,8 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   caldeira com 2 ajudantes, turbina, banco de baterias). Bateria rende pouco por segundo de propósito.
 - `OIL_ITEMS`, `oilStep`, `fuelCap`, `pumpCost`, `GAL_*`, `DRUM_*`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo
   (4 bombas com funcionários, 2 separadores com maquinistas, carregadeira, refinaria, posto de galões). Galão rende pouco por segundo de propósito.
+- **Rede integrada:** `gridTick` (energia: `GEN_*` geradores a carvão + usina + baterias; `powerDemand` = esteiras + postes + refinaria;
+  `beltPower` para as esteiras), combustível obrigatório para caminhões e coletadores (`useFuel`, `FUEL_BUY_*` compra cara no galpão).
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Bônus de teste

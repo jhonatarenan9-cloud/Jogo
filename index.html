@@ -431,6 +431,7 @@ function newState(){
     oil:{open:false, lvl:0, fuel:0, drums:0, refBuf:0, gal:0, sold:0, buf:{crude:0, clean:0, diesel:0}},
     power:{open:false, lvl:0, batteries:0, charge:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
+    genLvl:0, autoFuel:false,
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
@@ -443,6 +444,11 @@ try{
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
     S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
+    if(d.genLvl === undefined){   // rede integrada nova: quem já tinha esteiras ganha o gerador 1, e caminhões ganham um tanque inicial
+      const anyBelt = Object.values(d.belts||{}).some(Boolean) || Object.values(d.sellBelts||{}).some(Boolean) || Object.values(d.smelters||{}).some(Boolean);
+      S.genLvl = anyBelt ? 1 : 0;
+      if((d.trucks||0) > 0 || Object.values(d.collectors||{}).some(Boolean)){ d.oil = d.oil || {}; d.oil.fuel = Math.max(d.oil.fuel||0, 50); }
+    }
     if(d.oil && d.oil.pump !== undefined){   // campo antigo: mantém o que foi construído, com a equipe mínima
       const o = d.oil; S.oil = Object.assign(newState().oil, {open:!!o.open, lvl:o.lvl||0, fuel:o.fuel||0, p1:!!o.pump, w1:!!o.pump, s1:!!o.sep, m1:!!o.sep, ld:!!o.ref, rf:!!o.ref, ps:!!o.tank});
     } else if(d.oil) S.oil = Object.assign(newState().oil, d.oil, {buf:Object.assign(newState().oil.buf, d.oil.buf)});
@@ -492,7 +498,7 @@ function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.2, S.staf
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
 const boostMult = () => 1 + BOOST_BONUS*S.boost;
 // minério/s de uma mina vindo dos ajudantes
-function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) * (1 + POWER_LIGHT_BONUS*powerRatio()) : 0; }
+function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) * (1 + (S.power.tb ? POWER_LIGHT_BONUS*gridRatio : 0)) : 0; }
 // minério/s das máquinas (vai para a mina ativa)
 function machineRate(){ let r = 0; for(const t of TOOLS) if(S.tools[t.id]) r += t.passive; return r * boostMult(); }
 function incomePerSec(){
@@ -513,7 +519,8 @@ function produce(sec){
   const mr = machineRate(); if(mr > 0) gained[S.active] = (gained[S.active]||0) + mr*sec;
   for(const id in gained) addOre(id, gained[id]);
   smelt(sec);
-  powerTick(sec);
+  gridTick(sec, powerTick(sec));
+  autoFuelTick();
   oilTick(sec);
   sellByBelts();
   return gained;
@@ -530,12 +537,13 @@ const barValue = m => m.value * BAR_MULT;
 const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 // valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
 const oreValue = (auto) => (auto || !S.power ? 0 : (S.power.batteries||0)*BATTERY_VALUE) + MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
-const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl) * (1 + POWER_BELT_BONUS*powerRatio());
+const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl) * beltPower();
 const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
 const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
 const SOLD = {};   // vendido pela esteira de venda (para mostrar o dinheiro subindo no mapa)
 function sellByBelts(){
   let total = 0;
+  if(gridRatio < 0.05) return 0;   // esteira de venda parada sem energia
   for(const m of MINES) if(hasSellBelt(m)){
     let v = S.bars[m.id]*barValue(m); S.bars[m.id] = 0;
     if(!hasBelt(m)){ v += S.ore[m.id]*m.value; S.ore[m.id] = 0; }   // sem esteira da fundição, vende o minério direto
@@ -578,9 +586,40 @@ const ENERGY_PER_COAL = 10, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POW
 const BATTERY_KWS = 20, BATTERY_VALUE = 100, BATTERY_CAP = 40;           // energia por bateria, preço e capacidade
 const powerStep = () => 0.3 * (1 + 0.5*S.power.lvl);                    // carvão/s por britador, ajudante...
 const boilerCost = () => Math.ceil(20000 * Math.pow(3, S.power.lvl));
-let powerNow = 0;
-const powerDemand = () => 1 + MINES.filter(m=>hasBelt(m)).length + MINES.filter(m=>hasSellBelt(m)).length + (coalLineOn() ? 1 : 0);
-const powerRatio = () => S.power.tb ? Math.min(1, powerNow / powerDemand()) : 0;
+// ===== REDE ELÉTRICA (gerador a carvão + usina + baterias) =====
+// esteiras, postes e a refinaria consomem energia; caminhões e coletadores consomem combustível
+const GEN_KW = 4, GEN_COSTS = [250, 2500, 12000], GEN_COAL = 0.04;   // kW por gerador, preços, carvão por kW·s
+let powerNow = 0, gridRatio = 0, usinaKW = 0, genKW = 0, battKW = 0;
+const genCap = () => GEN_KW * S.genLvl;
+const powerDemand = () => {
+  const belts = MINES.filter(m=>hasBelt(m)).length + MINES.filter(m=>hasSellBelt(m)).length + (MINES.some(m=>!m.fuel && S.smelters[m.id]) ? 1 : 0);
+  return belts + ((belts || S.genLvl || S.power.tb) ? 1 : 0) + (S.oil && S.oil.rf ? 2 : 0);   // + postes + refinaria
+};
+const powerRatio = () => gridRatio;
+const beltPower = () => gridRatio * (S.power.tb && gridRatio >= 0.999 ? 1 + POWER_BELT_BONUS : 1);   // esteiras: param sem energia
+function gridTick(sec, usinaGen){
+  const dem = powerDemand(), D = dem*sec; let supply = usinaGen;
+  // gerador queima carvão só no que falta
+  let g = Math.max(0, Math.min(genCap()*sec, D - supply));
+  if(g > 0){ const coal = g*GEN_COAL; if(S.ore.carvao < coal){ g = S.ore.carvao/GEN_COAL; } S.ore.carvao = Math.max(0, S.ore.carvao - g*GEN_COAL); supply += g; }
+  const P = S.power; let fromBatt = 0;
+  if(supply >= D){
+    if(P.bat){ P.charge = (P.charge||0) + (supply - D);
+      while(P.charge >= BATTERY_KWS && (P.batteries||0) < BATTERY_CAP){ P.charge -= BATTERY_KWS; P.batteries = (P.batteries||0) + 1; }
+      if((P.batteries||0) >= BATTERY_CAP) P.charge = Math.min(P.charge, BATTERY_KWS); }
+  } else if(P.bat){   // falta energia: as baterias cobrem
+    let need = D - supply;
+    const c = Math.min(P.charge||0, need); P.charge = (P.charge||0) - c; need -= c; fromBatt += c;
+    while(need > 0 && (P.batteries||0) > 0){ P.batteries--; P.charge += BATTERY_KWS; const u = Math.min(P.charge, need); P.charge -= u; need -= u; fromBatt += u; }
+  }
+  const ratio = D > 0 ? Math.min(1, (supply + fromBatt)/D) : (supply > 0 ? 1 : 0);
+  const k = sec > 1 ? 1 : Math.min(1, sec*3);
+  gridRatio += (ratio - gridRatio)*k;
+  usinaKW += (usinaGen/sec - usinaKW)*k; genKW += (g/sec - genKW)*k; battKW += (fromBatt/sec - battKW)*k;
+  powerNow = usinaKW + genKW;
+}
+function buyGenerator(){ const c = GEN_COSTS[S.genLvl]; if(c === undefined || S.money < c) return; S.money -= c; S.genLvl++;
+  toast(`⚡ Gerador ${S.genLvl} ligado! +${GEN_KW} kW queimando carvão.`); if(window.world3d) world3d.onPowerChanged(); render(); save(); }
 const pwItem = id => POWER_ITEMS.find(x=>x.id===id);
 const pwLeft = it => Math.max(0, it.cost - (S.paid['pw_'+it.id]||0));
 const powerOpenLeft = () => Math.max(0, POWER_OPEN_COST - (S.paid.pw_open||0));
@@ -591,18 +630,13 @@ const powerOn = () => !!(S.power.tb && crushers() && S.power.maq && boilerHands(
 const powerIntake = () => powerStep()*crushers();
 const batteryValue = () => (S.power.batteries||0) * BATTERY_VALUE;
 function powerTick(sec){
-  const P = S.power; if(!P.open || sec <= 0){ powerNow = 0; return; }
+  const P = S.power; if(!P.open || sec <= 0) return 0;
   const r = powerStep()*sec, b = P.buf; let gen = 0;
   if(crushers()){ const t = Math.max(0, Math.min(S.ore.carvao, r*crushers(), POWER_BUF_MAX - b.moido)); S.ore.carvao -= t; b.moido += t; }
   if(P.lv && P.maq){ const t = Math.max(0, Math.min(b.moido, r*2, POWER_BUF_MAX - b.limpo)); b.moido -= t; b.limpo += t*(1-WASH_LOSS); }
   if(boilerHands()){ const t = Math.max(0, Math.min(b.limpo, r*boilerHands(), POWER_BUF_MAX - b.vapor)); b.limpo -= t; b.vapor += t; }
   if(P.tb){ const t = Math.min(b.vapor, r*2); b.vapor -= t; gen = t*ENERGY_PER_COAL; }
-  // o que sobra da rede vira bateria
-  if(P.bat){ const extra = Math.max(0, gen - powerDemand()*sec);
-    P.charge = (P.charge||0) + extra;
-    while(P.charge >= BATTERY_KWS && (P.batteries||0) < BATTERY_CAP){ P.charge -= BATTERY_KWS; P.batteries = (P.batteries||0) + 1; }
-    if((P.batteries||0) >= BATTERY_CAP) P.charge = Math.min(P.charge, BATTERY_KWS); }
-  const now = gen/sec; powerNow = sec > 1 ? now : powerNow + (now - powerNow)*Math.min(1, sec*2);
+  return gen;
 }
 function sellBatteries(){
   const v = batteryValue(); if(v <= 0) return 0;
@@ -640,8 +674,9 @@ const OIL_ITEMS = [
   {id:'rf', kind:'m', name:'Refinaria', ico:'🏭', cost:12000, need:'ld', desc:'Transforma os tambores em combustível.'},
   {id:'ps', kind:'m', name:'Posto de Combustível', ico:'⛽', cost:9000, need:'rf', desc:'Enche galões, que vão ao galpão para abastecer os veículos.'},
 ];
-const CRUDE_MAX = 60, DRUM_UNITS = 5, DRUM_CAP = 48, REF_MAX = 12, GAL_L = 10, GAL_CAP = 40, GAL_VALUE = 120;
-const SEP_LOSS = 0.2, DRUM_L = 4.5, FUEL_BOOST = 1.5, TRUCK_FUEL = 3, COLLECTOR_FUEL = 1.5;
+const CRUDE_MAX = 60, DRUM_UNITS = 5, DRUM_CAP = 48, REF_MAX = 12, GAL_L = 10, GAL_CAP = 40, GAL_VALUE = 100;
+const SEP_LOSS = 0.2, DRUM_L = 4.5, TRUCK_FUEL = 3, COLLECTOR_FUEL = 1.5;
+const FUEL_BUY_L = 10, FUEL_BUY_PRICE = 150;   // comprar combustível no galpão é caro: o campo de petróleo compensa
 const oilStep = () => 0.25 * (1 + 0.5*S.oil.lvl);
 const fuelCap = () => 100 + 50*S.oil.lvl;
 const pumpCost = () => Math.ceil(25000 * Math.pow(3, S.oil.lvl));
@@ -660,12 +695,16 @@ function oilTick(sec){
   if(sepsOn()){ const t = Math.max(0, Math.min(b.crude, r*2*sepsOn(), (DRUM_CAP - O.drums)*DRUM_UNITS - b.clean)); b.crude -= t; b.clean += t*(1-SEP_LOSS);
     const d = Math.min(Math.floor(b.clean/DRUM_UNITS), DRUM_CAP - Math.floor(O.drums)); if(d > 0){ O.drums += d; b.clean -= d*DRUM_UNITS; } }
   if(O.ld && O.rf){ const t = Math.max(0, Math.min(O.drums, 0.3*(1+0.5*O.lvl)*sec, REF_MAX - O.refBuf)); O.drums -= t; O.refBuf += t; }
-  if(O.rf){ const t = Math.max(0, Math.min(O.refBuf, 0.2*(1+0.5*O.lvl)*sec, (30 - b.diesel)/DRUM_L)); O.refBuf -= t; b.diesel += t*DRUM_L; made = t*DRUM_L; }
+  if(O.rf){ const t = Math.max(0, Math.min(O.refBuf, 0.2*(1+0.5*O.lvl)*sec*gridRatio, (30 - b.diesel)/DRUM_L)); O.refBuf -= t; b.diesel += t*DRUM_L; made = t*DRUM_L; }
   if(O.ps){ const g = Math.min(Math.floor(b.diesel/GAL_L), GAL_CAP - Math.floor(O.gal)); if(g > 0){ O.gal += g; b.diesel -= g*GAL_L; }
     while(O.gal >= 1 && O.fuel <= fuelCap() - GAL_L){ O.gal -= 1; O.fuel += GAL_L; } }   // galões vão ao galpão abastecer o tanque
   const now = made/sec; fuelNow = sec > 1 ? now : fuelNow + (now - fuelNow)*Math.min(1, sec*2);
 }
-function useFuel(liters){ const O = S.oil; if(O.ps && O.fuel >= liters){ O.fuel -= liters; return FUEL_BOOST; } return 1; }
+const hasFuel = l => (S.oil.fuel||0) >= l;
+function useFuel(liters){ if(!hasFuel(liters)) return false; S.oil.fuel -= liters; return true; }
+function buyFuel(silent){ if(S.money < FUEL_BUY_PRICE || S.oil.fuel > fuelCap() - FUEL_BUY_L) return false;
+  S.money -= FUEL_BUY_PRICE; S.oil.fuel += FUEL_BUY_L; if(!silent){ toast(`⛽ Comprou ${FUEL_BUY_L} L por ${money(FUEL_BUY_PRICE)}`); render(); save(); } return true; }
+function autoFuelTick(){ if(S.autoFuel && S.depotOpen && S.oil.fuel < 20) buyFuel(true); }
 function sellGallons(){
   const n = Math.floor(S.oil.gal||0), v = n*GAL_VALUE; if(v <= 0) return 0;
   S.oil.gal -= n; S.oil.sold = (S.oil.sold||0) + n; S.money += v; S.earned += v;
@@ -691,6 +730,7 @@ const MISSIONS = [
   {t:'Contrate 1 ajudante na mina de Carvão', p:()=>[S.staff.carvao.n, 1], r:60},
   {t:'Afie a ferramenta (Loja → Melhorias)', p:()=>[S.sharpen, 1], r:80},
   {t:'Construa a fundição do Cobre', p:()=>[+!!S.smelters.cobre, 1], r:120},
+  {t:'Compre o ⚡ Gerador a carvão (painel ⬆️ da mina de Carvão): as esteiras precisam de energia', p:()=>[S.genLvl, 1], r:100},
   {t:'Instale a esteira de minério do Cobre', p:()=>[+!!S.belts.cobre, 1], r:150},
   {t:'Instale a esteira de venda do Cobre', p:()=>[+!!S.sellBelts.cobre, 1], r:200},
   {t:'Contrate 3 ajudantes na mina de Cobre', p:()=>[S.staff.cobre.n, 3], r:250},
@@ -699,6 +739,7 @@ const MISSIONS = [
   {t:'Contrate o gerente da mina de Cobre', p:()=>[+!!S.staff.cobre.mgr, 1], r:600},
   {t:'Abra a 📦 Área de Entregas (sul do vilarejo)', p:()=>[+!!S.depotOpen, 1], r:300, go:()=>S.money >= DEPOT_COST - (S.paid.depot||0) ? {x:0, z:12} : null},
   {t:'Compre o primeiro 🚚 caminhão (botão ⬆️ do galpão)', p:()=>[S.trucks, 1], r:250},
+  {t:'Abasteça o tanque: compre combustível no painel ⬆️ do galpão', p:()=>[+((S.oil.fuel||0) >= 10 || !!S.oil.ps), 1], r:150},
   {t:'Contrate o primeiro 🧑‍🏭 carregador (botão ⬆️ do galpão)', p:()=>[S.loaders, 1], r:200},
   {t:'Faça 3 entregas na Metalúrgica Aurora', p:()=>[S.deliveries||0, 3], r:500, go:()=>bagTotal() >= 1 ? {x:-3.4, z:19} : null},
   {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
@@ -998,8 +1039,8 @@ function buildPanel(){
     const O = S.oil;
     document.getElementById('sheetTitle').textContent = '🛢️ Campo de Petróleo';
     el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">⛽</span>
-        <div><small>Tanque do galpão</small><b>${fmt(O.fuel)} / ${fmt(fuelCap())} L</b></div><span class="lvlBadge">${O.ps ? '+' + Math.round((FUEL_BOOST-1)*100) + '%' : 'off'}</span></div>
-      <div class="lvlNext"><small>Situação</small><div>${!O.open ? 'Compre o terreno perto do lago' : !O.ps ? 'Falta: ' + [!pumpsOn() && 'bomba com funcionário', !sepsOn() && 'separador com maquinista', !O.ld && 'carregadeira', !O.rf && 'refinaria', 'posto'].filter(Boolean).join(', ') : O.fuel >= TRUCK_FUEL ? '✔ Veículos abastecidos: 50% mais rápidos' : '⚠️ Tanque vazio: veículos na velocidade normal'}</div>
+        <div><small>Tanque do galpão</small><b>${fmt(O.fuel)} / ${fmt(fuelCap())} L</b></div><span class="lvlBadge">${hasFuel(TRUCK_FUEL) ? 'ok' : 'vazio'}</span></div>
+      <div class="lvlNext"><small>Situação</small><div>${!O.open ? 'Compre o terreno perto do lago' : !O.ps ? 'Falta: ' + [!pumpsOn() && 'bomba com funcionário', !sepsOn() && 'separador com maquinista', !O.ld && 'carregadeira', !O.rf && 'refinaria', 'posto'].filter(Boolean).join(', ') : O.fuel >= TRUCK_FUEL ? '✔ Tanque com combustível: veículos trabalhando' : '⚠️ Tanque vazio: caminhões e coletadores parados'}</div>
         <div class="progress"><div style="width:${Math.min(1, O.fuel/fuelCap())*100}%"></div></div></div>
       <div class="flow">${step(pumpsOn()>0,'🛢️','Bombas')}${arrow(sepsOn()>0)}${step(sepsOn()>0,'🧪','Separadores')}${arrow(O.ld)}${step(O.ld,'🚜','Carregadeira')}${arrow(O.rf)}${step(O.rf,'🏭','Refinaria')}${arrow(O.ps)}${step(O.ps,'⛽','Galões')}</div>
       <div class="lvlRows">
@@ -1025,7 +1066,7 @@ function buildPanel(){
     const P = S.power, ratio = powerRatio(), dem = powerDemand(), on = powerOn();
     document.getElementById('sheetTitle').textContent = '⚡ Usina de Energia';
     el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">⚡</span>
-        <div><small>Energia gerada / rede</small><b>${fmt(powerNow)} / ${fmt(dem)} kW</b></div><span class="lvlBadge">${Math.round(ratio*100)}%</span></div>
+        <div><small>Usina + geradores + baterias / rede</small><b>${fmt(usinaKW)} + ${fmt(genKW)} + ${fmt(battKW)} / ${fmt(dem)} kW</b></div><span class="lvlBadge">${Math.round(ratio*100)}%</span></div>
       <div class="lvlNext"><small>Situação</small><div>${!P.open ? 'Compre o terreno ao lado da mina de Carvão' : !on ? 'Falta: ' + [!crushers() && 'britador com operador', !(P.lv && P.maq) && 'lavadora com maquinista', !boilerHands() && 'caldeira com ajudante', !P.tb && 'turbina'].filter(Boolean).join(', ') : ratio >= 1 ? '✔ Rede com energia total' : '⚠️ Energia fraca: precisa de mais carvão ou usina maior'}</div>
         <div class="progress"><div style="width:${ratio*100}%"></div></div></div>
       <div class="flow">${step(crushers()>0,'🪨','Britadores')}${arrow(P.lv&&P.maq)}${step(P.lv&&P.maq,'💧','Lavadora')}${arrow(boilerHands()>0)}${step(boilerHands()>0,'🔥','Caldeira')}${arrow(P.tb)}${step(P.tb,'⚡','Turbina')}${arrow(P.bat)}${step(P.bat,'🔋','Baterias')}</div>
@@ -1069,6 +1110,12 @@ function buildPanel(){
     const bc = bagCost();
     add('🎒', `Mochila Maior <span class="count">nv ${S.bagLvl}</span>`, `Carrega +15 minérios (hoje ${fmt(bagCap())})`, btn(money(bc), buyBag, bc));
     if(S.trucks) el.insertAdjacentHTML('beforeend', `<p class="small">🔧 O estado dos caminhões fica no botão <b>Manutenção</b> da barra de baixo.</p>`);
+    sec('⛽ Combustível dos veículos');
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Caminhões (${TRUCK_FUEL} L por viagem) e coletadores (${COLLECTOR_FUEL} L) só saem com combustível no tanque. Os galões do 🛢️ Campo de Petróleo enchem o tanque sozinhos; comprar aqui é caro.</p>`);
+    add('⛽', `Tanque <span class="count">${fmt(S.oil.fuel)}/${fmt(fuelCap())} L</span>`, `Comprar ${FUEL_BUY_L} L de combustível`, btn(money(FUEL_BUY_PRICE), ()=>buyFuel(), FUEL_BUY_PRICE));
+    { const tg = document.createElement('button'); tg.textContent = S.autoFuel ? '✔ Ligada' : 'Ligar'; if(S.autoFuel) tg.className = 'primary';
+      tg.onclick = ()=>{ S.autoFuel = !S.autoFuel; save(); buildPanel(); };
+      add('🔁', 'Compra automática', `Compra ${FUEL_BUY_L} L sozinho quando o tanque fica abaixo de 20 L (custa ${money(FUEL_BUY_PRICE)} cada vez).`, tg); }
     sec('🛺 Coletadores');
     el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem o seu coletador: compre no painel da mina (botão <b>⬆️ NÍVEL</b> ao lado do portão). Trabalhando: <b>${MINES.filter(m=>S.collectors[m.id]).map(m=>m.name).join(', ') || 'nenhum'}</b>.</p>`);
     return;
@@ -1097,6 +1144,9 @@ function buildPanel(){
   add('👔', 'Gerente', `Ajudantes ${xf(MANAGER_MULT)} mais rápidos`, st.mgr ? tag('✔ Contratado') : btn(money(managerCost(m)), ()=>hireManager(m), managerCost(m)));
 
   if(m.fuel){
+    sec('⚡ Gerador a carvão');
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">As esteiras e os postes precisam de energia. Cada gerador dá ${GEN_KW} kW queimando carvão (${GEN_COAL*GEN_KW} carvão/s no máximo). Rede agora: <b>${fmt(powerNow)}/${fmt(powerDemand())} kW</b>.</p>`);
+    { const gc = GEN_COSTS[S.genLvl]; add('⚡', `Geradores <span class="count">${S.genLvl}/${GEN_COSTS.length}</span>`, `+${GEN_KW} kW cada (hoje ${fmt(genCap())} kW). Para mais energia, construa a ⚡ Usina.`, gc === undefined ? tag('✔ Todos') : btn(money(gc), buyGenerator, gc)); }
     sec('⚫ Carvão');
     const dc = coalDrillCost();
     add('🔩', `Brocas de Carvão <span class="count">nv ${S.coalLvl}</span>`, `+${Math.round(DRILL_BONUS*100)}% de carvão (você e os ajudantes)`, btn(money(dc), buyCoalDrill, dc));
@@ -1184,7 +1234,7 @@ function buildStats(){
   h += `<h3 class="subhead">Carvão e frota</h3><div class="statTot">
     <div><small>⚫ Carvão</small><b>${fmt(mineRate(c)*60)}/min</b><small>consumo até ${fmt(coalUseMax()*60)}/min</small></div>
     <div><small>⛽ Combustível</small><b>${fmt(S.oil.fuel)} L</b><small>${S.oil.ps ? Math.floor(S.oil.gal||0)+' galões guardados' : 'campo de petróleo desligado'}</small></div>
-    <div><small>⚡ Energia</small><b>${fmt(powerNow)}/${fmt(powerDemand())} kW</b><small>${S.power.tb ? Math.round(powerRatio()*100)+'% da rede ligada' : 'usina desligada'}</small></div>
+    <div><small>⚡ Energia</small><b>${fmt(powerNow)}/${fmt(powerDemand())} kW</b><small>${Math.round(gridRatio*100)}% da rede ligada</small></div>
     <div><small>🚚 Frota</small><b>${S.trucks} caminhão(ões)</b><small>${Array.from({length:S.trucks},(_,k)=>Math.round(cond('truck_'+k)*100)+'%').join(' · ') || 'sem caminhões'}</small></div></div>`;
   el.innerHTML = h;
 }
@@ -1212,6 +1262,24 @@ function buildMines(){
   const g = document.createElement('div'); g.className = 'mine';
   g.innerHTML = `<div class="gem" style="background:#3d6fa8"></div><div class="info"><div class="name">📦 Galpão de Entregas</div><div class="sub">${S.depotOpen ? 'Caminhões, carregadores e mochila' : '🔒 Fechado'}</div></div><button class="lvlBtn">⬆️ Abrir</button>`;
   g.onclick = ()=>openPanel('galpao'); el.appendChild(g);
+}
+// ===== painel da rede: carvão, energia e combustível juntos =====
+function resourceLine(){
+  const dem = powerDemand(), parts = [];
+  if(dem > 0 || S.genLvl) parts.push(`⚡ <b style="color:${gridRatio >= 0.99 ? '#9cff7a' : gridRatio > 0.3 ? '#ffd27a' : '#ff9b7a'}">${fmt(powerNow + battKW)}/${fmt(dem)} kW</b>`);
+  if(S.depotOpen || S.oil.open) parts.push(`⛽ <b style="color:${hasFuel(TRUCK_FUEL) ? '#9cff7a' : '#ff9b7a'}">${fmt(S.oil.fuel)} L</b>`);
+  return parts.length ? '<br>' + parts.join(' · ') : '';
+}
+function gridWarnings(){
+  const w = [];
+  if(MINES.some(x=>hasBelt(x) && S.ore[x.id] > 0.5 && !FUEL[x.id])) w.push('Fundições sem carvão!');
+  const dem = powerDemand();
+  if(dem > 0 && gridRatio < 0.05) w.push(S.genLvl ? 'Sem energia: geradores sem carvão!' : 'Sem energia: compre o Gerador (mina de Carvão)');
+  else if(dem > 0 && gridRatio < 0.95) w.push(`Energia fraca (${Math.round(gridRatio*100)}%): esteiras lentas`);
+  const trucksWait = S.trucks > 0 && depotTotal() >= 1 && !hasFuel(TRUCK_FUEL);
+  const colWait = MINES.some(m=>S.collectors[m.id] && haulAvail(m) >= 1) && !hasFuel(COLLECTOR_FUEL);
+  if(trucksWait || colWait) w.push('Veículos parados sem combustível!');
+  return w;
 }
 function buildStaff(){
   const el = document.getElementById('staff'); el.innerHTML = '';
@@ -1393,7 +1461,7 @@ function render(){
   document.getElementById('rate').textContent = `+${money(incomePerSec())}/s em minério`;
   document.getElementById('hud').innerHTML =
     `${bestTool().ico} ${bestTool().name} · <b>${fmt(clickPower())}</b>/golpe${S.depotOpen ? ` · 🎒 <b>${fmt(bagTotal())}/${fmt(bagCap())}</b>` : ''}<br>Mina ativa: <b style="color:${m.fuel ? '#cfcfd6' : m.color}">${m.name}</b> · ⚫ ${fmt(S.ore.carvao)}` +
-    (MINES.some(x=>hasBelt(x) && S.ore[x.id] > 0.5 && !FUEL[x.id]) ? `<br><b style="color:#ff9b7a">⚠️ Fundições sem carvão!</b>` : '');
+    resourceLine() + gridWarnings().map(w=>`<br><b style="color:#ff9b7a">⚠️ ${w}</b>`).join('');
   const inv = document.getElementById('inv'); inv.innerHTML='';
   MINES.forEach(x=>{
     inv.insertAdjacentHTML('beforeend', `<div class="invItem" style="${isUnlocked(x)?'':'opacity:.35'}"><div class="gem" style="background:${x.color}"></div>
@@ -2749,7 +2817,7 @@ function createWorld(){
     trucks.forEach(tr=>{
       tr.t += dt;
       if(tr.state === 'parked'){
-        if(depotTotal() >= 1 && tr.t > 1 && tr.slot < S.loaders){
+        if(depotTotal() >= 1 && tr.t > 1 && tr.slot < S.loaders && useFuel(TRUCK_FUEL)){
           const cap = truckCap()*effOf('truck_'+tr.slot); let left = cap, value = 0; tr.load = {};
           const tot = depotTotal();
           for(const m of MINES){ const a = S.depot[m.id]||0; if(a <= 0) continue;
@@ -2764,7 +2832,7 @@ function createWorld(){
         if(l) animLoader(l, u % 1, true, dt);
         const shown = Math.min(tr.fillBoxes, Math.round(Math.min(trip + ((u%1) >= 0.5 ? 1 : 0), LOADER_TRIPS) / LOADER_TRIPS * tr.fillBoxes));
         tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < shown; });
-        if(trip >= LOADER_TRIPS){ tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < tr.fillBoxes; }); if(l) idleLoader(l); tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); tr.boost = useFuel(TRUCK_FUEL); if(tr.boost > 1) floatText('⛽', tr.g.position.clone().setY(2.2), '#ffb020'); }
+        if(trip >= LOADER_TRIPS){ tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < tr.fillBoxes; }); if(l) idleLoader(l); tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); }
       } else if(tr.state === 'going'){
         tr.d += dt*TRUCK_SPEED*(S.gemItems.dourado ? 1.25 : 1)*(0.6 + 0.4*cond('truck_'+tr.slot))*(tr.boost||1);
         if(moveAlong(tr, tr.d, false)){ tr.state = 'away'; tr.t = 0; tr.g.visible = false; }
@@ -2853,7 +2921,7 @@ function createWorld(){
     for(const id in collectors){
       const c = collectors[id], m = c.o.m; c.t += dt;
       if(c.state === 'home'){
-        if(c.t > 0.8 && haulAvail(m) >= 1){ c.state = 'out'; c.d = 0; c.boost = useFuel(COLLECTOR_FUEL); }
+        if(c.t > 0.8 && haulAvail(m) >= 1 && useFuel(COLLECTOR_FUEL)){ c.state = 'out'; c.d = 0; }
       } else if(c.state === 'out' || c.state === 'back'){
         c.d += dt*COLLECTOR_SPEED*(c.boost||1);
         const {pos, dir} = pathPoint(c.path, c.state === 'out' ? c.d : c.total - c.d);
@@ -2908,6 +2976,22 @@ function createWorld(){
     if(key !== trophy.key){ trophy.key = key; trophy.cups.forEach((g,i)=>g.visible = tierCount(i) > 0); trophy.sign.userData.draw(`🏆 ${achCount()}/${ACH_TOTAL} · ${rankName()}`, '#ffd27a'); }
     trophy.cups.forEach((g,i)=>{ if(g.visible){ g.rotation.y = t*0.8 + i; } });
   }
+
+  // geradores a carvão (na frente da mina de Carvão)
+  const genGrp = new THREE.Group(); world.add(genGrp); const genUnits = []; let genReady = false;
+  function refreshGenerators(){
+    while(genUnits.length < S.genLvl){ const k = genUnits.length, g = new THREE.Group(); g.position.set(-49 + k*1.7, 0, -6.4); genGrp.add(g);
+      mesh(new THREE.BoxGeometry(1.3,0.9,0.9), M('#3aa35a'), 0, 0.45, 0, g);
+      mesh(new THREE.BoxGeometry(1.35,0.12,0.95), M('#2b2b2b'), 0, 0.95, 0, g);
+      mesh(new THREE.CylinderGeometry(0.09,0.09,0.7,8), M('#5b5f66'), 0.4, 1.3, -0.2, g);
+      const led = mesh(new THREE.BoxGeometry(0.2,0.12,0.04), new THREE.MeshBasicMaterial({color:'#7dff6a'}), -0.35, 0.65, 0.46, g); led.castShadow = false;
+      const sm = mesh(new THREE.SphereGeometry(0.15,6,4), new THREE.MeshLambertMaterial({color:'#bbbbbb', transparent:true, opacity:0}), 0.4, 1.8, -0.2, g); sm.castShadow = false;
+      circles.push({x:-49 + k*1.7, z:-6.4, r:0.75}); genUnits.push({g, led, sm}); if(genReady) burstBills(-49 + k*1.7, -6.4, 6); }
+  }
+  refreshGenerators(); genReady = true;
+  function updateGenerators(t){ const on = genKW > 0.05;
+    genUnits.forEach((u,k)=>{ u.led.material.color.set(on ? '#7dff6a' : '#ff5a4a'); u.g.position.y = on ? Math.abs(Math.sin(t*25 + k))*0.015 : 0;
+      const ph = (t*0.8 + k*0.3) % 1; u.sm.position.y = 1.7 + ph*1.0; u.sm.scale.setScalar(0.6 + ph*1.5); u.sm.material.opacity = on ? 0.5*(1-ph) : 0; }); }
 
   // botões de nível (abrem o painel da mina / galpão)
   const lvlBtns = [];
@@ -3158,6 +3242,7 @@ function createWorld(){
     updateDelivery(dt, p);
     updateTrophies(npcT);
     updateLvlBtns(npcT);
+    updateGenerators(npcT);
     updateFactory(dt, npcT);
 
     for(const o of MINES3) if(o.tile && o.tile.mesh.visible){
@@ -3256,7 +3341,7 @@ function createWorld(){
     },
     onGemItem(id){ if(id === 'capacete') refreshHelmet(); burstBills(player.position.x, player.position.z, 10); },
     onOilChanged(){ refreshOil(); burstBills(player.position.x, player.position.z, 10); },
-    onPowerChanged(){ refreshPower(); burstBills(player.position.x, player.position.z, 10); },
+    onPowerChanged(){ refreshPower(); refreshGenerators(); burstBills(player.position.x, player.position.z, 10); },
     celebrate(){ burstBills(player.position.x, player.position.z, 18); },
     onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },
     debug:{player},
