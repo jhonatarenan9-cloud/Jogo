@@ -46,6 +46,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   (4 bombas com funcionários, 2 separadores com maquinistas, carregadeira, refinaria, posto de galões). Galão rende pouco por segundo de propósito.
 - **Rede integrada:** `gridTick` (energia: `GEN_*` geradores a carvão + usina + baterias; `powerDemand` = esteiras + postes + refinaria;
   `beltPower` para as esteiras), combustível obrigatório para caminhões e coletadores (`useFuel`, `FUEL_BUY_*` compra cara no galpão).
+- `FOREST_ITEMS`, `forStep`, `treeGrow`, `forestLvlCost`, `TORAS_PER_TREE`, `SACK_VALUE`, `PAPER_VALUE`: floresta a leste das minas (lenhadores, adubadores, trator florestal, serraria, carvoaria, fábrica de papel com energia). Terreno $12 mil, tudo ~$112 mil; rende ~$45/s no nível 0.
 - `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `SELL_ITEMS`: aba 💰 Vender (lado direito): preço de venda de cada produto das etapas e dos finais. Cada etapa vale mais que a anterior e menos que terminar a cadeia; carvão bruto bem barato (não pode render mais que um ajudante do Cobre).
 - `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.
