@@ -17,6 +17,7 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
 - Na aba **👷 Funcionários**, contrate até 3 ajudantes por mina. Eles mineram sozinhos, cada um na sua mina.
 - Cada mina também pode ter um **👔 Gerente** (mais caro), que faz os ajudantes daquela mina trabalharem 2x mais rápido.
 - Depois de abrir a mina de Esmeralda, a Loja libera a aba **🏭 Fundição**. Cada mina tem a sua própria fundição dentro do cercado (compre na loja ou pisando no quadrado 🏭). Depois compre a esteira daquela mina: ela leva o minério da pilha até a fornalha, que transforma 5 minérios em 1 barra valendo 8x o minério.
+- Com a fundição de uma mina construída, compre a **💵 Esteira de Venda** dela: leva as barras até uma caixa de venda na frente da mina e vende tudo sozinha.
 - Melhorias: afiar ferramenta, manutenção e vendedor automático.
 - O progresso é salvo no navegador, e você ganha minério mesmo offline (25%, até 4h).
 - Objetivo final: minerar 1.000 esmeraldas e virar Magnata da Mineração.

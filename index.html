@@ -200,6 +200,7 @@ const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 2, MANAGER_COST_MULT = 
 const ORES_PER_BAR = 5, BAR_MULT = 8, BELT_RATE = 1;
 const SMELTER_COST = {cobre:400000, ferro:1500000, ouro:5000000, diamante:15000000, esmeralda:40000000};
 const BELT_COST    = {cobre:150000, ferro:600000,  ouro:2000000, diamante:6000000,  esmeralda:16000000};
+const SELLBELT_COST = {cobre:120000, ferro:450000, ouro:1500000, diamante:4500000, esmeralda:12000000};
 const GOAL = 1000; // esmeraldas para vencer
 
 // ===================== ESTADO =====================
@@ -211,7 +212,7 @@ function newState(){
     mined:Object.fromEntries(MINES.map(m=>[m.id,0])),
     tools:{madeira:true}, paid:{},
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false}])),
-    smelters:{}, belts:{}, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
+    smelters:{}, belts:{}, sellBelts:{}, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false,
     active:'cobre', won:false, last:Date.now()
   };
@@ -221,7 +222,7 @@ try{
   const raw = localStorage.getItem(SAVE_KEY);
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
-    S.paid = d.paid || {}; S.belts = d.belts || {}; S.smelters = d.smelters || {}; S.bars = Object.assign(newState().bars, d.bars);
+    S.paid = d.paid || {}; S.belts = d.belts || {}; S.smelters = d.smelters || {}; S.sellBelts = d.sellBelts || {}; S.bars = Object.assign(newState().bars, d.bars);
     if(d.smelter !== undefined){ // fundição central antiga: devolve o dinheiro gasto e recomeça no modelo por mina
       const OLD_BELT = {cobre:100000, ferro:200000, ouro:400000, diamante:800000, esmeralda:1600000};
       let refund = d.smelter ? 1500000 : (d.paid && d.paid.smelter) || 0;
@@ -265,6 +266,7 @@ function produce(sec){
   const mr = machineRate(); if(mr > 0) gained[S.active] = (gained[S.active]||0) + mr*sec;
   for(const id in gained) addOre(id, gained[id]);
   smelt(sec);
+  sellByBelts();
   return gained;
 }
 function fmt(n){
@@ -280,6 +282,18 @@ const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 const oreValue = (auto) => MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
 const beltRate = () => BELT_RATE * (1 + 0.5*S.beltLvl);
 const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
+const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
+const SOLD = {};   // vendido pela esteira de venda (para mostrar o dinheiro subindo no mapa)
+function sellByBelts(){
+  let total = 0;
+  for(const m of MINES) if(hasSellBelt(m)){
+    let v = S.bars[m.id]*barValue(m); S.bars[m.id] = 0;
+    if(!hasBelt(m)){ v += S.ore[m.id]*m.value; S.ore[m.id] = 0; }   // sem esteira da fundição, vende o minério direto
+    if(v > 0){ SOLD[m.id] = (SOLD[m.id]||0) + v; total += v; }
+  }
+  S.money += total;
+  return total;
+}
 function smelt(sec){
   for(const m of MINES) if(hasBelt(m) && S.ore[m.id] > 0){
     const take = Math.min(S.ore[m.id], beltRate()*sec);
@@ -330,6 +344,14 @@ function buyBelt(m){
   if(!S.smelters[m.id] || S.belts[m.id] || S.money < c) return;
   S.money -= c; S.belts[m.id] = true;
   toast(`🛤️ Esteira da mina de ${m.name} instalada! O minério vai virar barra.`);
+  if(window.world3d) world3d.onFactoryChanged(m);
+  buildShop(); render(); save();
+}
+function buySellBelt(m){
+  const c = SELLBELT_COST[m.id];
+  if(!S.smelters[m.id] || S.sellBelts[m.id] || S.money < c) return;
+  S.money -= c; S.sellBelts[m.id] = true;
+  toast(`💵 Esteira de Venda da mina de ${m.name} instalada! As barras são vendidas sozinhas.`);
   if(window.world3d) world3d.onFactoryChanged(m);
   buildShop(); render(); save();
 }
@@ -424,6 +446,11 @@ function buildShop(){
       else if(!S.smelters[m.id]) r2 = tag('🔒','var(--muted)');
       else r2 = btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]);
       add('🛤️', `Esteira · ${m.name}`, `Leva ${fmt(beltRate())} ${m.name.toLowerCase()}/s da pilha até a fundição`, r2);
+      let r3;
+      if(S.sellBelts[m.id]) r3 = tag('✔ Instalada');
+      else if(!S.smelters[m.id]) r3 = tag('🔒','var(--muted)');
+      else r3 = btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]);
+      add('💵', `Esteira de Venda · ${m.name}`, `Leva as barras da fundição até a caixa de venda e vende sozinha. Sem a esteira da fundição, vende o minério direto.`, r3);
     });
     const bc = beltSpeedCost();
     add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, '+50% de velocidade em todas as esteiras',
@@ -458,7 +485,9 @@ function render(){
   const total = oreValue();
   document.getElementById('sellBtn').disabled = total<=0;
   const badge = document.getElementById('invBadge'); badge.hidden = total<=0; badge.textContent = money(total);
-  document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
+  const sb = MINES.filter(hasSellBelt).map(m=>m.name);
+  if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
+  else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
   document.querySelectorAll('#shop button, #staff button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
@@ -896,16 +925,33 @@ function createWorld(){
     o.beltLens = o.beltPath.slice(1).map((v,k)=>v.distanceTo(o.beltPath[k]));
     o.beltTotal = o.beltLens.reduce((a,b)=>a+b,0);
     circles.push({x:o.smX, z:o.smZ, r:1.25, when:()=>!!S.smelters[id]});
+    // esteira de venda: da frente da fornalha até a caixa de venda fora da cerca
+    const sg = new THREE.Group(); world.add(sg); o.sellGroup = sg;
+    const SXB = x+3.0, SY = 1.55;
+    beltSeg(sg, SXB, -12.9, SXB, -6.7, SY);
+    const box = new THREE.Group(); box.position.set(SXB, 0, -6.1); sg.add(box);
+    mesh(new THREE.BoxGeometry(1.2,0.95,0.95), M('#3fae5a'), 0, 0.48, 0, box);
+    mesh(new THREE.BoxGeometry(1.3,0.14,1.05), M('#2b8a45'), 0, 1.0, 0, box);
+    mesh(new THREE.BoxGeometry(0.7,0.12,0.5), M('#1e2a1e'), 0, 1.08, -0.1, box);
+    const bill = mesh(new THREE.BoxGeometry(0.55,0.03,0.3), M('#9cff7a'), 0, 0.6, 0.49, box); bill.rotation.x = Math.PI/2;
+    mesh(new THREE.SphereGeometry(0.1,8,6), new THREE.MeshBasicMaterial({color:'#7dff6a'}), 0.45, 1.15, 0.3, box);
+    circles.push({x:SXB, z:-6.1, r:0.7, when:()=>hasSellBelt(o.m)});
+    o.sellBox = new THREE.Vector3(SXB, 1.6, -6.1);
+    o.sellPath = [new THREE.Vector3(SXB,SY+0.13,-12.9), new THREE.Vector3(SXB,SY+0.13,-6.7), new THREE.Vector3(SXB,1.05,-6.15)];
+    o.sellLens = o.sellPath.slice(1).map((v,k)=>v.distanceTo(o.sellPath[k]));
+    o.sellTotal = o.sellLens.reduce((a,b)=>a+b,0);
     o.refreshFactory = () => {
       const built = !!S.smelters[id];
       sm.visible = built;
       bg.visible = built && !!S.belts[id];
+      sg.visible = built && !!S.sellBelts[id];
       o.smTile.mesh.visible = !built && !!S.tools.escavadeira && isUnlocked(o.m);
     };
     o.refreshFactory();
   });
   function refreshFactory(){ MINES3.forEach(o=>o.refreshFactory()); }
   const riders = [], riderGeo = new THREE.BoxGeometry(0.26,0.26,0.26), BELT_SPEED = 2.6;
+  const barGeo = new THREE.BoxGeometry(0.42,0.14,0.22);
   function updateFactory(dt, t){
     for(const tex of beltTexs) tex.offset.x -= dt*BELT_SPEED/0.6;
     MINES3.forEach(o=>{
@@ -916,6 +962,18 @@ function createWorld(){
         const r = new THREE.Mesh(riderGeo, M(o.m.color)); r.castShadow = true; world.add(r);
         riders.push({r, o, d:0});
       }
+      // barras andando na esteira de venda e dinheiro subindo na caixa
+      if(hasSellBelt(o.m)){
+        o.sellT = (o.sellT||0) + dt; o.moneyT = (o.moneyT||0) + dt;
+        const producing = hasBelt(o.m) ? S.ore[id] > 0.01 || (SOLD[id]||0) > 0 : (SOLD[id]||0) > 0;
+        if(o.sellT > 0.9 && producing){
+          o.sellT = 0;
+          const r = new THREE.Mesh(hasBelt(o.m) ? barGeo : riderGeo, M(o.m.color)); r.castShadow = true; world.add(r);
+          riders.push({r, o, d:0, sell:true});
+        }
+        if(o.moneyT > 1.6){ o.moneyT = 0;
+          if((SOLD[id]||0) > 0){ floatText('+' + money(SOLD[id]), o.sellBox, '#9cff7a'); burstBills(o.sellBox.x, o.sellBox.z, 2); SOLD[id] = 0; } }
+      } else SOLD[id] = 0;
       const working = on && S.ore[id] > 0.01;
       o.smoke.forEach((s,k)=>{ const u = (t*0.5 + k/3) % 1; s.position.y = 3.3 + u*1.8; s.position.x = -0.6 + Math.sin(u*5+k)*0.25;
         s.scale.setScalar(0.6 + u*1.1); s.material.opacity = working ? 0.55*(1-u) : 0; });
@@ -929,9 +987,10 @@ function createWorld(){
     });
     for(let k=riders.length-1;k>=0;k--){
       const it = riders[k], o = it.o; it.d += dt*BELT_SPEED;
-      if(it.d >= o.beltTotal || !hasBelt(o.m)){ world.remove(it.r); riders.splice(k,1); continue; }
-      let d = it.d, s = 0; while(d > o.beltLens[s]){ d -= o.beltLens[s]; s++; }
-      it.r.position.lerpVectors(o.beltPath[s], o.beltPath[s+1], d/o.beltLens[s]);
+      const path = it.sell ? o.sellPath : o.beltPath, lens = it.sell ? o.sellLens : o.beltLens, total = it.sell ? o.sellTotal : o.beltTotal;
+      if(it.d >= total || !(it.sell ? hasSellBelt(o.m) : hasBelt(o.m))){ world.remove(it.r); riders.splice(k,1); continue; }
+      let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; }
+      it.r.position.lerpVectors(path[s], path[s+1], d/lens[s]);
     }
   }
 
