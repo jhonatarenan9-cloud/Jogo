@@ -132,6 +132,15 @@
   .flowStats small{font-size:10px;color:var(--muted)}
   .flowStats b{font-size:13px;font-variant-numeric:tabular-nums}
   .doneBox{background:#1f3318;border:1px solid #4f8a3a;color:#b9f59c;border-radius:10px;padding:10px;font-size:13px;margin-bottom:8px}
+  .splitBox{background:#1f1914;border:1px solid var(--line);border-radius:10px;padding:8px;margin:-4px 0 10px}
+  .splitBar{display:flex;height:22px;border-radius:7px;overflow:hidden;font-size:11px;font-weight:700}
+  .splitBar span{display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden}
+  .splitBar span:first-child{background:#7a3d1c}
+  .splitBar span:last-child{background:#2f5a1f}
+  .splitBtns{display:flex;gap:5px;margin:6px 0 4px}
+  .splitBtns button{flex:1;font-size:11px;padding:5px 2px}
+  .splitBtns button.on{background:#7a5a1c;border-color:#e0b14a}
+  .splitBox small{font-size:11px;color:var(--muted)}
   .staffCard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
   .staffCard.locked{opacity:.55}
   .staffHead{display:flex;align-items:center;gap:10px}
@@ -304,7 +313,7 @@ function newState(){
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
     ach:{}, achNew:0, swings:0,
-    depotOpen:false, loaders:0, collectors:{}, trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
+    depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
   };
@@ -314,7 +323,7 @@ try{
   const raw = localStorage.getItem(SAVE_KEY);
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
-    S.collectors = d.collectors || {}; if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
+    S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
     S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
     S.paid = d.paid || {}; S.belts = d.belts || {}; S.smelters = d.smelters || {}; S.sellBelts = d.sellBelts || {}; S.bars = Object.assign(newState().bars, d.bars);
     if(d.smelter !== undefined){ // fundição central antiga: devolve o dinheiro gasto e recomeça no modelo por mina
@@ -564,6 +573,12 @@ function buyLoader(){
   S.money -= c; S.loaders++; toast(`🧑‍🏭 Carregador ${S.loaders} contratado! Ele leva as caixas do galpão até o caminhão ${S.loaders}.`);
   buildShop(); render(); save();
 }
+function splitControl(m){
+  const f = fundShare(m), opts = [0.25, 0.5, 0.75];
+  return `<div class="splitBox"><div class="splitBar"><span style="width:${f*100}%">🏭 ${Math.round(f*100)}%</span><span style="width:${(1-f)*100}%">🛺 ${Math.round((1-f)*100)}%</span></div>
+    <div class="splitBtns">${opts.map(o=>`<button class="${Math.abs(o-f)<0.01?'on':''}" onclick="setSplit(mineById('${m.id}'), ${o})">${Math.round(o*100)}% fundição</button>`).join('')}</div>
+    <small>${splitOn(m) ? `Reserva para o coletador: <b>${fmt(S.haul[m.id]||0)}</b> ${m.name.toLowerCase()}` : 'Vale quando a mina tem esteira da fundição e coletador.'}</small></div>`;
+}
 function buyCollector(m){
   const c = COLLECTOR_COST[m.id]; if(!S.depotOpen || !isUnlocked(m) || S.collectors[m.id] || S.money < c) return;
   S.money -= c; S.collectors[m.id] = true; toast(`🛺 Coletador da mina de ${m.name} comprado! Ele busca o minério na pilha e leva ao galpão.`);
@@ -578,8 +593,16 @@ function buyTruckCap(){ const c = truckCapCost(); if(!S.trucks || S.money < c) r
 function buyBag(){ const c = bagCost(); if(S.money < c) return; S.money -= c; S.bagLvl++; buildShop(); render(); save(); }
 
 // ===================== AÇÕES =====================
+// divisão da pilha: com fundição e coletador na mesma mina, parte do minério fica reservada para o galpão
+const fundShare = m => S.split[m.id] ?? 0.5;                  // fração que vai para a esteira da fundição
+const splitOn = m => !!S.collectors[m.id] && hasBelt(m);
+const haulAvail = m => (S.haul[m.id]||0) + (hasBelt(m) ? 0 : S.ore[m.id]);
+function setSplit(m, f){ S.split[m.id] = f; buildShop(); render(); save(); }
 function addOre(id, amt){
-  S.ore[id] += amt; S.mined[id] += amt;
+  const mm = mineById(id);
+  if(mm && !mm.fuel && splitOn(mm)){ const h = amt*(1-fundShare(mm)); S.haul[id] += h; S.ore[id] += amt - h; }
+  else S.ore[id] += amt;
+  S.mined[id] += amt;
   if(S.autoSell) sellAll(true, true);
   if(id==='esmeralda' && !S.won && S.mined.esmeralda >= GOAL){ S.won = true; toast('🏆 Parabéns! Você se tornou um Magnata da Mineração!'); }
 }
@@ -705,11 +728,11 @@ function buildStaff(){
     el.appendChild(card);
   });
 }
-let tab = 'tools', factoryMine = null;
+let tab = 'tools', factoryMine = null, addCol = null;
 function buildShop(){
   const el = document.getElementById('shop'); el.innerHTML='';
   const add = (ico,name,desc,right) => {
-    const d = document.createElement('div'); d.className='item';
+    const d = document.createElement('div'); d.className='item'; if(addCol){ d.dataset.col = addCol; addCol = null; }
     d.innerHTML = `<div class="ico">${ico}</div><div class="info"><div class="name">${name}</div><div class="desc">${desc}</div></div>`;
     d.appendChild(right); el.appendChild(d);
   };
@@ -755,6 +778,8 @@ function buildShop(){
     el.insertAdjacentHTML('beforeend', `<h3 class="subhead">🛺 Coletadores (um por mina)</h3>`);
     MINES.filter(m=>!m.fuel).forEach(m=>{
       const c = COLLECTOR_COST[m.id];
+      if(S.collectors[m.id] && hasBelt(m)) setTimeout(()=>{ const items = el.querySelectorAll('.item'); const it = [...items].find(x=>x.dataset.col===m.id); if(it) it.insertAdjacentHTML('afterend', splitControl(m)); });
+      addCol = m.id;
       add(`<span class="gem" style="display:inline-block;width:24px;height:24px;background:${m.color}"></span>`, `Coletador · ${m.name}`,
         `Busca até ${fmt(collectorCap())} ${m.name.toLowerCase()} na pilha e leva ao galpão. Na Metalúrgica: ${money(m.value*DELIVERY_MULT)} cada.`,
         S.collectors[m.id] ? tag('✔ Trabalhando') : !S.depotOpen ? tag('🔒 Galpão','var(--muted)') : !isUnlocked(m) ? tag('🔒 Mina','var(--muted)') : btn(money(c), ()=>buyCollector(m), c));
@@ -819,6 +844,7 @@ function buildShop(){
         has.sm ? tag('✔ Construída') : btn(money(smelterLeft(m)), ()=>buySmelter(m), smelterLeft(m)));
       add('🛤️', `2. Esteira de minério`, `Leva ${fmt(beltRate(m))} ${m.name.toLowerCase()}/s da pilha até a fundição.`,
         has.belt ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]));
+      if(S.collectors[m.id] && has.belt) el.insertAdjacentHTML('beforeend', `<h3 class="subhead">Divisão da pilha (fundição × coletador)</h3>` + splitControl(m));
       add('💵', `3. Esteira de venda`, `Leva as barras até a caixa de venda e vende sozinha. Sem a esteira de minério, vende o minério direto.`,
         has.sell ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]));
       if(has.sm) el.insertAdjacentHTML('beforeend', S.ore.carvao <= 0.01 ? `<div class="lockedBox">⚫ O estoque de carvão acabou: minere carvão ou contrate ajudantes na mina de Carvão.</div>` : '');
@@ -1827,9 +1853,11 @@ function createWorld(){
       for(const o of MINES3){
         if(o.m.fuel || !o.pilePos) continue;
         if(Math.hypot(p.x - o.pilePos.x, p.z - o.pilePos.z) > 1.9) continue;
-        const room = bagCap() - bagTotal(); if(room <= 0.001 || S.ore[o.m.id] < 0.01) continue;
-        const take = Math.min(room, S.ore[o.m.id], PICK_RATE*dt);
-        S.ore[o.m.id] -= take; S.bag[o.m.id] = (S.bag[o.m.id]||0) + take;
+        const id = o.m.id, room = bagCap() - bagTotal(), avail = (S.haul[id]||0) + S.ore[id];
+        if(room <= 0.001 || avail < 0.01) continue;
+        let take = Math.min(room, avail, PICK_RATE*dt);
+        const fromHaul = Math.min(take, S.haul[id]||0); S.haul[id] -= fromHaul; S.ore[id] -= take - fromHaul;
+        S.bag[id] = (S.bag[id]||0) + take;
         if(pickT > 0.35){ pickT = 0; flyOre(o.pilePos.clone(), p.clone().setY(1.2), o.m.color); }
         if(bagCap() - bagTotal() <= 0.001) floatText('🎒 Mochila cheia!', p.clone().setY(2.3), '#ffd27a');
       }
@@ -1960,7 +1988,7 @@ function createWorld(){
     for(const id in collectors){
       const c = collectors[id], m = c.o.m; c.t += dt;
       if(c.state === 'home'){
-        if(c.t > 0.8 && S.ore[id] >= 1){ c.state = 'out'; c.d = 0; }
+        if(c.t > 0.8 && haulAvail(m) >= 1){ c.state = 'out'; c.d = 0; }
       } else if(c.state === 'out' || c.state === 'back'){
         c.d += dt*COLLECTOR_SPEED;
         const {pos, dir} = pathPoint(c.path, c.state === 'out' ? c.d : c.total - c.d);
@@ -1973,7 +2001,9 @@ function createWorld(){
         }
       } else if(c.state === 'loading'){
         if(c.t > 1.4){
-          const take = Math.min(collectorCap(), S.ore[id]); S.ore[id] -= take; c.load = take;
+          let take = Math.min(collectorCap(), S.haul[id]||0); S.haul[id] -= take;
+          if(!hasBelt(m)){ const t2 = Math.min(collectorCap()-take, S.ore[id]); S.ore[id] -= t2; take += t2; }
+          c.load = take;
           c.g.userData.ore.visible = take > 0;
           for(let i=0;i<3;i++) flyOre(c.o.pilePos.clone(), c.g.position.clone().setY(1.1), m.color);
           c.state = 'back'; c.d = 0;
@@ -2198,7 +2228,7 @@ function createWorld(){
       o.tile.draw(ok ? t.ico : needsFactory(t) ? '🏭' : '🔒', ok ? money(remaining(t)) : needsFactory(t) ? 'Fundição' : 'Bloqueado', 1 - remaining(t)/t.cost, !ok);
     }
     for(const o of MINES3){
-      const amt = S.ore[o.m.id];
+      const amt = S.ore[o.m.id] + (S.haul[o.m.id]||0);
       o.pile.count = amt < 1 ? 0 : Math.min(o.pileMax || 90, Math.ceil(Math.sqrt(amt)*(o.pileScale || 4)));
       if(o.crates){   // galpão da mina de carvão: 1 caixote a cada 25 carvões
         o.crates.count = o.crateTops.count = Math.min(o.crateMax, Math.floor(amt/CRATE_SIZE));
