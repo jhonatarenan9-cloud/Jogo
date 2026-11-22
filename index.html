@@ -2,8 +2,18 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mina Idle</title>
+<!-- APP:START (modo aplicativo; removido na versão publicada no Claude) -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="theme-color" content="#3f8a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mina Idle">
+<!-- APP:END -->
 <style>
   :root{
     --bg:#16120f; --panel:#221c17; --panel2:#2c241d; --line:#3d3229;
@@ -307,7 +317,10 @@
 </div>
 <div id="toast"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- THREE:START -->
+<script src="three.min.js"></script>
+<script>if(!window.THREE) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');</script>
+<!-- THREE:END -->
 <script>
 // ===================== DADOS =====================
 const MINES = [
@@ -2714,5 +2727,13 @@ try{
 }
 requestAnimationFrame(frame);
 </script>
+<!-- APP:START -->
+<script>
+// modo offline / app instalado
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+</script>
+<!-- APP:END -->
 </body>
 </html>

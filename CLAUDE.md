@@ -1,7 +1,14 @@
 # Mina Idle: guia para mudanças
 
-O jogo inteiro está em `index.html` (HTML + CSS + JS, mundo 3D com three.js r128 via cdnjs).
-A versão publicada para jogar é uma cópia desse arquivo sem `<html>/<head>/<body>`.
+O jogo inteiro está em `index.html` (HTML + CSS + JS, mundo 3D com three.js r128).
+
+## Publicação (sempre as duas)
+- **App (GitHub Pages):** o repositório é servido direto pelo GitHub Pages, que atualiza sozinho a cada push.
+  O app usa `three.min.js` local, `manifest.webmanifest`, ícones e `sw.js` (offline; o `index.html` vem da rede
+  primeiro, para as atualizações chegarem). Se mudar a lista de arquivos do jogo, atualize `FILES` em `sw.js`
+  e troque o nome do `CACHE`.
+- **Link do Claude (Artifact):** gere com `python3 tools/gerar_versao_claude.py <saida.html>` e publique esse arquivo.
+  O script remove os blocos `APP:START/APP:END` e troca o three.js local pelo cdnjs.
 
 ## Regra de ouro: economia
 Sempre que adicionar ou mudar qualquer coisa (mina, ferramenta, ajudante, fundição, melhoria, recompensa),
@@ -34,5 +41,5 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Testes
-O ambiente não acessa o cdnjs. Para testar com Playwright, instale `three@0.128.0` via npm e
-responda a URL do cdnjs com o arquivo local (`page.route`).
+O `index.html` usa o `three.min.js` local, então dá para testar com Playwright servindo a pasta
+(`python3 -m http.server`) ou abrindo o arquivo direto.

@@ -1,6 +1,11 @@
 # ⛏️ Mina Idle
 
-Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (precisa de internet para carregar a biblioteca 3D three.js).
+Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar.
+
+## Instalar como app no celular
+O jogo funciona como app (PWA) pelo GitHub Pages: abra o endereço do jogo no Safari (iPhone) ou no Chrome (Android)
+e escolha **Adicionar à Tela de Início**. Ele abre em tela cheia, funciona sem internet e se atualiza sozinho
+sempre que uma nova versão é enviada para o repositório.
 
 ## Como jogar
 - Arraste o dedo na tela (joystick) ou use WASD/setas para andar com o mineiro pelo mapa.
