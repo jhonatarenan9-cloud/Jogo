@@ -29,6 +29,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `sharpenCost`, `boostCost`, `AUTOSELL_COST`, `beltSpeedCost`, `coalDrillCost`: melhorias.
 - `DEPOT_COST`, `DELIVERY_MULT`, `TRUCK_COSTS`, `bagCap`, `truckCap`: área de entregas.
 - `MISSIONS`: sequência de missões e recompensas.
+- `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Testes
 O ambiente não acessa o cdnjs. Para testar com Playwright, instale `three@0.128.0` via npm e

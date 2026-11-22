@@ -151,8 +151,31 @@
   .slots{display:flex;gap:6px}
   .slot{width:34px;height:34px;border-radius:9px;border:2px dashed #5a4838;display:flex;align-items:center;justify-content:center;font-size:18px}
   .slot.on{border:2px solid var(--gold);background:#3a2f26}
-  #dock button{width:74px;font-size:11px;letter-spacing:-.2px}
-  @media (max-width:380px){#dock{gap:6px} #dock button{width:62px;font-size:11px}}
+  #dock{gap:8px}
+  #dock button{width:72px;font-size:11px;letter-spacing:-.2px}
+  @media (max-width:430px){#dock{gap:5px} #dock button{width:66px;font-size:10px;padding:7px 2px 6px} #dock button span{font-size:21px}}
+  @media (max-width:360px){#dock button{width:60px;font-size:9.5px}}
+  .achHead{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:linear-gradient(150deg,#3a2d12,#231c16);
+    border:1px solid #6b5420;border-radius:14px;padding:12px;margin-bottom:10px}
+  .achRank{display:flex;align-items:center;gap:10px}
+  .achRank span{font-size:34px;filter:drop-shadow(0 2px 6px rgba(255,207,63,.4))}
+  .achRank small,.achTotal small{display:block;font-size:11px;color:var(--muted)}
+  .achRank b{font-size:17px;color:var(--gold)}
+  .achTiers{display:flex;gap:6px}
+  .achTiers div{display:flex;flex-direction:column;align-items:center;background:rgba(0,0,0,.25);border-radius:10px;padding:4px 8px;border-bottom:2px solid var(--c)}
+  .achTiers span{font-size:18px}
+  .achTotal{grid-column:1/-1}
+  .achCard{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;margin-bottom:8px}
+  .achCard.complete{border-color:#6b5420;background:linear-gradient(150deg,#33291a,#2c241d)}
+  .achIco{font-size:26px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:#1a1410;border-radius:10px;flex:none}
+  .achInfo{flex:1;min-width:0;display:flex;flex-direction:column}
+  .achInfo b{font-size:14px}
+  .achInfo small{font-size:11px;color:var(--muted)}
+  .achProg .progress{margin-top:5px;height:6px}
+  .achDone{font-size:12px;color:#9cff7a;margin-top:3px}
+  .medals{display:flex;gap:3px;flex:none}
+  .medal{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;background:#1a1410;border:2px dashed #4a3e33;opacity:.6}
+  .medal.got{border:2px solid var(--c);background:radial-gradient(circle at 35% 30%, #fff8, var(--c) 60%);font-size:16px;opacity:1;box-shadow:0 0 10px color-mix(in srgb, var(--c) 50%, transparent)}
   a.reset{color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline}
   #toast{position:fixed;left:50%;bottom:calc(104px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
     padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:20;max-width:90vw;text-align:center}
@@ -172,6 +195,7 @@
     <button data-open="shop"><span>🛠️</span>Loja</button>
     <button data-open="inv"><span>🎒</span>Minério<i id="invBadge" hidden></i></button>
     <button data-open="staff"><span>👷</span>Funcionários</button>
+    <button data-open="ach"><span>🏆</span>Conquistas<i id="achBadge" hidden></i></button>
     <button data-open="mines"><span>⛰️</span>Minas</button>
   </nav>
   <div id="sheet" hidden>
@@ -200,6 +224,7 @@
             <span class="small" id="sellInfo"></span>
           </div>
         </section>
+        <section data-panel="ach"><div id="achList"></div></section>
         <section data-panel="mines">
           <div id="mines"></div>
           <p class="small">Cada mina fechada tem um quadrado com o preço da ferramenta na frente do portão. Fique em cima dele para pagar e abrir a mina. Toque numa mina e siga a seta dourada.</p>
@@ -273,6 +298,7 @@ function newState(){
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false, tool:0}])),
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
+    ach:{}, achNew:0, swings:0,
     depotOpen:false, trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
@@ -299,7 +325,8 @@ try{
       for(const m of MINES) if(S.tools[m.tool] && left>0){ const k = Math.min(MAX_HELPERS, left); S.staff[m.id].n = k; left -= k; }
     }
     delete S.helpers;
-    if(d.mission === undefined){ S.earned = S.earned || 0; S.mission = 0; S.skipMissionRewards = true; } }
+    if(d.mission === undefined){ S.earned = S.earned || 0; S.mission = 0; S.skipMissionRewards = true; }
+    if(d.ach === undefined){ S.ach = {}; S.skipAchRewards = true; } }
 }catch(e){}
 function save(){ S.last = Date.now(); try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
 
@@ -419,6 +446,81 @@ const MISSIONS = [
   {t:'Complete a fundição da Esmeralda (3 itens)', p:()=>[3-factoryMissing(MINES[4]).length, 3], r:80000000},
   {t:'Minere 1.000 esmeraldas e vire Magnata', p:()=>[S.mined.esmeralda, GOAL], r:200000000},
 ];
+// ===================== CONQUISTAS =====================
+// cada categoria tem 3 medalhas (bronze, prata, ouro); recompensas pequenas para não desequilibrar
+const TIERS = [{n:'Bronze', ico:'🥉', c:'#cd7f32'}, {n:'Prata', ico:'🥈', c:'#c9d1d9'}, {n:'Ouro', ico:'🥇', c:'#ffcf3f'}];
+const countHelpers = () => MINES.reduce((a,m)=>a + S.staff[m.id].n, 0);
+const countManagers = () => MINES.filter(m=>S.staff[m.id].mgr).length;
+const countRompedor = () => MINES.filter(m=>(S.staff[m.id].tool||0) >= 2).length;
+const countFactories = () => MINES.filter(m=>!m.fuel && factoryDone(m)).length;
+const countOpenMines = () => MINES.filter(isUnlocked).length;
+const ACHS = [
+  {id:'golpes',  ico:'⛏️', name:'Braço de Ferro',        desc:'Golpes com a picareta',            v:()=>S.swings||0,        t:[200,2000,20000],   r:[50,1500,40000]},
+  {id:'cobre',   ico:'🟠', name:'Rei do Cobre',          desc:'Cobre minerado',                   v:()=>S.mined.cobre,      t:[500,5000,50000],   r:[100,1000,15000]},
+  {id:'carvao',  ico:'⚫', name:'Fornalha Acesa',        desc:'Carvão minerado',                  v:()=>S.mined.carvao,     t:[500,5000,50000],   r:[100,1500,20000]},
+  {id:'ferro',   ico:'⚙️', name:'Coração de Ferro',      desc:'Ferro minerado',                   v:()=>S.mined.ferro,      t:[300,3000,30000],   r:[500,6000,80000]},
+  {id:'ouro',    ico:'🟡', name:'Febre do Ouro',         desc:'Ouro minerado',                    v:()=>S.mined.ouro,       t:[200,2000,20000],   r:[3000,40000,500000]},
+  {id:'diamante',ico:'💎', name:'Brilho Eterno',         desc:'Diamante minerado',                v:()=>S.mined.diamante,   t:[100,1000,10000],   r:[20000,250000,3000000]},
+  {id:'esmer',   ico:'🟢', name:'Caçador de Esmeraldas', desc:'Esmeralda minerada',               v:()=>S.mined.esmeralda,  t:[50,500,5000],      r:[100000,1500000,20000000]},
+  {id:'fortuna', ico:'💰', name:'Fortuna',               desc:'Dinheiro ganho em vendas',         v:()=>S.earned||0,        t:[10000,1e6,1e8],    r:[500,50000,5000000]},
+  {id:'equipe',  ico:'👷', name:'Equipe Completa',       desc:'Ajudantes contratados',            v:countHelpers,           t:[3,9,18],           r:[100,3000,200000]},
+  {id:'chefia',  ico:'👔', name:'Chefia',                desc:'Gerentes contratados',             v:countManagers,          t:[1,3,6],            r:[200,20000,2000000]},
+  {id:'rompe',   ico:'💥', name:'Barulho Bom',           desc:'Minas com Rompedor',               v:countRompedor,          t:[1,3,6],            r:[1000,100000,5000000]},
+  {id:'metal',   ico:'🏭', name:'Metalurgia',            desc:'Fundições completas (3 itens)',    v:countFactories,         t:[1,3,5],            r:[200,30000,5000000]},
+  {id:'logist',  ico:'🚚', name:'Logística',             desc:'Entregas na Metalúrgica Aurora',   v:()=>S.deliveries||0,    t:[10,100,1000],      r:[300,20000,1000000]},
+  {id:'frota',   ico:'🛻', name:'Frota',                 desc:'Caminhões comprados',              v:()=>S.trucks||0,        t:[1,2,4],            r:[100,1500,20000]},
+  {id:'explor',  ico:'🗺️', name:'Explorador',            desc:'Minas abertas',                    v:countOpenMines,         t:[3,4,6],            r:[300,10000,1000000]},
+  {id:'missao',  ico:'🎯', name:'Cumpridor de Missões',  desc:'Missões concluídas',               v:()=>S.mission||0,       t:[10,20,30],         r:[200,20000,2000000]},
+  {id:'magnata', ico:'🏆', name:'Magnata',               desc:'Minere 1.000 esmeraldas',          v:()=>+!!S.won,           t:[1],                r:[10000000], gold:true},
+];
+const ACH_TOTAL = ACHS.reduce((a,x)=>a + x.t.length, 0);
+const achTier = (a, k) => a.gold ? 2 : k;        // a do Magnata é direto ouro
+const achGot = (a, k) => !!(S.ach && S.ach[a.id+'_'+k]);
+const achCount = () => ACHS.reduce((n,a)=>n + a.t.filter((_,k)=>achGot(a,k)).length, 0);
+const tierCount = tier => ACHS.reduce((n,a)=>n + a.t.filter((_,k)=>achTier(a,k)===tier && achGot(a,k)).length, 0);
+const RANKS = [[0,'Aprendiz'],[10,'Minerador'],[20,'Mestre Minerador'],[35,'Lenda da Mina'],[ACH_TOTAL,'Magnata Supremo']];
+const rankName = () => RANKS.filter(([n])=>achCount() >= n).pop()[1];
+function checkAchievements(){
+  S.ach = S.ach || {};
+  let got = 0;
+  for(const a of ACHS){
+    const v = a.v();
+    a.t.forEach((tgt,k)=>{
+      const key = a.id+'_'+k; if(S.ach[key] || v < tgt) return;
+      S.ach[key] = true; got++;
+      if(S.skipAchRewards) return;
+      S.money += a.r[k]; S.achNew = (S.achNew||0) + 1;
+      const tr = TIERS[achTier(a,k)];
+      toast(`${tr.ico} Conquista ${tr.n}: ${a.name}! +${money(a.r[k])}`);
+      if(window.world3d) world3d.celebrate();
+    });
+  }
+  if(S.skipAchRewards){ delete S.skipAchRewards; save(); }
+  else if(got) save();
+}
+function buildAch(){
+  const el = document.getElementById('achList'); el.innerHTML = '';
+  const n = achCount();
+  el.insertAdjacentHTML('beforeend', `<div class="achHead">
+      <div class="achRank"><span>🏆</span><div><small>Seu título</small><b>${rankName()}</b></div></div>
+      <div class="achTiers">${TIERS.map((t,i)=>`<div style="--c:${t.c}"><span>${t.ico}</span><b>${tierCount(i)}</b></div>`).join('')}</div>
+      <div class="achTotal"><small>${n} de ${ACH_TOTAL} conquistas</small><div class="progress"><div style="width:${n/ACH_TOTAL*100}%"></div></div></div>
+    </div>`);
+  for(const a of ACHS){
+    const v = a.v(), next = a.t.findIndex((_,k)=>!achGot(a,k));
+    const medals = a.t.map((tgt,k)=>{ const tr = TIERS[achTier(a,k)], ok = achGot(a,k);
+      return `<span class="medal${ok?' got':''}" style="--c:${tr.c}" title="${tr.n}: ${fmt(tgt)}">${ok ? tr.ico : '🔒'}</span>`; }).join('');
+    let foot;
+    if(next < 0) foot = `<div class="achDone">✔ Todas as medalhas</div>`;
+    else { const tgt = a.t[next], pct = Math.min(1, v/tgt);
+      foot = `<div class="achProg"><div class="progress"><div style="width:${pct*100}%"></div></div>
+        <small>${fmt(Math.min(v,tgt))} / ${fmt(tgt)} · ${TIERS[achTier(a,next)].ico} +${money(a.r[next])}</small></div>`; }
+    el.insertAdjacentHTML('beforeend', `<div class="achCard${next<0?' complete':''}"><div class="achIco">${a.ico}</div>
+      <div class="achInfo"><b>${a.name}</b><small>${a.desc}</small>${foot}</div><div class="medals">${medals}</div></div>`);
+  }
+  S.achNew = 0;
+}
+
 function checkMissions(){
   if(S.skipMissionRewards){
     // save antigo: pula para depois da última missão já cumprida, sem pagar recompensa de novo
@@ -735,6 +837,8 @@ function render(){
   else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
   document.querySelectorAll('#shop button, #staff button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
   checkMissions();
+  checkAchievements();
+  { const b = document.getElementById('achBadge'); b.hidden = !S.achNew; b.textContent = S.achNew; }
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
   if(next){ const r = remaining(next); pct = Math.min(1, (S.money + next.cost - r)/next.cost);
@@ -1759,6 +1863,30 @@ function createWorld(){
     if(DEPOT_COST - S.paid.depot <= 0.0001) openDepot();
   }
 
+  // pódio de troféus (taças aparecem com as conquistas)
+  const trophy = {cups:[], key:''};
+  {
+    const TX = -6.2, TZ = 10.4;
+    const steps = [[0,0.9,'#d9d4cc'],[-1.0,0.6,'#c8c2b8'],[1.0,0.4,'#bdb6aa']];   // ouro (meio), prata (esq), bronze (dir)
+    steps.forEach(([dx,h,c])=>mesh(new THREE.BoxGeometry(0.95,h,0.95), M(c), TX+dx, h/2, TZ));
+    [[0,0.9,2],[-1.0,0.6,1],[1.0,0.4,0]].forEach(([dx,h,tier])=>{
+      const g = new THREE.Group(); g.position.set(TX+dx, h, TZ); world.add(g);
+      const col = TIERS[tier].c, mat = M(col, {shininess:100, specular:new THREE.Color('#ffffff'), emissive:new THREE.Color(col).multiplyScalar(0.15)});
+      mesh(new THREE.CylinderGeometry(0.14,0.2,0.08,12), mat, 0, 0.04, 0, g);
+      mesh(new THREE.CylinderGeometry(0.04,0.04,0.25,8), mat, 0, 0.2, 0, g);
+      mesh(new THREE.CylinderGeometry(0.26,0.1,0.32,14), mat, 0, 0.48, 0, g);
+      for(const s of [-1,1]){ const h2 = mesh(new THREE.TorusGeometry(0.1,0.03,6,12,Math.PI), mat, s*0.27, 0.5, 0, g); h2.rotation.z = s > 0 ? -Math.PI/2 : Math.PI/2; }
+      g.visible = false; trophy.cups[tier] = g;
+    });
+    circles.push({x:TX, z:TZ, r:1.6});
+    trophy.sign = labelSprite(3.2); trophy.sign.position.set(TX, 2.8, TZ);
+  }
+  function updateTrophies(t){
+    const key = TIERS.map((_,i)=>tierCount(i)).join(',');
+    if(key !== trophy.key){ trophy.key = key; trophy.cups.forEach((g,i)=>g.visible = tierCount(i) > 0); trophy.sign.userData.draw(`🏆 ${achCount()}/${ACH_TOTAL} · ${rankName()}`, '#ffd27a'); }
+    trophy.cups.forEach((g,i)=>{ if(g.visible){ g.rotation.y = t*0.8 + i; } });
+  }
+
   // máquinas (aparecem quando compradas)
   function makeLoader(){
     const g = new THREE.Group();
@@ -1893,7 +2021,7 @@ function createWorld(){
         swingT -= period;
         const amt = clickPower() * (mine.m.fuel ? 2*coalMult() : 1);
         if(S.active !== mine.m.id){ S.active = mine.m.id; buildMines(); }
-        addOre(mine.m.id, amt);
+        addOre(mine.m.id, amt); S.swings = (S.swings||0) + 1;
         rock.userData.shake = 0.18;
         const from = rock.position.clone().setY(1.0);
         for(let k=0;k<3;k++) flyOre(from, mine.pilePos, mine.m.color);
@@ -1935,6 +2063,7 @@ function createWorld(){
     if(z && z.startsWith('factory:')) payFactory(MINES3[+z.slice(8)], dt);
     if(z === 'depot') payDepot(dt);
     updateDelivery(dt, p);
+    updateTrophies(npcT);
     updateFactory(dt, npcT);
 
     for(const o of MINES3) if(o.tile && o.tile.mesh.visible){
@@ -2035,7 +2164,7 @@ function frame(now){
 })();
 
 // ---------- janelas dentro do jogo ----------
-const SHEETS = {shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+const SHEETS = {ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
 let sheetOpen = null;
 function openSheet(name){
   sheetOpen = name;
@@ -2044,6 +2173,7 @@ function openSheet(name){
   if(name==='shop') buildShop();
   if(name==='mines') buildMines();
   if(name==='staff') buildStaff();
+  if(name==='ach') buildAch();
   render();
   document.getElementById('sheet').hidden = false;
 }
