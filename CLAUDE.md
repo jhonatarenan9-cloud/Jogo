@@ -42,7 +42,8 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `GEM_CHANCE`, `GEM_DELIVERY_CHANCE`, `GEM_ITEMS`: gemas raras e itens da loja de gemas (bônus pequenos).
 - `POWER_ITEMS`, `powerStep`, `boilerCost`, `ENERGY_PER_COAL`, `BATTERY_*`: usina de energia (britadores com operadores, lavadora com maquinista,
   caldeira com 2 ajudantes, turbina, banco de baterias). Bateria rende pouco por segundo de propósito.
-- `OIL_*`, `oilRate`, `fuelCap`, `pumpCost`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo (combustível dos veículos).
+- `OIL_ITEMS`, `oilStep`, `fuelCap`, `pumpCost`, `GAL_*`, `DRUM_*`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo
+  (4 bombas com funcionários, 2 separadores com maquinistas, carregadeira, refinaria, posto de galões). Galão rende pouco por segundo de propósito.
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Bônus de teste
