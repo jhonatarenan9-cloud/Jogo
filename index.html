@@ -30,6 +30,10 @@
   #goalBox{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(360px,calc(100% - 20px));
     background:var(--hudbg);border-radius:12px;padding:6px 10px 8px;font-size:12px;color:#fff;pointer-events:none;text-align:center}
   #goalBox b{color:var(--gold)}
+  .goalHead{font-weight:800;font-size:12px;color:#ffd27a;margin-bottom:2px}
+  .goalHead .reward{background:#2f6b1f;color:#c9ffb0;border-radius:8px;padding:1px 7px;margin-left:4px;font-size:11px}
+  .goalCount{color:#c9ffb0;font-variant-numeric:tabular-nums}
+  .goalSub{font-size:11px;opacity:.85;margin-top:3px}
   .progress{height:7px;background:rgba(0,0,0,.35);border-radius:99px;overflow:hidden;margin-top:5px}
   .progress > div{height:100%;background:linear-gradient(90deg,#a6e14a,#f2c14e);width:0}
   .mapHint{position:absolute;left:50%;bottom:calc(98px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font-size:13px;color:#fff;background:var(--hudbg);
@@ -225,7 +229,7 @@ const TOOLS = [
   {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:60000000, power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
-const STAFF_COST = {carvao:50, cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:900000};
+const STAFF_COST = {carvao:80, cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:900000};
 // ferramenta dos ajudantes (por mina): picareta -> martelete -> rompedor
 const HELPER_TOOLS = [
   {name:'Picareta', ico:'⛏️', mult:1, costMult:0},
@@ -237,16 +241,16 @@ const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 2, MANAGER_COST_MULT = 
 // cada mina tem a sua própria fundição + esteira
 const ORES_PER_BAR = 5, BAR_MULT = 20;
 // carvão: cada barra queima 1 carvão; a esteira de carvão leva o carvão por trás das minas até as fundições
-const COAL_PER_BAR = 1, COAL_HELPER_MULT = 4;
+const COAL_PER_BAR = 1, COAL_HELPER_MULT = 3;
 // a esteira de carvão é montada sozinha quando a primeira fundição abre
 const coalLineOn = () => MINES.some(m=>!m.fuel && S.smelters[m.id]);
 const coalMult = () => 1 + 0.5*S.coalLvl;
 const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
 const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
 const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // minério/s de cada esteira
-const SMELTER_COST = {cobre:150, ferro:6000, ouro:180000, diamante:5000000, esmeralda:120000000};
-const BELT_COST    = {cobre:80,  ferro:3000, ouro:90000,  diamante:2500000, esmeralda:60000000};
-const SELLBELT_COST = {cobre:120, ferro:4500, ouro:130000, diamante:3500000, esmeralda:90000000};
+const SMELTER_COST = {cobre:400, ferro:12000, ouro:350000, diamante:9000000, esmeralda:200000000};
+const BELT_COST    = {cobre:200, ferro:6000, ouro:180000, diamante:4500000, esmeralda:100000000};
+const SELLBELT_COST = {cobre:300, ferro:9000, ouro:260000, diamante:7000000, esmeralda:150000000};
 const GOAL = 1000; // esmeraldas para vencer
 
 // ===================== ESTADO =====================
@@ -259,7 +263,7 @@ function newState(){
     tools:{madeira:true}, paid:{},
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false, tool:0}])),
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
-    sharpen:0, boost:0, autoSell:false,
+    sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
     active:'cobre', won:false, last:Date.now()
   };
 }
@@ -282,7 +286,8 @@ try{
       let left = Object.values(d.helpers).reduce((a,v)=>a+(v|0),0);
       for(const m of MINES) if(S.tools[m.tool] && left>0){ const k = Math.min(MAX_HELPERS, left); S.staff[m.id].n = k; left -= k; }
     }
-    delete S.helpers; }
+    delete S.helpers;
+    if(d.mission === undefined){ S.earned = S.earned || 0; S.mission = 0; S.skipMissionRewards = true; } }
 }catch(e){}
 function save(){ S.last = Date.now(); try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
 
@@ -317,9 +322,9 @@ function incomePerSec(){
   }
   return v;
 }
-function sharpenCost(){ return Math.ceil(150 * Math.pow(3.2, S.sharpen)); }
+function sharpenCost(){ return Math.ceil(250 * Math.pow(3.5, S.sharpen)); }
 function boostCost(){ return Math.ceil(3000 * Math.pow(4, S.boost)); }
-const AUTOSELL_COST = 50000;
+const AUTOSELL_COST = 100000;
 function produce(sec){
   const gained = {};
   for(const m of MINES){ const r = mineRate(m); if(r > 0) gained[m.id] = r*sec; }
@@ -351,7 +356,7 @@ function sellByBelts(){
     if(!hasBelt(m)){ v += S.ore[m.id]*m.value; S.ore[m.id] = 0; }   // sem esteira da fundição, vende o minério direto
     if(v > 0){ SOLD[m.id] = (SOLD[m.id]||0) + v; total += v; }
   }
-  S.money += total;
+  S.money += total; S.earned += total;
   return total;
 }
 function smelt(sec){
@@ -366,6 +371,57 @@ function smelt(sec){
   }
 }
 
+// ===================== MISSÕES =====================
+// uma de cada vez; recompensa ~20-30% do próximo passo, para ajudar sem estragar o desafio
+const MISSIONS = [
+  {t:'Minere 30 cobre', p:()=>[S.mined.cobre, 30], r:20},
+  {t:'Venda minério no 💰 Mercado', p:()=>[S.earned, 1], r:15},
+  {t:'Contrate 1 ajudante na mina de Cobre', p:()=>[S.staff.cobre.n, 1], r:40},
+  {t:'Minere 60 carvão na mina de Carvão', p:()=>[S.mined.carvao, 60], r:40},
+  {t:'Contrate 1 ajudante na mina de Carvão', p:()=>[S.staff.carvao.n, 1], r:60},
+  {t:'Afie a ferramenta (Loja → Melhorias)', p:()=>[S.sharpen, 1], r:80},
+  {t:'Construa a fundição do Cobre', p:()=>[+!!S.smelters.cobre, 1], r:120},
+  {t:'Instale a esteira de minério do Cobre', p:()=>[+!!S.belts.cobre, 1], r:150},
+  {t:'Instale a esteira de venda do Cobre', p:()=>[+!!S.sellBelts.cobre, 1], r:200},
+  {t:'Contrate 3 ajudantes na mina de Cobre', p:()=>[S.staff.cobre.n, 3], r:250},
+  {t:'Ganhe $2.000 em vendas', p:()=>[S.earned, 2000], r:300},
+  {t:'Compre a Picareta de Ferro', p:()=>[+!!S.tools.ferro, 1], r:500},
+  {t:'Contrate o gerente da mina de Cobre', p:()=>[+!!S.staff.cobre.mgr, 1], r:600},
+  {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
+  {t:'Contrate 3 ajudantes na mina de Ferro', p:()=>[S.staff.ferro.n, 3], r:2000},
+  {t:'Complete a fundição do Ferro (3 itens)', p:()=>[3-factoryMissing(MINES[1]).length, 3], r:6000},
+  {t:'Ganhe $50.000 em vendas', p:()=>[S.earned, 50000], r:8000},
+  {t:'Compre a Britadeira', p:()=>[+!!S.tools.britadeira, 1], r:15000},
+  {t:'Dê o 💥 Rompedor aos ajudantes de alguma mina', p:()=>[Math.max(...MINES.map(m=>S.staff[m.id].tool||0)), 2], r:20000},
+  {t:'Complete a fundição do Ouro (3 itens)', p:()=>[3-factoryMissing(MINES[2]).length, 3], r:150000},
+  {t:'Ganhe $1.500.000 em vendas', p:()=>[S.earned, 1500000], r:250000},
+  {t:'Compre a Máquina Carregadeira', p:()=>[+!!S.tools.carregadeira, 1], r:500000},
+  {t:'Complete a fundição do Diamante (3 itens)', p:()=>[3-factoryMissing(MINES[3]).length, 3], r:4000000},
+  {t:'Ganhe $40.000.000 em vendas', p:()=>[S.earned, 40000000], r:6000000},
+  {t:'Compre a Escavadeira Gigante', p:()=>[+!!S.tools.escavadeira, 1], r:12000000},
+  {t:'Complete a fundição da Esmeralda (3 itens)', p:()=>[3-factoryMissing(MINES[4]).length, 3], r:80000000},
+  {t:'Minere 1.000 esmeraldas e vire Magnata', p:()=>[S.mined.esmeralda, GOAL], r:200000000},
+];
+function checkMissions(){
+  if(S.skipMissionRewards){
+    // save antigo: pula para depois da última missão já cumprida, sem pagar recompensa de novo
+    let last = -1;
+    MISSIONS.forEach((ms,i)=>{ const [c,t] = ms.p(); if(c >= t) last = i; });
+    S.mission = last + 1; S.earned = Math.max(S.earned, S.money);
+    delete S.skipMissionRewards; save();
+  }
+  let done = 0;
+  while(S.mission < MISSIONS.length){
+    const ms = MISSIONS[S.mission], [cur, tgt] = ms.p();
+    if(cur < tgt) break;
+    S.mission++; done++;
+    S.money += ms.r;
+    toast(`🎯 Missão concluída: ${ms.t}! +${money(ms.r)}`);
+    if(window.world3d) world3d.celebrate();
+  }
+  if(done) save();
+}
+
 // ===================== AÇÕES =====================
 function addOre(id, amt){
   S.ore[id] += amt; S.mined[id] += amt;
@@ -375,7 +431,7 @@ function addOre(id, amt){
 function sellAll(silent, auto){
   const total = oreValue(auto);
   for(const m of MINES){ if(m.fuel) continue; if(!(auto && hasBelt(m))) S.ore[m.id] = 0; S.bars[m.id] = 0; }
-  S.money += total;
+  S.money += total; S.earned += total;
   if(!silent && total>0) toast('💰 Vendido por ' + money(total));
   return total;
 }
@@ -618,6 +674,7 @@ function render(){
   if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
   else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
   document.querySelectorAll('#shop button, #staff button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
+  checkMissions();
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
   if(next){ const r = remaining(next); pct = Math.min(1, (S.money + next.cost - r)/next.cost);
@@ -627,6 +684,14 @@ function render(){
     if(needsFactory(next)){ const pm = prevMine(next); pct = (3 - factoryMissing(pm).length)/3; }
     if(factoryTip(next) && S.money < r) txt += `<br>💡 A fundição da mina de <b>${prevMine(next).name}</b> rende 4x: falta ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(Loja → Fundição)</span>`; }
   else { pct = Math.min(1, S.mined.esmeralda/GOAL); txt = S.won ? '🏆 Você venceu! Continue minerando e enriquecendo.' : `Minere <b>${fmt(GOAL)}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(GOAL)}`; }
+  // missão atual em destaque; a próxima mina fica numa linha menor
+  const ms = MISSIONS[S.mission];
+  if(ms){
+    const [cur, tgt] = ms.p(), mp = Math.max(0, Math.min(1, cur/tgt));
+    const nextLine = next ? `<div class="goalSub">⛏️ Próxima mina: <b>${next.name}</b> — ${S.money >= remaining(next) ? 'já dá para comprar!' : 'falta ' + money(remaining(next) - S.money)}</div>` : '';
+    txt = `<div class="goalHead">🎯 Missão ${S.mission+1}/${MISSIONS.length} <span class="reward">+${money(ms.r)}</span></div>${ms.t} <span class="goalCount">${tgt > 1 ? fmt(Math.min(cur,tgt))+' / '+fmt(tgt) : ''}</span>${nextLine}`;
+    pct = mp;
+  }
   document.getElementById('goalText').innerHTML = txt;
   document.getElementById('goalBar').style.width = (pct*100)+'%';
   document.querySelectorAll('.mine').forEach((d,i)=>{
@@ -1681,6 +1746,7 @@ function createWorld(){
     update,
     guideTo(i){ const o = MINES3[i]; guide = isUnlocked(o.m) ? {x:o.x, z:-9} : {x:o.x, z:-6.3}; },
     onToolBought(){ MINES3.forEach(o=>o.refresh()); refreshPick(); refreshMachines(); refreshFactory(); burstBills(player.position.x, player.position.z, 16); },
+    celebrate(){ burstBills(player.position.x, player.position.z, 18); },
     onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },
     debug:{player},
   };

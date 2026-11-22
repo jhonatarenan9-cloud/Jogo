@@ -23,4 +23,5 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
 - Com a fundição de uma mina construída, compre a **💵 Esteira de Venda** dela: leva as barras até uma caixa de venda na frente da mina e vende tudo sozinha.
 - Melhorias: afiar ferramenta, manutenção e vendedor automático.
 - O progresso é salvo no navegador, e você ganha minério mesmo offline (25%, até 4h).
+- **🎯 Missões:** uma sequência de 27 objetivos com recompensa em dinheiro, sempre mostrando a próxima conquista no topo da tela.
 - Objetivo final: minerar 1.000 esmeraldas e virar Magnata da Mineração.
