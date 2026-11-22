@@ -478,11 +478,12 @@ const MAX_HELPERS = 3, HELPER_RATE = 0.22, MANAGER_MULT = 1.5, MANAGER_COST_MULT
 // cada mina tem a sua própria fundição + esteira
 const ORES_PER_BAR = 5, BAR_MULT = 20;
 // carvão: cada barra queima 1 carvão; a esteira de carvão leva o carvão por trás das minas até as fundições
-const COAL_PER_BAR = 1, COAL_HELPER_MULT = 3;
+const COAL_PER_BAR = 1, COAL_HELPER_MULT = 5;
 // a esteira de carvão é montada sozinha quando a primeira fundição abre
 const coalLineOn = () => MINES.some(m=>!m.fuel && S.smelters[m.id]) || !!(S.power && S.power.brA);
 const coalMult = () => 1 + DRILL_BONUS*S.coalLvl;
 const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
+const SMELT_T = {};   // última vez que cada fundição fez barra (para a animação)
 const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
 const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // minério/s de cada esteira
 const SMELTER_COST = {cobre:300, ferro:3200, ouro:30000, diamante:330000, esmeralda:3300000};
@@ -639,6 +640,7 @@ function produce(sec){
   for(const m of MINES){ const r = mineRate(m); if(r > 0) gained[m.id] = r*sec; }
   const mr = machineRate(); if(mr > 0) gained[S.active] = (gained[S.active]||0) + mr*sec;
   for(const id in gained) addOre(id, gained[id]);
+  shareCoal(sec);
   smelt(sec);
   gridTick(sec, powerTick(sec));
   autoFuelTick();
@@ -673,16 +675,25 @@ function sellByBelts(){
   S.money += total; S.earned += total;
   return total;
 }
+// o carvão é dividido entre fundições e britadores: se faltar, todos recebem a mesma fração (ninguém fica sem)
+let coalShare = 1;
+function shareCoal(sec){
+  let d = 0;
+  for(const m of MINES) if(hasBelt(m) && S.ore[m.id] > 0) d += Math.min(S.ore[m.id], beltRate(m)*effOf('sm_'+m.id)*sec)/ORES_PER_BAR*COAL_PER_BAR;
+  if(S.power && S.power.open && crushers()) d += Math.max(0, Math.min(powerStep()*sec*crushers(), POWER_BUF_MAX - S.power.buf.moido));
+  coalShare = d > 0 ? Math.min(1, S.ore.carvao/d) : 1;
+}
 function smelt(sec){
   for(const m of MINES){
     if(!hasBelt(m)){ FUEL[m.id] = false; continue; }
     const coalOk = coalLineOn() && S.ore.carvao > 0.0001;
     FUEL[m.id] = coalOk;
     if(!coalOk || S.ore[m.id] <= 0) continue;
-    const take = Math.min(S.ore[m.id], beltRate(m)*effOf('sm_'+m.id)*sec, S.ore.carvao/COAL_PER_BAR*ORES_PER_BAR);
+    const take = Math.min(Math.min(S.ore[m.id], beltRate(m)*effOf('sm_'+m.id)*sec)*coalShare, S.ore.carvao/COAL_PER_BAR*ORES_PER_BAR);
     S.cond['sm_'+m.id] = Math.max(0, cond('sm_'+m.id) - sec/SM_WEAR_TIME*wearMult());
     S.ore.carvao = Math.max(0, S.ore.carvao - take/ORES_PER_BAR*COAL_PER_BAR);
     S.ore[m.id] -= take; S.bars[m.id] += take/ORES_PER_BAR;
+    if(take > 0) SMELT_T[m.id] = performance.now();
   }
 }
 
@@ -703,8 +714,8 @@ const POWER_ITEMS = [
   {id:'tb',  kind:'m', name:'Turbina', ico:'⚡', cost:12000, need:'aj1', desc:'O vapor gira a turbina e gera energia para a rede.'},
   {id:'bat', kind:'m', name:'Banco de Baterias', ico:'🔋', cost:8000, need:'tb', desc:'Guarda a energia que sobra em baterias para vender.'},
 ];
-const ENERGY_PER_COAL = 10, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POWER_BUF_MAX = 40, WASH_LOSS = 0.1;
-const BATTERY_KWS = 20, BATTERY_VALUE = 160, BATTERY_CAP = 40;           // energia por bateria, preço e capacidade
+const ENERGY_PER_COAL = 25, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POWER_BUF_MAX = 40, WASH_LOSS = 0.1;
+const BATTERY_KWS = 25, BATTERY_VALUE = 160, BATTERY_CAP = 40;           // energia por bateria, preço e capacidade
 const powerStep = () => 0.3 * (1 + 0.5*S.power.lvl);                    // carvão/s por britador, ajudante...
 const boilerCost = () => Math.ceil(20000 * Math.pow(3, S.power.lvl));
 // ===== REDE ELÉTRICA (gerador a carvão + usina + baterias) =====
@@ -753,7 +764,7 @@ const batteryValue = () => (S.power.batteries||0) * BATTERY_VALUE;
 function powerTick(sec){
   const P = S.power; if(!P.open || sec <= 0) return 0;
   const r = powerStep()*sec, b = P.buf; let gen = 0;
-  if(crushers()){ const t = Math.max(0, Math.min(S.ore.carvao, r*crushers(), POWER_BUF_MAX - b.moido)); S.ore.carvao -= t; b.moido += t; }
+  if(crushers()){ const t = Math.max(0, Math.min(S.ore.carvao, Math.min(r*crushers(), POWER_BUF_MAX - b.moido)*coalShare)); S.ore.carvao -= t; b.moido += t; }
   if(P.lv && P.maq){ const t = Math.max(0, Math.min(b.moido, r*2, POWER_BUF_MAX - b.limpo)); b.moido -= t; b.limpo += t*(1-WASH_LOSS); }
   if(boilerHands()){ const t = Math.max(0, Math.min(b.limpo, r*boilerHands(), POWER_BUF_MAX - b.vapor)); b.limpo -= t; b.vapor += t; }
   if(P.tb){ const t = Math.min(b.vapor, r*2); b.vapor -= t; gen = t*ENERGY_PER_COAL; }
@@ -2292,12 +2303,13 @@ function createWorld(){
       o.spawnT = (o.spawnT||0) + dt;
       // carvão chegando pela esteira de trás
       o.coalT = (o.coalT||0) + dt;
-      if(coalLineOn() && o.coalPath && S.smelters[id] && FUEL[id] && S.ore[id] > 0.01 && o.coalT > 1.0){
+      const smelting = performance.now() - (SMELT_T[id]||0) < 1500;
+      if(coalLineOn() && o.coalPath && S.smelters[id] && FUEL[id] && (smelting || S.ore[id] > 0.01) && o.coalT > 1.0){
         o.coalT = 0;
         const r = new THREE.Mesh(riderGeo, M('#26262c')); r.castShadow = true; world.add(r);
         riders.push({r, o, d:0, coal:true});
       }
-      if(on && o.spawnT > 0.6 && S.ore[id] >= 0.5){
+      if(on && o.spawnT > 0.6 && (S.ore[id] >= 0.5 || smelting)){
         o.spawnT = 0;
         const r = new THREE.Mesh(riderGeo, M(o.m.color)); r.castShadow = true; world.add(r);
         riders.push({r, o, d:0});
@@ -2441,6 +2453,7 @@ function createWorld(){
       beltSeg(pwLinks, -61.1, UZ, -68.3, UZ, Y);
       beltSeg(pwLinks, -68.3, P.brB ? -9.2 : UZ, -68.3, -14.0, Y);
       pwPaths.coal = [new THREE.Vector3(-61.1,0.4,UZ), new THREE.Vector3(-61.1,Y+0.15,UZ), new THREE.Vector3(-68.3,Y+0.15,UZ), new THREE.Vector3(-68.3,Y+0.15,-14), new THREE.Vector3(-69.5,2.4,-14)];
+      pwPaths.coal2 = P.brB ? [new THREE.Vector3(-61.1,0.4,UZ), new THREE.Vector3(-61.1,Y+0.15,UZ), new THREE.Vector3(-68.3,Y+0.15,UZ), new THREE.Vector3(-68.3,Y+0.15,-9.2), new THREE.Vector3(-69.5,2.4,-9.2)] : null;
     }
     if(P.lv){
       beltSeg(pwLinks, -71.6, P.brB ? -9.2 : -14.0, -71.6, -14.0, 1.0); beltSeg(pwLinks, -71.6, UZ, -75.1, UZ, 1.0);
@@ -2491,7 +2504,8 @@ function createWorld(){
     // blocos andando
     const spawn = (key, ok, col, geo) => { pwT[key] = (pwT[key]||0) + dt; if(ok && pwPaths[key] && pwT[key] > 0.8){ pwT[key] = 0;
       const r = new THREE.Mesh(geo || riderGeo, M(col)); world.add(r); pwRiders.push({r, path:pwPaths[key], d:0}); } };
-    spawn('coal', crushers() && S.ore.carvao > 1 && b.moido < POWER_BUF_MAX - 1, '#26262c');
+    spawn('coal', P.brA && P.opA && S.ore.carvao > 0.05 && b.moido < POWER_BUF_MAX - 1, '#26262c');
+    spawn('coal2', P.brB && P.opB && S.ore.carvao > 0.05 && b.moido < POWER_BUF_MAX - 1, '#26262c');
     spawn('cr', P.lv && P.maq && b.moido > 0.3, '#4a4a52');
     spawn('st', P.tb && b.vapor > 0.1, '#ffffff', new THREE.SphereGeometry(0.18,8,6));
     const sp = BELT_SPEED*(1 + POWER_BELT_BONUS*ratio);
