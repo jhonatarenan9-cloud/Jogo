@@ -41,6 +41,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `SM_WEAR_TIME`, `TRUCK_WEAR_TRIP`, `MIN_EFF`: manutenção (desgaste e custo de conserto).
 - `GEM_CHANCE`, `GEM_DELIVERY_CHANCE`, `GEM_ITEMS`: gemas raras e itens da loja de gemas (bônus pequenos).
 - `POWER_*`, `powerIntake`, `boilerCost`, `ENERGY_PER_COAL`: usina de energia (britador, lavadora, caldeira, turbina).
+- `OIL_*`, `oilRate`, `fuelCap`, `pumpCost`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo (combustível dos veículos).
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Testes
