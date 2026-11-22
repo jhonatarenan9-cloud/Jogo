@@ -14,6 +14,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mina Idle">
 <!-- APP:END -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800&display=swap">
 <style>
   :root{
     --bg:#16120f; --panel:#221c17; --panel2:#2c241d; --line:#3d3229;
@@ -262,6 +264,97 @@
   #toast{position:fixed;left:50%;bottom:calc(104px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
     padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:20;max-width:90vw;text-align:center}
   #toast.show{opacity:1}
+  /* ===================== TEMA CARTOON (azul, dourado e verde, bordas grossas) ===================== */
+  :root{
+    --panel:#1f4f8f; --panel2:#173f75; --line:#2f6cb5; --muted:#b5cdee; --text:#ffffff;
+    --navy:#123a6e; --navyD:#0c2a52; --gold:#ffcf3f; --green:#3fbf4a; --greenD:#24862d; --red:#e5483b; --redD:#a82a20;
+    --hudbg:rgba(18,58,110,.92);
+    --fontD:"Lilita One","Baloo 2","Arial Rounded MT Bold",system-ui,sans-serif;
+    --fontB:"Nunito","Segoe UI",system-ui,sans-serif;
+  }
+  body{font-family:var(--fontB)}
+  h2,.money,.goalHead,.lvlTop b,.achRank b,#title h1{font-family:var(--fontD);font-weight:400;letter-spacing:.3px}
+  /* barra do topo */
+  #hud{background:var(--hudbg);border:2.5px solid var(--navyD);box-shadow:0 3px 0 var(--navyD);border-radius:12px;font-weight:700}
+  .moneyPill{background:linear-gradient(#2d7fd3,#1d5fae);border:3px solid var(--navyD);box-shadow:0 4px 0 var(--navyD);border-radius:14px;padding:4px 12px 4px 6px}
+  .moneyPill .bill{font-size:0;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff4a8,#ffcf3f 45%,#c98d0c);border:2.5px solid #8a5d06;
+    box-shadow:inset 0 -2px 0 rgba(0,0,0,.2);position:relative}
+  .moneyPill .bill::after{content:"$";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:20px var(--fontD);color:#8a5d06}
+  .money{font-size:24px;text-shadow:0 2px 0 var(--navyD)}
+  .rate{color:#cfe6ff;font-weight:700}
+  #goalBox{background:var(--hudbg);border:2.5px solid var(--navyD);box-shadow:0 3px 0 var(--navyD)}
+  .goalHead{font-size:14px}
+  /* barra de baixo, de ponta a ponta */
+  #dock{left:0;right:0;transform:none;bottom:0;justify-content:center;gap:2px!important;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));
+    background:linear-gradient(#1d4f8f,#123a6e);border-top:3px solid var(--navyD);box-shadow:0 -3px 0 rgba(255,255,255,.12) inset}
+  #dock button{background:transparent!important;border:0!important;box-shadow:none!important;color:#fff!important;width:64px!important;padding:4px 2px!important;
+    font:700 10px var(--fontB)!important;text-shadow:0 1px 0 var(--navyD);border-radius:12px}
+  #dock button span{font-size:26px!important;filter:drop-shadow(0 2px 0 rgba(0,0,0,.3))}
+  #dock button:active{transform:translateY(2px)}
+  #dock i{border:2px solid #fff;font-weight:800}
+  .mapHint{bottom:calc(84px + env(safe-area-inset-bottom,0px))!important;background:var(--hudbg);border:2px solid var(--navyD);font-weight:700}
+  #toast{bottom:calc(90px + env(safe-area-inset-bottom,0px))!important;background:var(--navy);border:3px solid var(--gold);font-weight:800;border-radius:14px;box-shadow:0 4px 0 var(--navyD)}
+  #viewBtn{background:var(--hudbg)!important;border:2px solid var(--navyD)!important;box-shadow:0 3px 0 var(--navyD);bottom:calc(132px + env(safe-area-inset-bottom,0px))!important}
+  /* janelas */
+  .card{background:var(--panel);border:4px solid var(--navyD);box-shadow:0 6px 0 var(--navyD),0 10px 30px rgba(0,0,0,.35)}
+  .cardHead{background:linear-gradient(#2f7fd8,#1f5fae);border-bottom:3px solid var(--navyD);border-radius:14px 14px 0 0}
+  .cardHead h2{font-size:22px;text-shadow:0 2px 0 var(--navyD)}
+  #sheetClose{background:var(--red)!important;border:3px solid var(--redD)!important;box-shadow:0 3px 0 var(--redD);border-radius:10px!important;color:#fff;font:22px var(--fontD)!important;width:40px!important;height:40px!important}
+  button{font-family:var(--fontB);font-weight:800;border-radius:12px;background:#2f6cb5;border:2.5px solid var(--navyD);box-shadow:0 3px 0 var(--navyD);color:#fff}
+  button:hover:not(:disabled){background:#3a7cc8}
+  button:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 var(--navyD)}
+  button[data-cost]:not(:disabled),button.primary{background:linear-gradient(#56d660,#33a83d)!important;border-color:var(--greenD)!important;box-shadow:0 3px 0 var(--greenD)!important;color:#fff;text-shadow:0 1px 0 var(--greenD)}
+  button[data-cost]:disabled{background:#7d8ea8!important;border-color:#55657d!important;box-shadow:0 3px 0 #55657d!important;color:#e6ecf5;opacity:1}
+  .item{background:var(--panel2);border:2.5px solid var(--navyD);border-radius:14px;box-shadow:0 3px 0 var(--navyD)}
+  .item .ico{background:#fff3d6;border:2.5px solid var(--navyD);border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:24px}
+  .item .name{font-size:15px}
+  .item .desc{color:#cfe2ff}
+  .owned{color:#9cff7a}
+  .subhead{color:#ffe18a!important;font-family:var(--fontD);font-weight:400;letter-spacing:.6px}
+  .tabs button.on,.subtab.on{background:linear-gradient(#ffd75a,#f2b632)!important;border-color:#a36f06!important;box-shadow:0 3px 0 #a36f06!important;color:#4a3000!important;text-shadow:none}
+  .lockedBox,.flowCard,.statMine,.statTot div,.maintRow,.achCard,.staffCard{background:var(--panel2);border:2.5px solid var(--navyD);border-radius:14px}
+  .progress{background:rgba(0,0,0,.35);border-radius:99px}
+  .progress > div{background:linear-gradient(90deg,#56d660,#ffcf3f)}
+  /* cartões flutuando sobre as construções */
+  #cards{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+  #topbar,#goalBox{z-index:3}
+  .bcard{position:absolute;left:0;top:0;width:150px;margin-left:-75px;pointer-events:auto;font-family:var(--fontB);will-change:transform;cursor:pointer;transform-origin:50% 100%}
+  .bcard .bt{background:#2b2f3a;color:#fff;font:13px var(--fontD);text-align:center;padding:3px 6px;border-radius:8px 8px 0 0;border:2px solid #14161d;border-bottom:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bcard .bb{display:flex;align-items:center;gap:5px;background:linear-gradient(#2f7fd8,#1f5fae);border:2.5px solid var(--navyD);border-radius:0 0 12px 12px;padding:5px;box-shadow:0 3px 0 var(--navyD)}
+  .bcard .bi{position:relative;flex:none;width:36px;height:36px;border-radius:50%;background:#fff3d6;border:2.5px solid var(--navyD);display:flex;align-items:center;justify-content:center;font-size:19px}
+  .bcard .bl{position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);background:#e07a1f;color:#fff;font:11px var(--fontD);padding:0 5px;border-radius:6px;border:2px solid #8a4206;white-space:nowrap}
+  .bcard .bc{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .bcard .br{background:rgba(0,0,0,.35);color:#cfe6ff;font-size:11px;font-weight:800;text-align:center;border-radius:6px;padding:1px 3px;white-space:nowrap;overflow:hidden}
+  .bcard .bu{background:linear-gradient(#56d660,#33a83d);border:2px solid var(--greenD);color:#fff;font:12px var(--fontD);line-height:1.05;text-align:center;border-radius:7px;padding:2px 3px;text-shadow:0 1px 0 var(--greenD)}
+  .bcard .bu.off{background:#7d8ea8;border-color:#55657d;text-shadow:none}
+  .bcard .bu.lock{background:#5b5f66;border-color:#33363b}
+  .bcard.can .bu{animation:bpulse 1s infinite}
+  @keyframes bpulse{50%{filter:brightness(1.18);transform:scale(1.05)}}
+  /* tela de abertura e boas-vindas */
+  #title{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;cursor:pointer;
+    background:radial-gradient(circle at 50% 40%,#3aa0f0,#1565b8 70%);color:#fff;text-align:center;padding:24px}
+  #title h1{margin:0;font-size:clamp(44px,13vw,86px);line-height:.95;color:#ffd23f;-webkit-text-stroke:3px #7a4a06;text-shadow:0 6px 0 #7a4a06,0 10px 18px rgba(0,0,0,.35)}
+  #title h1 small{display:block;font-size:.42em;color:#fff;-webkit-text-stroke:2px #0c2a52;text-shadow:0 4px 0 #0c2a52;margin-top:6px}
+  #title .art{position:relative;width:220px;height:170px}
+  #title .art .mt{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:0;height:0;border-left:110px solid transparent;border-right:110px solid transparent;border-bottom:150px solid #7d6c5d}
+  #title .art .snow{position:absolute;top:20px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:30px solid transparent;border-right:30px solid transparent;border-bottom:40px solid #fff}
+  #title .art .cave{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:64px;height:56px;background:#2b1d12;border:7px solid #8a5a30;border-bottom:0;border-radius:32px 32px 0 0}
+  #title .art .gem{position:absolute;font-size:34px;filter:drop-shadow(0 3px 0 rgba(0,0,0,.3));animation:bob 2s ease-in-out infinite}
+  #title .art .pick{position:absolute;right:-6px;top:0;font-size:64px;transform:rotate(15deg);filter:drop-shadow(0 4px 0 rgba(0,0,0,.3))}
+  @keyframes bob{50%{transform:translateY(-8px)}}
+  #title .tap{font:22px var(--fontD);animation:blink 1.2s infinite;text-shadow:0 3px 0 #0c2a52}
+  @keyframes blink{50%{opacity:.35}}
+  #title .ver{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom,0px));font-size:12px;opacity:.8}
+  #welcome{position:fixed;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;background:rgba(5,20,45,.55);padding:20px}
+  #welcome .wb{width:min(340px,100%);background:var(--panel);border:4px solid var(--navyD);border-radius:18px;box-shadow:0 6px 0 var(--navyD);text-align:center;color:#fff;padding:16px 14px;font-weight:800}
+  #welcome h2{margin:0 0 10px;font-size:28px;text-shadow:0 2px 0 var(--navyD)}
+  #welcome .av{width:84px;height:84px;margin:0 auto 10px;border-radius:14px;background:#fff3d6;border:3px solid var(--navyD);font-size:52px;display:flex;align-items:center;justify-content:center}
+  #welcome .gain{font:30px var(--fontD);color:#9cff7a;text-shadow:0 2px 0 #0c2a52;margin:4px 0 10px}
+  #welcome .time{font:22px var(--fontD);margin:2px 0 14px}
+  #welcome .row{display:flex;gap:10px}
+  #welcome .row button{flex:1;font:18px var(--fontD);padding:10px 4px}
+  #welcome .x2{background:linear-gradient(#56d660,#33a83d)!important;border-color:var(--greenD)!important;box-shadow:0 3px 0 var(--greenD)!important}
+  #welcome .claim{background:linear-gradient(#ffd75a,#f2b632)!important;border-color:#a36f06!important;box-shadow:0 3px 0 #a36f06!important;color:#4a3000}
 </style>
 </head>
 <body>
@@ -322,6 +415,22 @@
   </div>
 </div>
 <div id="toast"></div>
+<div id="title" role="button" aria-label="Toque para começar">
+  <h1>MINA IDLE<small>Magnata da Mineração</small></h1>
+  <div class="art"><div class="mt"></div><div class="snow"></div><div class="cave"></div>
+    <span class="gem" style="left:18px;bottom:10px">💎</span><span class="gem" style="right:30px;bottom:30px;animation-delay:.5s">🟢</span><span class="pick">⛏️</span></div>
+  <div class="tap">Toque para começar</div>
+  <div class="ver">v 1.0 · seu progresso fica salvo neste aparelho</div>
+</div>
+<div id="welcome" hidden><div class="wb">
+  <h2>Bem-vindo de volta!</h2>
+  <div class="av">👷</div>
+  <div>Enquanto você esteve fora, sua equipe ganhou:</div>
+  <div class="gain" id="wGain">+ $0</div>
+  <div>Você ficou fora por:</div>
+  <div class="time" id="wTime">00:00:00</div>
+  <div class="row"><button class="x2" id="wX2">Coletar x2<br><small>💎 1 gema</small></button><button class="claim" id="wClaim">Coletar</button></div>
+</div></div>
 
 <!-- THREE:START -->
 <script src="three.min.js"></script>
@@ -430,7 +539,7 @@ function newState(){
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
     oil:{open:false, lvl:0, fuel:0, drums:0, refBuf:0, gal:0, sold:0, buf:{crude:0, clean:0, diesel:0}},
     power:{open:false, lvl:0, batteries:0, charge:0, buf:{moido:0, limpo:0, vapor:0}},
-    fp:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
+    fp:false, viewV2:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     genLvl:0, autoFuel:false,
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
@@ -444,6 +553,7 @@ try{
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
     S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
+    if(!d.viewV2){ S.fp = false; S.viewV2 = true; }   // novo visual: começa na câmera isométrica
     if(d.genLvl === undefined){   // rede integrada nova: quem já tinha esteiras ganha o gerador 1, e caminhões ganham um tanque inicial
       const anyBelt = Object.values(d.belts||{}).some(Boolean) || Object.values(d.sellBelts||{}).some(Boolean) || Object.values(d.smelters||{}).some(Boolean);
       S.genLvl = anyBelt ? 1 : 0;
@@ -1483,6 +1593,8 @@ function render(){
   if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
   else document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
   document.querySelectorAll('#shop button[data-cost], #staff button[data-cost], #panelBody button[data-cost], #maintBody button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
+  { const sc = document.getElementById('scene').getBoundingClientRect(), tb = document.getElementById('topbar').getBoundingClientRect();
+    document.getElementById('goalBox').style.top = (tb.bottom - sc.top + 6) + 'px'; }
   checkMissions();
   checkAchievements();
   { const n = needRepair(), b = document.getElementById('maintBadge'); b.hidden = !n; b.textContent = n; }
@@ -1526,7 +1638,8 @@ function createWorld(){
   world.background = new THREE.Color('#8fd16a');
   world.fog = new THREE.Fog('#8fd16a', 38, 75);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
-  const CAM_BASE = new THREE.Vector3(0, 12.5, 9.5), CAM_OFF = CAM_BASE.clone();
+  const CAM_BASE = new THREE.Vector3(9.5, 14.5, 9.5), CAM_OFF = CAM_BASE.clone();
+  const LOOK_SHIFT = new THREE.Vector3(-1.5, 0, -3.2);   // olha um pouco à frente do mineiro (para o lado das minas)   // visão isométrica (diagonal)
 
   world.add(new THREE.HemisphereLight(0xfffbe8, 0x5d8a30, 0.85));
   const sun = new THREE.DirectionalLight(0xfff0d6, 0.8);
@@ -3000,6 +3113,49 @@ function createWorld(){
   lvlBtns.push({id:'usina', tile:makeTile(-70.5, -4.0), x:-70.5, z:-4.0});
   lvlBtns.push({id:'oil', tile:makeTile(-28.6, 12.2), x:-28.6, z:12.2});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
+  // ---------- cartões flutuando sobre cada construção ----------
+  const cardsEl = document.createElement('div'); cardsEl.id = 'cards'; sceneEl.insertBefore(cardsEl, document.getElementById('topbar'));
+  const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4]};
+  const cards = lvlBtns.map(b=>{
+    const m = mineById(b.id);
+    const pos = m ? new THREE.Vector3(MINES3.find(o=>o.m===m).x + (m.fuel ? 4 : 2.6), 0.4, -5.6) : new THREE.Vector3(...CARD_POS[b.id]);
+    const el = document.createElement('div'); el.className = 'bcard';
+    el.innerHTML = `<div class="bt"></div><div class="bb"><div class="bi"><span class="ic"></span><span class="bl"></span></div><div class="bc"><div class="br"></div><div class="bu"></div></div></div>`;
+    el.onclick = ()=>openPanel(b.id);
+    cardsEl.appendChild(el);
+    return {b, m, pos, el, t:el.querySelector('.bt'), ic:el.querySelector('.ic'), bl:el.querySelector('.bl'), br:el.querySelector('.br'), bu:el.querySelector('.bu'), key:''};
+  });
+  const cv3 = new THREE.Vector3(); let cardT = 1;
+  function cardInfo(c){
+    const b = c.b, m = c.m;
+    if(m){ const open = isUnlocked(m), inc = m.fuel ? `⚫ ${fmt(mineRate(m))}/s` : `${money(mineIncome(m))}/s`;
+      return {name: m.fuel ? 'Mina de Carvão' : 'Mina de ' + m.name, ic: m.fuel ? '⚫' : '⛏️', rate: open ? inc : 'Fechada', open,
+        btn: open ? (isFinite(b.cost) ? 'Melhorar<br>' + money(b.cost) : 'Máximo') : '🔒 ' + money(remaining(toolById(m.tool)))}; }
+    if(b.id === 'galpao') return {name:'Galpão de Entregas', ic:'📦', open:S.depotOpen, rate: S.depotOpen ? `📦 ${fmt(depotTotal())} · ⛽ ${fmt(S.oil.fuel)} L` : 'Fechado', btn: (S.depotOpen ? 'Melhorar<br>' : 'Abrir<br>') + money(b.cost)};
+    if(b.id === 'usina') return {name:'Usina de Energia', ic:'⚡', open:S.power.open, rate: `⚡ ${fmt(powerNow)}/${fmt(powerDemand())} kW`, btn: isFinite(b.cost) ? (S.power.open ? 'Melhorar<br>' : 'Comprar<br>') + money(b.cost) : 'Máximo'};
+    return {name:'Campo de Petróleo', ic:'🛢️', open:S.oil.open, rate: S.oil.open ? `⛽ ${fmt(fuelNow*60)} L/min` : 'À venda', btn: isFinite(b.cost) ? (S.oil.open ? 'Melhorar<br>' : 'Comprar<br>') + money(b.cost) : 'Máximo'};
+  }
+  function updateCards(dt){
+    cardT += dt; const w = sceneEl.clientWidth, h = sceneEl.clientHeight, p = player.position, maxD = S.fp ? 24 : 40;
+    const refresh = cardT > 0.25; if(refresh) cardT = 0;
+    const topLim = document.getElementById('goalBox').getBoundingClientRect().bottom - sceneEl.getBoundingClientRect().top + 4;
+    cards.forEach(c=>{
+      const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z);
+      cv3.copy(c.pos).project(camera);
+      const vis = d < maxD && cv3.z < 1 && Math.abs(cv3.x) < 1.15 && cv3.y > -1 && cv3.y < 1.1 && !(c.m && !isUnlocked(c.m) && d > 18);
+      const sy = (1-cv3.y)/2*h - 78;
+      const vis2 = vis && sy - 40 > topLim && sy < h - 90;
+      c.el.style.display = vis2 ? '' : 'none'; if(!vis2) return;
+      const sc = Math.max(0.62, Math.min(1, 1.15 - d/maxD*0.5));
+      c.el.style.transform = `translate(${((cv3.x+1)/2*w).toFixed(1)}px, ${sy.toFixed(1)}px) scale(${sc.toFixed(2)})`;
+      c.el.style.zIndex = String(1000 - Math.round(d*10));
+      if(refresh){ const i = cardInfo(c), key = JSON.stringify(i) + '|' + c.b.lvl + '|' + (S.money >= c.b.cost);
+        if(key !== c.key){ c.key = key; c.t.textContent = i.name; c.ic.textContent = i.ic; c.bl.textContent = c.b.lvl; c.br.textContent = i.rate; c.bu.innerHTML = i.btn;
+          const can = c.b.open && isFinite(c.b.cost) && S.money >= c.b.cost;
+          c.bu.className = 'bu' + (c.m && !isUnlocked(c.m) ? ' lock' : can ? '' : ' off'); c.el.classList.toggle('can', can); } }
+    });
+  }
+
   function updateLvlBtns(t){
     lvlBtns.forEach((b,k)=>{
       let lvl, cost, open = true;
@@ -3009,6 +3165,7 @@ function createWorld(){
         const av = POWER_ITEMS.filter(pwCan).map(pwLeft); cost = !P2.open ? powerOpenLeft() : av.length ? Math.min(...av) : P2.tb ? boilerCost() : Infinity; }
       else if(b.id === 'galpao'){ lvl = (S.depotOpen?1:0) + S.trucks + S.loaders + S.truckLvl + S.bagLvl; cost = cheapestDepot(); }
       else { const m = mineById(b.id); open = isUnlocked(m); lvl = mineLevelInfo(m).lvl; cost = cheapestUpgrade(m); }
+      b.lvl = lvl; b.cost = cost; b.open = open;
       b.tile.draw(open ? '⬆️' : '🔒', 'NÍVEL ' + lvl, 0, !open);
       const can = open && S.money >= cost;
       upArrows[k].visible = can; if(can){ upArrows[k].position.y = 1.3 + Math.abs(Math.sin(t*4 + k))*0.35; upArrows[k].rotation.y = t*2; }
@@ -3164,8 +3321,10 @@ function createWorld(){
       if(joy && Math.hypot(joy.dx, joy.dy) > 6){ fwd = -joy.dy/45; str = joy.dx/45; }
       ix = Math.sin(fpYaw)*fwd - Math.cos(fpYaw)*str; iz = Math.cos(fpYaw)*fwd + Math.sin(fpYaw)*str;
     } else {
-      if(keys.l) ix--; if(keys.r) ix++; if(keys.u) iz--; if(keys.d) iz++;
-      if(joy && Math.hypot(joy.dx, joy.dy) > 6){ ix = joy.dx/45; iz = joy.dy/45; }
+      let sx = 0, sy = 0;
+      if(keys.l) sx--; if(keys.r) sx++; if(keys.u) sy--; if(keys.d) sy++;
+      if(joy && Math.hypot(joy.dx, joy.dy) > 6){ sx = joy.dx/45; sy = joy.dy/45; }
+      const k = Math.SQRT1_2; ix = k*(sx + sy); iz = k*(sy - sx);   // tela → mundo na câmera diagonal
     }
     let mag = Math.hypot(ix, iz); if(mag > 1){ ix/=mag; iz/=mag; mag = 1; }
     const moving = mag > 0.05, P = player.userData, p = player.position;
@@ -3243,6 +3402,7 @@ function createWorld(){
     updateTrophies(npcT);
     updateLvlBtns(npcT);
     updateGenerators(npcT);
+    updateCards(dt);
     updateFactory(dt, npcT);
 
     for(const o of MINES3) if(o.tile && o.tile.mesh.visible){
@@ -3298,7 +3458,7 @@ function createWorld(){
       R.render(world, camera);
       return;
     }
-    camPos.lerp(new THREE.Vector3().copy(p).add(CAM_OFF), Math.min(1, dt*6));
+    camPos.lerp(new THREE.Vector3().copy(p).add(CAM_OFF).add(LOOK_SHIFT), Math.min(1, dt*6));
     camera.position.copy(camPos);
     camera.lookAt(camPos.x - CAM_OFF.x, 0.6, camPos.z - CAM_OFF.z);
     R.render(world, camera);
@@ -3364,7 +3524,7 @@ function frame(now){
   const secs = Math.min(4*3600, (Date.now() - (S.last||Date.now()))/1000);
   if(secs > 30 && incomePerSec() > 0){
     const v0 = S.money + oreValue(); produce(secs*0.25); const gain = S.money + oreValue() - v0;
-    setTimeout(()=>toast(`Enquanto você esteve fora, seus funcionários mineraram ${money(gain)} em minério`), 400);
+    window.pendingWelcome = {gain, secs};
   }
 })();
 
@@ -3405,6 +3565,19 @@ document.getElementById('reset').onclick = (e)=>{
   location.reload();
 };
 window.addEventListener('beforeunload', save);
+// ---------- tela de abertura e boas-vindas ----------
+function fmtTime(sec){ sec = Math.floor(sec); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s2 = sec%60; return [h,m,s2].map(v=>String(v).padStart(2,'0')).join(':'); }
+function showWelcome(){
+  const w = window.pendingWelcome; if(!w || w.gain < 1) return;
+  document.getElementById('wGain').textContent = '+ ' + money(w.gain);
+  document.getElementById('wTime').textContent = fmtTime(w.secs);
+  const x2 = document.getElementById('wX2'); x2.disabled = S.gems < 1;
+  document.getElementById('welcome').hidden = false;
+  const close = bonus => { if(bonus && S.gems >= 1){ S.gems -= 1; S.money += w.gain; toast(`💎 Ganho dobrado: +${money(w.gain)}!`); if(window.world3d) world3d.celebrate(); }
+    document.getElementById('welcome').hidden = true; window.pendingWelcome = null; render(); save(); };
+  x2.onclick = ()=>close(true); document.getElementById('wClaim').onclick = ()=>close(false);
+}
+document.getElementById('title').onclick = ()=>{ document.getElementById('title').hidden = true; showWelcome(); };
 
 buildMines(); buildShop(); render();
 try{

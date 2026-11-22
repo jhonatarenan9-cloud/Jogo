@@ -7,6 +7,9 @@ O jogo funciona como app (PWA) pelo GitHub Pages: abra o endereço do jogo no Sa
 e escolha **Adicionar à Tela de Início**. Ele abre em tela cheia, funciona sem internet e se atualiza sozinho
 sempre que uma nova versão é enviada para o repositório.
 
+## Visual cartoon
+Tela de abertura, câmera isométrica, cartões flutuando sobre cada mina e fábrica (nome, ganho por segundo, nível e botão verde de melhorar), barra azul no topo e na base, e janela de "Bem-vindo de volta" com o que a equipe ganhou fora (dá para dobrar com 1 gema).
+
 ## Como jogar
 - O jogo começa em **primeira pessoa**: lado esquerdo da tela anda, lado direito olha em volta (no computador: W/S andam, A/D ou setas giram). O botão **👁️** troca para a visão de cima (3ª pessoa).
 - Pare perto das pedras de uma mina aberta: o mineiro golpeia sozinho e o minério cai na pilha ao lado.
