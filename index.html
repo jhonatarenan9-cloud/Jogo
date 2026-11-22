@@ -207,6 +207,7 @@ const MINES = [
   {id:'ouro',      name:'Ouro',      color:'#ffcf3f', value:35,   tool:'britadeira'},
   {id:'diamante',  name:'Diamante',  color:'#7fe9f7', value:200,  tool:'carregadeira'},
   {id:'esmeralda', name:'Esmeralda', color:'#2ee67a', value:1200, tool:'escavadeira'},
+  {id:'carvao',    name:'Carvão',    color:'#34343c', value:0,    tool:'madeira', fuel:true},   // combustível das fundições
 ];
 // power = minério por golpe; passive = minério/s extra (máquinas)
 const TOOLS = [
@@ -217,11 +218,16 @@ const TOOLS = [
   {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:60000000, power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
-const STAFF_COST = {cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:900000};
+const STAFF_COST = {carvao:50, cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:900000};
 const MAX_HELPERS = 3, HELPER_RATE = 0.2, MANAGER_MULT = 2, MANAGER_COST_MULT = 40;
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
-const ORES_PER_BAR = 5, BAR_MULT = 20;   // barra = 4x o valor do minério
+const ORES_PER_BAR = 5, BAR_MULT = 20;
+// carvão: cada barra queima 1 carvão; a esteira de carvão leva o carvão por trás das minas até as fundições
+const COAL_PER_BAR = 1, COAL_HELPER_MULT = 4, COAL_LINE_COST = 100;
+const coalMult = () => 1 + 0.5*S.coalLvl;
+const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
+const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
 const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // minério/s de cada esteira
 const SMELTER_COST = {cobre:150, ferro:6000, ouro:180000, diamante:5000000, esmeralda:120000000};
 const BELT_COST    = {cobre:80,  ferro:3000, ouro:90000,  diamante:2500000, esmeralda:60000000};
@@ -237,7 +243,7 @@ function newState(){
     mined:Object.fromEntries(MINES.map(m=>[m.id,0])),
     tools:{madeira:true}, paid:{},
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false}])),
-    smelters:{}, belts:{}, sellBelts:{}, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
+    smelters:{}, belts:{}, sellBelts:{}, coalLine:false, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false,
     active:'cobre', won:false, last:Date.now()
   };
@@ -284,7 +290,7 @@ function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.5, S.staf
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
 const boostMult = () => 1 + 0.15*S.boost;
 // minério/s de uma mina vindo dos ajudantes
-function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * boostMult() : 0; }
+function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) : 0; }
 // minério/s das máquinas (vai para a mina ativa)
 function machineRate(){ let r = 0; for(const t of TOOLS) if(S.tools[t.id]) r += t.passive; return r * boostMult(); }
 function incomePerSec(){
@@ -334,8 +340,13 @@ function sellByBelts(){
   return total;
 }
 function smelt(sec){
-  for(const m of MINES) if(hasBelt(m) && S.ore[m.id] > 0){
-    const take = Math.min(S.ore[m.id], beltRate(m)*sec);
+  for(const m of MINES){
+    if(!hasBelt(m)){ FUEL[m.id] = false; continue; }
+    const coalOk = S.coalLine && S.ore.carvao > 0.0001;
+    FUEL[m.id] = coalOk;
+    if(!coalOk || S.ore[m.id] <= 0) continue;
+    const take = Math.min(S.ore[m.id], beltRate(m)*sec, S.ore.carvao/COAL_PER_BAR*ORES_PER_BAR);
+    S.ore.carvao = Math.max(0, S.ore.carvao - take/ORES_PER_BAR*COAL_PER_BAR);
     S.ore[m.id] -= take; S.bars[m.id] += take/ORES_PER_BAR;
   }
 }
@@ -348,7 +359,7 @@ function addOre(id, amt){
 }
 function sellAll(silent, auto){
   const total = oreValue(auto);
-  for(const m of MINES){ if(!(auto && hasBelt(m))) S.ore[m.id] = 0; S.bars[m.id] = 0; }
+  for(const m of MINES){ if(m.fuel) continue; if(!(auto && hasBelt(m))) S.ore[m.id] = 0; S.bars[m.id] = 0; }
   S.money += total;
   if(!silent && total>0) toast('💰 Vendido por ' + money(total));
   return total;
@@ -366,7 +377,7 @@ function buyTool(t){
   S.money -= r; completeTool(t);
 }
 const smelterLeft = m => Math.max(0, SMELTER_COST[m.id] - (S.paid['sm_'+m.id]||0));
-const canBuildSmelter = m => isUnlocked(m) && !S.smelters[m.id];
+const canBuildSmelter = m => !m.fuel && isUnlocked(m) && !S.smelters[m.id];
 function completeSmelter(m){
   S.smelters[m.id] = true; delete S.paid['sm_'+m.id];
   toast(`🏭 Fundição da mina de ${m.name} construída! Compre a esteira para levar o minério até ela.`);
@@ -386,6 +397,18 @@ function buyBelt(m){
   if(window.world3d) world3d.onFactoryChanged(m);
   buildShop(); render(); save();
 }
+function buyCoalLine(){
+  if(S.coalLine || S.money < COAL_LINE_COST) return;
+  S.money -= COAL_LINE_COST; S.coalLine = true;
+  toast('⚫ Esteira de Carvão instalada! Ela leva o carvão por trás das minas até as fundições.');
+  if(window.world3d) world3d.onFactoryChanged(mineById('carvao'));
+  buildShop(); render(); save();
+}
+function buyCoalDrill(){
+  const c = coalDrillCost(); if(S.money < c) return;
+  S.money -= c; S.coalLvl++; buildShop(); render(); save();
+}
+const coalUseMax = () => MINES.reduce((a,m)=>a + (hasBelt(m) ? beltRate(m)/ORES_PER_BAR*COAL_PER_BAR : 0), 0);
 function buySellBelt(m){
   const c = SELLBELT_COST[m.id];
   if(!S.smelters[m.id] || S.sellBelts[m.id] || S.money < c) return;
@@ -416,8 +439,8 @@ function buildMines(){
     d.className = 'mine' + (un?'':' locked') + (S.active===m.id?' active':'');
     d.tabIndex = 0;
     d.innerHTML = `<div class="gem" style="background:${m.color}"></div>
-      <div class="info"><div class="name">Nível ${i+1}: ${m.name}</div>
-      <div class="sub">${un ? money(m.value)+' por minério' : '🔒 Requer: '+t.name}</div></div>`;
+      <div class="info"><div class="name">${m.fuel ? '⚫ Mina de Carvão' : 'Nível '+(i+1)+': '+m.name}</div>
+      <div class="sub">${m.fuel ? 'Combustível das fundições' : un ? money(m.value)+' por minério' : '🔒 Requer: '+t.name}</div></div>`;
     d.onclick = ()=>{
       if(!window.world3d) return;
       world3d.guideTo(i);
@@ -435,8 +458,8 @@ function buildStaff(){
     const slots = Array.from({length:MAX_HELPERS}, (_,k)=>`<span class="slot${k<st.n?' on':''}">${k<st.n?'👷':''}</span>`).join('');
     const rate = mineRate(m);
     card.innerHTML = `<div class="staffHead"><div class="gem" style="background:${m.color}"></div>
-      <div class="info"><div class="name">Nível ${i+1}: ${m.name}</div>
-      <div class="sub">${un ? (rate>0 ? `${fmt(rate)} ${m.name.toLowerCase()}/s ≈ ${money(rate*m.value)}/s` : 'Sem funcionários') : '🔒 Abra a mina primeiro'}</div></div></div>
+      <div class="info"><div class="name">${m.fuel ? '⚫ Mina de Carvão' : 'Nível '+(i+1)+': '+m.name}</div>
+      <div class="sub">${un ? (rate>0 ? (m.fuel ? `${fmt(rate)} carvão/s (combustível)` : `${fmt(rate)} ${m.name.toLowerCase()}/s ≈ ${money(rate*m.value)}/s`) : 'Sem funcionários') : '🔒 Abra a mina primeiro'}</div></div></div>
       <div class="staffRow"><div class="slots">${slots}</div></div>
       <div class="staffRow mgrRow"><div><b>👔 Gerente</b><div class="sub">${st.mgr ? 'Ajudantes '+MANAGER_MULT+'x mais rápidos' : 'Deixa os ajudantes '+MANAGER_MULT+'x mais rápidos'}</div></div></div>`;
     const r1 = card.querySelectorAll('.staffRow')[0], r2 = card.querySelectorAll('.staffRow')[1];
@@ -472,17 +495,40 @@ function buildShop(){
     });
   } else if(tab==='factory'){
     // sub-abas: uma por mina
-    if(!factoryMine || !MINES.find(m=>m.id===factoryMine)) factoryMine = (MINES.find(m=>isUnlocked(m) && !factoryDone(m)) || mineById(S.active)).id;
+    if(!factoryMine || !MINES.find(m=>m.id===factoryMine)) factoryMine = (MINES.some(m=>S.smelters[m.id]) && !S.coalLine) ? 'carvao' : (MINES.find(m=>!m.fuel && isUnlocked(m) && !factoryDone(m)) || MINES[0]).id;
     const sub = document.createElement('div'); sub.className = 'subtabs';
-    MINES.forEach(m=>{
+    [...MINES.filter(m=>m.fuel), ...MINES.filter(m=>!m.fuel)].forEach(m=>{
       const b = document.createElement('button'); b.className = 'subtab' + (m.id===factoryMine ? ' on' : '') + (isUnlocked(m) ? '' : ' locked');
       const n = isUnlocked(m) ? 3 - factoryMissing(m).length : 0;
-      b.innerHTML = `<span class="gem" style="width:16px;height:16px;background:${m.color}"></span><span>${m.name}</span><small>${isUnlocked(m) ? (n===3 ? '✔' : n+'/3') : '🔒'}</small>`;
+      const badge = m.fuel ? (S.coalLine ? '✔' : '!') : isUnlocked(m) ? (n===3 ? '✔' : n+'/3') : '🔒';
+      b.innerHTML = `<span class="gem" style="width:16px;height:16px;background:${m.color}"></span><span>${m.name}</span><small>${badge}</small>`;
       b.onclick = ()=>{ factoryMine = m.id; buildShop(); render(); };
       sub.appendChild(b);
     });
     el.appendChild(sub);
 
+    if(factoryMine === 'carvao'){
+      const c = mineById('carvao'), prod = mineRate(c), use = coalUseMax(), nSm = MINES.filter(x=>!x.fuel && S.smelters[x.id]).length;
+      const step = (on, ico, label) => `<div class="fstep${on?' on':''}"><div class="fico">${ico}</div><div>${label}</div></div>`;
+      const arrow = on => `<div class="farrow${on?' on':''}">➜</div>`;
+      const card = document.createElement('div'); card.className = 'flowCard';
+      card.innerHTML = `<div class="flowHead"><span class="gem" style="width:22px;height:22px;background:${c.color}"></span>
+          <b>Mina de Carvão</b><span class="flowPct">combustível</span></div>
+        <div class="flow">${step(true,'⛏️','Carvão')}${arrow(S.coalLine)}${step(S.coalLine,'🛤️','Esteira')}${arrow(S.coalLine && nSm>0)}${step(S.coalLine && nSm>0,'🏭','Fundições')}</div>
+        <div class="flowStats">
+          <div><small>Estoque</small><b>${fmt(S.ore.carvao)}</b><small>carvão</small></div>
+          <div><small>Funcionários</small><b>${fmt(prod)}/s</b><small>produção</small></div>
+          <div><small>Fundições</small><b style="color:${prod >= use ? '#9cff7a' : '#ff9b7a'}">${fmt(use)}/s</b><small>consumo máx</small></div>
+          <div><small>Abastecidas</small><b>${S.coalLine ? nSm : 0}/${nSm}</b><small>fundições</small></div>
+        </div>`;
+      el.appendChild(card);
+      el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada barra queima <b>${COAL_PER_BAR} carvão</b>. Sem carvão as fundições param. Minere carvão na mina mais à esquerda e contrate ajudantes e gerente para ela na aba 👷 Funcionários${prod < use ? ' — <b style="color:#ff9b7a">hoje a produção não cobre o consumo</b>' : ''}.</p>`);
+      add('🛤️', 'Esteira de Carvão', 'Leva o carvão por trás das minas até todas as fundições.',
+        S.coalLine ? tag('✔ Instalada') : btn(money(COAL_LINE_COST), buyCoalLine, COAL_LINE_COST));
+      const dc = coalDrillCost();
+      add('🔩', `Brocas de Carvão <span class="count">nv ${S.coalLvl}</span>`, '+50% de carvão (você e os ajudantes da mina de Carvão)', btn(money(dc), buyCoalDrill, dc));
+      return;
+    }
     const m = mineById(factoryMine), un = isUnlocked(m);
     const has = {sm:!!S.smelters[m.id], belt:!!S.belts[m.id], sell:!!S.sellBelts[m.id]};
     // diagrama do caminho do minério
@@ -509,6 +555,8 @@ function buildShop(){
         has.belt ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]));
       add('💵', `3. Esteira de venda`, `Leva as barras até a caixa de venda e vende sozinha. Sem a esteira de minério, vende o minério direto.`,
         has.sell ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]));
+      if(has.sm) el.insertAdjacentHTML('beforeend', !S.coalLine ? `<div class="lockedBox">⚫ Sem a <b>Esteira de Carvão</b> esta fundição não funciona. Compre na sub-aba Carvão.</div>`
+        : S.ore.carvao <= 0.01 ? `<div class="lockedBox">⚫ O estoque de carvão acabou: minere carvão ou contrate ajudantes na mina de Carvão.</div>` : '');
       if(factoryDone(m)) el.insertAdjacentHTML('beforeend', `<div class="doneBox">✅ Fundição completa! A mina de ${m.name} rende ${BAR_MULT/ORES_PER_BAR}x mais.</div>`);
     }
     el.insertAdjacentHTML('beforeend', `<h3 class="subhead">Todas as minas</h3>`);
@@ -529,11 +577,12 @@ function render(){
   document.getElementById('money').textContent = money(S.money);
   document.getElementById('rate').textContent = `+${money(incomePerSec())}/s em minério`;
   document.getElementById('hud').innerHTML =
-    `${bestTool().ico} ${bestTool().name} · <b>${fmt(clickPower())}</b>/golpe<br>Mina ativa: <b style="color:${m.color}">${m.name}</b>`;
+    `${bestTool().ico} ${bestTool().name} · <b>${fmt(clickPower())}</b>/golpe<br>Mina ativa: <b style="color:${m.fuel ? '#cfcfd6' : m.color}">${m.name}</b> · ⚫ ${fmt(S.ore.carvao)}` +
+    (MINES.some(x=>hasBelt(x) && S.ore[x.id] > 0.5 && !FUEL[x.id]) ? `<br><b style="color:#ff9b7a">⚠️ Fundições sem carvão!</b>` : '');
   const inv = document.getElementById('inv'); inv.innerHTML='';
   MINES.forEach(x=>{
     inv.insertAdjacentHTML('beforeend', `<div class="invItem" style="${isUnlocked(x)?'':'opacity:.35'}"><div class="gem" style="background:${x.color}"></div>
-      <div class="n">${fmt(S.ore[x.id])}</div><div class="v">${x.name} · ${money(x.value)}</div></div>`);
+      <div class="n">${fmt(S.ore[x.id])}</div><div class="v">${x.name} · ${x.fuel ? 'combustível' : money(x.value)}</div></div>`);
   });
   const anySm = MINES.some(m=>S.smelters[m.id]);
   document.getElementById('barsBox').hidden = !anySm;
@@ -614,8 +663,8 @@ function createWorld(){
     const e = new THREE.Mesh(new THREE.BoxGeometry(w+0.5, 0.03, d+0.5), edge); e.position.set(cx, y-0.006, cz); e.receiveShadow = true; world.add(e);
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, d), mat); m.position.set(cx, y, cz); m.receiveShadow = true; world.add(m);
   }
-  const MINE_X = [-28,-14,0,14,28], HALF = 5.4, BACK_Z = -16, FRONT_Z = -7.5;
-  pathRect(-33,-5.3,33,-2.7);            // estrada principal
+  const MINE_X = [-28,-14,0,14,28,-42], HALF = 5.4, BACK_Z = -16, FRONT_Z = -7.5;
+  pathRect(-47,-5.3,33,-2.7);            // estrada principal
   pathRect(-1.3,-2.7,1.3,4.3);           // rua até o vilarejo
   pathRect(-8,4.3,8,6.8);                // praça
   MINE_X.forEach(x=>pathRect(x-1.1,FRONT_Z,x+1.1,-5.3));
@@ -623,7 +672,7 @@ function createWorld(){
   // ---------- colisões ----------
   const circles = [], rects = [];
   function blocked(x,z){
-    if(x<-33.5 || x>33.5 || z<BACK_Z+0.2 || z>11.5) return true;
+    if(x<-47.5 || x>33.5 || z<BACK_Z+0.2 || z>11.5) return true;
     for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
     for(const r of rects){ if(r.when && !r.when()) continue;
       if(x>r.x1-0.32 && x<r.x2+0.32 && z>r.z1-0.32 && z<r.z2+0.32) return true; }
@@ -687,13 +736,13 @@ function createWorld(){
   // ---------- cordilheira ao fundo ----------
   {
     const cols = ['#8c7b6b','#9d8c7a','#7d6c5d','#a08f7c','#93826f'];
-    for(let x=-44; x<=44; x+=4.2){
+    for(let x=-58; x<=44; x+=4.2){
       const r = 3.6 + rnd()*1.8, z = -21.5 - rnd()*2;
       const m = mesh(new THREE.DodecahedronGeometry(r,0), M(cols[Math.floor(rnd()*cols.length)]), x+rnd()*1.5, r*0.55, z);
       m.rotation.set(rnd()*3, rnd()*3, rnd()*3);
       if(rnd() < 0.55){ const s = mesh(new THREE.DodecahedronGeometry(r*0.45,0), M('#f4f1ec'), m.position.x, r*0.55 + r*0.72, z); s.rotation.copy(m.rotation); }
     }
-    for(let x=-42; x<=42; x+=3.1){
+    for(let x=-56; x<=42; x+=3.1){
       if(MINE_X.some(mx => Math.abs(x-mx) < 2.6)) continue;   // deixa espaço para a entrada das cavernas
       const r = 1.8 + rnd()*1.1;
       const m = mesh(new THREE.DodecahedronGeometry(r,0), M(cols[Math.floor(rnd()*cols.length)]), x+rnd()*0.8, r*0.5, -18.2 - rnd()*0.8);
@@ -800,11 +849,11 @@ function createWorld(){
     // placa com o nome
     o.sign = labelSprite(4.4); o.sign.position.set(x, 4.9, -16.2);
     // quadrado de compra
-    if(i>0){ o.tile = makeTile(x, -6.3); o.tool = toolById(m.tool); }
+    if(i>0 && !m.fuel){ o.tile = makeTile(x, -6.3); o.tool = toolById(m.tool); }
     o.refresh = () => {
       const un = unlocked();
       gate.visible = !un;
-      o.sign.userData.draw(`${i+1} · ${m.name}${un?'':' 🔒'}`, un ? m.color : '#cfc4b8');
+      o.sign.userData.draw(m.fuel ? '⚫ Carvão' : `${i+1} · ${m.name}${un?'':' 🔒'}`, m.fuel ? '#e8e8ee' : un ? m.color : '#cfc4b8');
       if(o.tile) o.tile.mesh.visible = !un;
     };
     o.refresh();
@@ -857,7 +906,7 @@ function createWorld(){
   // árvores entre as minas
   [-35,-21,-7,7,21,35].forEach((x,k)=>{ pine(x, -14.5, 1.1); pine(x+0.3, -11.2, 0.95); roundTree(x-0.2, -8.6, 0.8); });
   // contorno do mapa
-  for(let x=-33; x<=33; x+=3.3){ (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
+  for(let x=-47; x<=33; x+=3.3){ (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
   for(let z=-1; z<=11; z+=3.2){ pine(-35.2, z, 1); pine(35.2, z+1, 1); }
   [[-26,9.5],[-13,10],[-3.5,9.8],[3.5,10.2],[11,9.3],[29,9],[-30,1.5],[30,2.5],[-14,2.8],[13.2,2.2]].forEach(([x,z],k)=>(k%2?pine:roundTree)(x,z,0.95));
 
@@ -896,7 +945,9 @@ function createWorld(){
   for(let k=0;k<9;k++){ mesh(new THREE.BoxGeometry(0.12,0.5,0.12), M('#f4f1ec'), 16.8+k*0.7, 0.25, 8.4); }
   mesh(new THREE.BoxGeometry(5.7,0.08,0.06), M('#f4f1ec'), 19.6, 0.38, 8.4).castShadow = false;
   // postes de luz ao longo da estrada
-  [-31,-21,-7,7,21,31].forEach(x=>lampPost(x, -1.9));
+  [-45,-35,-21,-7,7,21,31].forEach(x=>lampPost(x, -1.9));
+  for(let z=-1; z<=11; z+=3.2) pine(-49.2, z+0.5, 1);
+  [-49,-49].forEach((x,k)=>pine(x, -14.5+k*3.3, 1.1));
   // bancos na praça
   for(const x of [-3.2,3.2]){
     mesh(new THREE.BoxGeometry(1.4,0.1,0.45), M('#a0693a'), x, 0.45, 7.4);
@@ -970,6 +1021,7 @@ function createWorld(){
   }
   const fireMats = [];
   MINES3.forEach(o=>{
+    if(o.m.fuel) return;
     const id = o.m.id, x = o.x;
     o.smX = x+3.3; o.smZ = -14.0;
     o.smTile = makeTile(o.smX, o.smZ);
@@ -1024,14 +1076,50 @@ function createWorld(){
     };
     o.refreshFactory();
   });
-  function refreshFactory(){ MINES3.forEach(o=>o.refreshFactory()); }
+  // ---------- esteira de carvão por trás das minas ----------
+  const coalGroup = new THREE.Group(); world.add(coalGroup);
+  let coalTexs = [];
+  const COAL_O = MINES3.find(o=>o.m.fuel);
+  function buildCoalLine(){
+    while(coalGroup.children.length) coalGroup.remove(coalGroup.children[0]);
+    for(const t of coalTexs){ const k = beltTexs.indexOf(t); if(k>=0) beltTexs.splice(k,1); }
+    coalTexs = [];
+    if(!S.coalLine) return;
+    const before = beltTexs.length;
+    const CY = 3.3, ZB = -16.9, cx = COAL_O.x + 4.85;
+    mesh(new THREE.BoxGeometry(0.6, CY+0.35, 0.6), M('#3a3a42'), cx, (CY+0.35)/2, -9.0, coalGroup);
+    mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), M('#ffb020'), cx, CY+0.45, -9.0, coalGroup);
+    beltSeg(coalGroup, cx, -9.0, cx, ZB, CY);
+    const targets = MINES3.filter(o=>!o.m.fuel && S.smelters[o.m.id]);
+    const maxX = targets.length ? Math.max(...targets.map(o=>o.smX)) : cx;
+    if(maxX > cx) beltSeg(coalGroup, cx, ZB, maxX, ZB, CY);
+    targets.forEach(o=>{
+      beltSeg(coalGroup, o.smX, ZB, o.smX, -14.75, CY);
+      mesh(new THREE.BoxGeometry(0.4, CY-1.75, 0.4), M('#3a3a42'), o.smX, 1.75 + (CY-1.75)/2, -14.75, coalGroup);
+      o.coalPath = [new THREE.Vector3(cx,0.4,-9), new THREE.Vector3(cx,CY+0.15,-9), new THREE.Vector3(cx,CY+0.15,ZB),
+        new THREE.Vector3(o.smX,CY+0.15,ZB), new THREE.Vector3(o.smX,CY+0.15,-14.75), new THREE.Vector3(o.smX,1.9,-14.75)];
+      o.coalLens = o.coalPath.slice(1).map((v,k)=>v.distanceTo(o.coalPath[k]));
+      o.coalTotal = o.coalLens.reduce((a,b)=>a+b,0);
+    });
+    coalTexs = beltTexs.slice(before);
+  }
+  function refreshFactory(){ MINES3.forEach(o=>{ if(o.refreshFactory) o.refreshFactory(); }); buildCoalLine(); }
+  buildCoalLine();
   const riders = [], riderGeo = new THREE.BoxGeometry(0.26,0.26,0.26), BELT_SPEED = 2.6;
   const barGeo = new THREE.BoxGeometry(0.42,0.14,0.22);
   function updateFactory(dt, t){
     for(const tex of beltTexs) tex.offset.x -= dt*BELT_SPEED/0.6;
     MINES3.forEach(o=>{
+      if(o.m.fuel) return;
       const id = o.m.id, on = hasBelt(o.m);
       o.spawnT = (o.spawnT||0) + dt;
+      // carvão chegando pela esteira de trás
+      o.coalT = (o.coalT||0) + dt;
+      if(S.coalLine && o.coalPath && S.smelters[id] && FUEL[id] && S.ore[id] > 0.01 && o.coalT > 1.0){
+        o.coalT = 0;
+        const r = new THREE.Mesh(riderGeo, M('#26262c')); r.castShadow = true; world.add(r);
+        riders.push({r, o, d:0, coal:true});
+      }
       if(on && o.spawnT > 0.6 && S.ore[id] >= 0.5){
         o.spawnT = 0;
         const r = new THREE.Mesh(riderGeo, M(o.m.color)); r.castShadow = true; world.add(r);
@@ -1049,7 +1137,7 @@ function createWorld(){
         if(o.moneyT > 1.6){ o.moneyT = 0;
           if((SOLD[id]||0) > 0){ floatText('+' + money(SOLD[id]), o.sellBox, '#9cff7a'); burstBills(o.sellBox.x, o.sellBox.z, 2); SOLD[id] = 0; } }
       } else SOLD[id] = 0;
-      const working = on && S.ore[id] > 0.01;
+      const working = on && S.ore[id] > 0.01 && FUEL[id];
       o.smoke.forEach((s,k)=>{ const u = (t*0.5 + k/3) % 1; s.position.y = 3.3 + u*1.8; s.position.x = -0.6 + Math.sin(u*5+k)*0.25;
         s.scale.setScalar(0.6 + u*1.1); s.material.opacity = working ? 0.55*(1-u) : 0; });
       o.fire.color.setHSL(0.07, 1, working ? 0.55 + Math.sin(t*9 + o.i)*0.08 : 0.3);
@@ -1062,8 +1150,8 @@ function createWorld(){
     });
     for(let k=riders.length-1;k>=0;k--){
       const it = riders[k], o = it.o; it.d += dt*BELT_SPEED;
-      const path = it.sell ? o.sellPath : o.beltPath, lens = it.sell ? o.sellLens : o.beltLens, total = it.sell ? o.sellTotal : o.beltTotal;
-      if(it.d >= total || !(it.sell ? hasSellBelt(o.m) : hasBelt(o.m))){ world.remove(it.r); riders.splice(k,1); continue; }
+      const path = it.coal ? o.coalPath : it.sell ? o.sellPath : o.beltPath, lens = it.coal ? o.coalLens : it.sell ? o.sellLens : o.beltLens, total = it.coal ? o.coalTotal : it.sell ? o.sellTotal : o.beltTotal;
+      if(!path || it.d >= total || !(it.coal ? S.coalLine : it.sell ? hasSellBelt(o.m) : hasBelt(o.m))){ world.remove(it.r); riders.splice(k,1); continue; }
       let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; }
       it.r.position.lerpVectors(path[s], path[s+1], d/lens[s]);
     }
@@ -1302,7 +1390,7 @@ function createWorld(){
       const period = 0.42;
       if(swingT >= period){
         swingT -= period;
-        const amt = clickPower();
+        const amt = clickPower() * (mine.m.fuel ? 2*coalMult() : 1);
         if(S.active !== mine.m.id){ S.active = mine.m.id; buildMines(); }
         addOre(mine.m.id, amt);
         rock.userData.shake = 0.18;
@@ -1332,7 +1420,7 @@ function createWorld(){
     let z = null;
     if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
-    else if(MINES3.some(o=>o.smTile.mesh.visible && o.smTile.inside(p))) z = 'factory:' + MINES3.find(o=>o.smTile.mesh.visible && o.smTile.inside(p)).i;
+    else if(MINES3.some(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p))) z = 'factory:' + MINES3.find(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p)).i;
     else for(const o of MINES3) if(o.tile && o.tile.mesh.visible && o.tile.inside(p)) z = 'buy:'+o.i;
     if(z !== zone){ zone = z; zoneT = 0;
       if(z === 'market') doSell();
@@ -1408,7 +1496,7 @@ function createWorld(){
     update,
     guideTo(i){ const o = MINES3[i]; guide = isUnlocked(o.m) ? {x:o.x, z:-9} : {x:o.x, z:-6.3}; },
     onToolBought(){ MINES3.forEach(o=>o.refresh()); refreshPick(); refreshMachines(); refreshFactory(); burstBills(player.position.x, player.position.z, 16); },
-    onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX, o.smZ, 12); },
+    onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },
     debug:{player},
   };
 }

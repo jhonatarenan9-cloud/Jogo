@@ -9,6 +9,7 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
 - O jogo ocupa a tela toda. Os botões Loja, Minério, Funcionários e Minas, embaixo, abrem janelas por cima do mapa.
 - Cada mina fechada tem um quadrado com o preço da ferramenta na frente do portão. Fique em cima dele para ir pagando; quando completar, o portão abre.
 - Cada mina nova é cara. Vale a pena completar a fundição da mina atual (fundição, esteira de minério e esteira de venda), que custa pouco e quadruplica o que você ganha, antes de comprar a próxima.
+- **⚫ Mina de Carvão** (à esquerda, aberta desde o início): o carvão é o combustível das fundições. Cada barra queima 1 carvão e, sem carvão, as fundições param. Compre a **Esteira de Carvão** (Loja → Fundição → Carvão) para levar o carvão por trás das minas até todas as fundições, e contrate ajudantes e gerente na mina de Carvão para ter combustível suficiente.
 - São 5 níveis, cada um exige uma ferramenta:
   1. Cobre — Picareta de Madeira (inicial)
   2. Ferro — Picareta de Ferro
