@@ -657,8 +657,8 @@ function createWorld(){
     const e = new THREE.Mesh(new THREE.BoxGeometry(w+0.5, 0.03, d+0.5), edge); e.position.set(cx, y-0.006, cz); e.receiveShadow = true; world.add(e);
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, d), mat); m.position.set(cx, y, cz); m.receiveShadow = true; world.add(m);
   }
-  const MINE_X = [-28,-14,0,14,28,-42], HALF = 5.4, BACK_Z = -16, FRONT_Z = -7.5;
-  pathRect(-47,-5.3,33,-2.7);            // estrada principal
+  const MINE_X = [-28,-14,0,14,28,-53], HALF = 5.4, BACK_Z = -16, FRONT_Z = -7.5;
+  pathRect(-63,-5.3,33,-2.7);            // estrada principal
   pathRect(-1.3,-2.7,1.3,4.3);           // rua até o vilarejo
   pathRect(-8,4.3,8,6.8);                // praça
   MINE_X.forEach(x=>pathRect(x-1.1,FRONT_Z,x+1.1,-5.3));
@@ -666,7 +666,7 @@ function createWorld(){
   // ---------- colisões ----------
   const circles = [], rects = [];
   function blocked(x,z){
-    if(x<-47.5 || x>33.5 || z<BACK_Z+0.2 || z>11.5) return true;
+    if(x<-63.5 || x>33.5 || z<BACK_Z+0.2 || z>11.5) return true;
     for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
     for(const r of rects){ if(r.when && !r.when()) continue;
       if(x>r.x1-0.32 && x<r.x2+0.32 && z>r.z1-0.32 && z<r.z2+0.32) return true; }
@@ -730,13 +730,13 @@ function createWorld(){
   // ---------- cordilheira ao fundo ----------
   {
     const cols = ['#8c7b6b','#9d8c7a','#7d6c5d','#a08f7c','#93826f'];
-    for(let x=-58; x<=44; x+=4.2){
+    for(let x=-74; x<=44; x+=4.2){
       const r = 3.6 + rnd()*1.8, z = -21.5 - rnd()*2;
       const m = mesh(new THREE.DodecahedronGeometry(r,0), M(cols[Math.floor(rnd()*cols.length)]), x+rnd()*1.5, r*0.55, z);
       m.rotation.set(rnd()*3, rnd()*3, rnd()*3);
       if(rnd() < 0.55){ const s = mesh(new THREE.DodecahedronGeometry(r*0.45,0), M('#f4f1ec'), m.position.x, r*0.55 + r*0.72, z); s.rotation.copy(m.rotation); }
     }
-    for(let x=-56; x<=42; x+=3.1){
+    for(let x=-72; x<=42; x+=3.1){
       if(MINE_X.some(mx => Math.abs(x-mx) < 2.6)) continue;   // deixa espaço para a entrada das cavernas
       const r = 1.8 + rnd()*1.1;
       const m = mesh(new THREE.DodecahedronGeometry(r,0), M(cols[Math.floor(rnd()*cols.length)]), x+rnd()*0.8, r*0.5, -18.2 - rnd()*0.8);
@@ -763,7 +763,118 @@ function createWorld(){
     const b = mesh(new THREE.BoxGeometry(s*1.02,s*0.15,s*1.02), M('#8a5a30'), x, s/2, z); b.rotation.y = rot; b.castShadow = false;
     circles.push({x, z, r:s*0.6});
   }
+  // ---------- mina de carvão: maior, separada à esquerda, com galpão de estoque ----------
+  const CRATE_SIZE = 25;   // carvão por caixote no galpão
+  function buildCoalMine(m, i){
+    const x = MINE_X[i], H = 9, o = {m, i, x, rocks:[], half:H};
+    const coalMat = M('#24242a', {emissive:new THREE.Color('#0c0c10'), shininess:70, specular:new THREE.Color('#777777')});
+    // chão de cascalho escuro
+    pathRect(x-H+0.1, BACK_Z-0.4, x+H-0.1, FRONT_Z, M('#57524b'), 0.025, M('#3d3934'));
+    for(let k=0;k<60;k++){ const g = mesh(new THREE.DodecahedronGeometry(0.08+rnd()*0.1,0), M('#2c2a28'), x-H+0.6+rnd()*(2*H-1.2), 0.05, BACK_Z+0.3+rnd()*7.8); g.castShadow = false; }
+    // montanha escura em volta
+    [[-5,-17.7,2.2],[5,-17.7,2.2],[-2.7,-19,2.6],[2.9,-19,2.6],[0,-20,3.1],[-8.2,-17.9,2.1],[8.2,-17.9,2.1]].forEach(([dx,z,r],k)=>{
+      const rm = mesh(new THREE.DodecahedronGeometry(r,0), M(['#5d554c','#6b6157','#4f4842'][k%3]), x+dx, r*0.6, z); rm.rotation.set(k,k*1.3,k*.7);
+    });
+    // entrada grande da caverna
+    mesh(new THREE.BoxGeometry(3.2,3.0,1.2), M('#0d0a08'), x, 1.5, -16.7);
+    const wood = M('#5b3d22');
+    for(const s of [-1,1]) mesh(new THREE.BoxGeometry(0.42,3.4,0.5), wood, x+s*1.8, 1.7, -16.1);
+    mesh(new THREE.BoxGeometry(4.3,0.45,0.55), wood, x, 3.45, -16.1);
+    const lamp = mesh(new THREE.BoxGeometry(0.26,0.32,0.26), new THREE.MeshBasicMaterial({color:'#ffd27a'}), x, 3.0, -15.75); lamp.castShadow = false;
+    // torre de mineração (cavalete) com roda girando
+    const steel = M('#8a3d2b');
+    for(const [a,b] of [[-1,-15.5],[1,-15.5],[-1,-17.5],[1,-17.5]]) mesh(new THREE.BoxGeometry(0.22,7.0,0.22), steel, x+a*1.05, 3.5, b);
+    for(const y of [2.3,4.3,6.3]){
+      mesh(new THREE.BoxGeometry(2.3,0.15,0.15), steel, x, y, -15.5); mesh(new THREE.BoxGeometry(2.3,0.15,0.15), steel, x, y, -17.5);
+      mesh(new THREE.BoxGeometry(0.15,0.15,2.1), steel, x-1.05, y, -16.5); mesh(new THREE.BoxGeometry(0.15,0.15,2.1), steel, x+1.05, y, -16.5);
+    }
+    mesh(new THREE.BoxGeometry(2.6,0.25,2.4), M('#4a4a50'), x, 7.05, -16.5);
+    const wheel = new THREE.Group(); wheel.position.set(x, 8.0, -16.5); world.add(wheel);
+    mesh(new THREE.TorusGeometry(0.85,0.11,8,22), M('#2b2b2b'), 0, 0, 0, wheel);
+    for(let k=0;k<4;k++){ const sp = mesh(new THREE.BoxGeometry(1.7,0.07,0.07), M('#55555c'), 0, 0, 0, wheel); sp.rotation.z = k*Math.PI/4; }
+    for(const s of [-0.5,0.5]) mesh(new THREE.BoxGeometry(0.12,0.9,0.12), steel, x+s*0.0, 7.55, -16.5+s*0.4);
+    anims.push(t=>{ wheel.rotation.z = -t*1.4; });
+    // trilhos com dois carrinhos de carvão
+    for(let k=0;k<9;k++) mesh(new THREE.BoxGeometry(1.2,0.06,0.18), M('#3e2c1c'), x, 0.06, -16+k*0.45).castShadow = false;
+    for(const s of [-0.38,0.38]) mesh(new THREE.BoxGeometry(0.06,0.06,4.0), M('#9aa0a6'), x+s, 0.1, -14.2).castShadow = false;
+    for(const cz of [-14.9,-13.1]){
+      const cart = new THREE.Group(); cart.position.set(x, 0, cz); world.add(cart);
+      mesh(new THREE.BoxGeometry(0.95,0.5,0.75), M('#5d6166'), 0, 0.5, 0, cart);
+      for(let k=0;k<5;k++) mesh(new THREE.BoxGeometry(0.24,0.24,0.24), coalMat, -0.3+k*0.15, 0.82, (k%2)*0.15-0.07, cart);
+      for(const [a,b] of [[-0.38,0.3],[0.38,0.3],[-0.38,-0.3],[0.38,-0.3]]){ const w = mesh(new THREE.CylinderGeometry(0.14,0.14,0.08,10), M('#1b1b1b'), a, 0.16, b, cart); w.rotation.z = Math.PI/2; }
+      circles.push({x, z:cz, r:0.6});
+    }
+    // pedras de carvão (7, maiores)
+    [[-6.8,-9.6],[-3.6,-10.4],[-7.0,-13.6],[-4.2,-14.8],[-1.2,-12.4],[1.9,-14.8],[-5.6,-12.0]].forEach(([dx,z],k)=>{
+      const g = new THREE.Group(); g.position.set(x+dx, 0, z); world.add(g);
+      const r = mesh(new THREE.DodecahedronGeometry(0.95,0), M('#4c4844'), 0, 0.6, 0, g); r.scale.y = 0.8; r.rotation.y = k;
+      for(let j=0;j<6;j++){
+        const a = j/6*Math.PI*2 + k;
+        const c = mesh(new THREE.DodecahedronGeometry(0.26,0), coalMat, Math.cos(a)*0.6, 0.75+(j%2)*0.25, Math.sin(a)*0.6, g);
+        c.rotation.set(a, a*2, 0);
+      }
+      o.rocks.push(g); circles.push({x:x+dx, z, r:0.9});
+    });
+    // pilha grande de carvão
+    const PX = x+3.4, PZ = -9.5, pileN = 240, pile = new THREE.InstancedMesh(new THREE.BoxGeometry(0.32,0.32,0.32), coalMat, pileN);
+    pile.castShadow = true; pile.receiveShadow = true;
+    const dummy = new THREE.Object3D();
+    for(let k=0;k<pileN;k++){
+      const h = k/pileN, rad = (1 - h*0.85) * 1.8 * Math.sqrt(rnd()), a = rnd()*Math.PI*2;
+      dummy.position.set(PX + Math.cos(a)*rad, 0.15 + h*1.8, PZ + Math.sin(a)*rad*0.8);
+      dummy.rotation.set(rnd()*3, rnd()*3, rnd()*3); dummy.updateMatrix(); pile.setMatrixAt(k, dummy.matrix);
+    }
+    pile.count = 0; world.add(pile); o.pile = pile; o.pilePos = new THREE.Vector3(PX, 0.8, PZ); o.pileMax = pileN; o.pileScale = 5;
+    // galpão de estoque com caixotes de carvão
+    const SXc = x+6.0, SZc = -14.0, SW = 5.2, SD = 3.8;
+    const shedWall = M('#7b6a58'), roofM = M('#8c2f24');
+    mesh(new THREE.BoxGeometry(SW,2.4,0.2), shedWall, SXc, 1.2, SZc-SD/2);
+    mesh(new THREE.BoxGeometry(0.2,2.4,SD), shedWall, SXc-SW/2, 1.2, SZc);
+    mesh(new THREE.BoxGeometry(0.2,2.4,SD), shedWall, SXc+SW/2, 1.2, SZc);
+    for(const s of [-1,1]) mesh(new THREE.BoxGeometry(0.22,2.5,0.22), wood, SXc+s*SW/2, 1.25, SZc+SD/2);
+    const roof = mesh(new THREE.BoxGeometry(SW+0.6,0.18,SD+0.8), roofM, SXc, 2.65, SZc+0.1); roof.rotation.x = 0.14;
+    mesh(new THREE.BoxGeometry(SW,0.25,0.12), M('#f2b632'), SXc, 2.3, SZc+SD/2+0.02);
+    rects.push({x1:SXc-SW/2-0.1, x2:SXc+SW/2+0.1, z1:SZc-SD/2-0.1, z2:SZc+SD/2});
+    const CR = 72, crateGeo = new THREE.BoxGeometry(0.72,0.66,0.72), topGeo = new THREE.BoxGeometry(0.62,0.12,0.62);
+    const crates = new THREE.InstancedMesh(crateGeo, M('#9b6a3c'), CR), tops = new THREE.InstancedMesh(topGeo, coalMat, CR);
+    crates.castShadow = true; crates.receiveShadow = true;
+    for(let k=0;k<CR;k++){
+      const l = Math.floor(k/24), rem = k%24, r = Math.floor(rem/6), c = rem%6;
+      dummy.position.set(SXc-SW/2+0.55 + c*0.82, 0.34 + l*0.68, SZc-SD/2+0.55 + (3-r)*0.86); dummy.rotation.set(0, (k%3-1)*0.05, 0); dummy.updateMatrix();
+      crates.setMatrixAt(k, dummy.matrix);
+      dummy.position.y += 0.36; dummy.updateMatrix(); tops.setMatrixAt(k, dummy.matrix);
+    }
+    crates.count = tops.count = 0; world.add(crates, tops); o.crates = crates; o.crateTops = tops; o.crateMax = CR;
+    o.stockSign = labelSprite(3.6); o.stockSign.position.set(SXc, 4.0, SZc); o.stockKey = '';
+    // cerca escura com mourões de pedra
+    const fenceMat = M('#4a3220'), stone = M('#7d7770');
+    function fenceLine(x1,z1,x2,z2){
+      const len = Math.hypot(x2-x1, z2-z1), n = Math.max(1, Math.round(len/1.2));
+      for(let k=0;k<=n;k++) mesh(new THREE.BoxGeometry(0.26,0.95,0.26), k%3===0 ? stone : fenceMat, x1+(x2-x1)*k/n, 0.47, z1+(z2-z1)*k/n);
+      for(const y of [0.35,0.7]){ const rail = mesh(new THREE.BoxGeometry(len,0.12,0.1), fenceMat, (x1+x2)/2, y, (z1+z2)/2); rail.rotation.y = -Math.atan2(z2-z1, x2-x1); }
+    }
+    fenceLine(x-H,BACK_Z,x-H,FRONT_Z); fenceLine(x+H,BACK_Z,x+H,FRONT_Z);
+    fenceLine(x-H,FRONT_Z,x-1.3,FRONT_Z); fenceLine(x+1.3,FRONT_Z,x+H,FRONT_Z);
+    rects.push({x1:x-H-0.15,x2:x-H+0.15,z1:BACK_Z-1,z2:FRONT_Z+0.15},{x1:x+H-0.15,x2:x+H+0.15,z1:BACK_Z-1,z2:FRONT_Z+0.15},
+               {x1:x-H-0.15,x2:x-1.25,z1:FRONT_Z-0.15,z2:FRONT_Z+0.15},{x1:x+1.25,x2:x+H+0.15,z1:FRONT_Z-0.15,z2:FRONT_Z+0.15});
+    // arco de entrada
+    for(const s of [-1,1]) mesh(new THREE.BoxGeometry(0.35,2.8,0.35), wood, x+s*1.35, 1.4, FRONT_Z);
+    mesh(new THREE.BoxGeometry(3.2,0.4,0.4), wood, x, 2.8, FRONT_Z);
+    const arch = labelSprite(3.2); arch.position.set(x, 3.4, FRONT_Z); arch.userData.draw('⚫ CARVÃO', '#ffd27a');
+    lampPost(x-H+0.6, BACK_Z+0.6, 2.6); lampPost(x-H+0.6, FRONT_Z-0.6, 2.4); lampPost(x+H-0.6, FRONT_Z-0.6, 2.4);
+    barrel(x-2.3, FRONT_Z+0.8); barrel(x-3.0, FRONT_Z+0.9); crate(x+2.3, FRONT_Z+0.85, 0.6, 0.2); crate(x+2.95, FRONT_Z+0.8, 0.5, -0.3);
+    // posições dos funcionários e da esteira de carvão
+    o.helperSpots = [[-5.4,-8.9],[-2.2,-10.1],[-5.7,-14.9]];
+    o.mgrSpot = [1.7,-8.7];
+    o.signPos = new THREE.Vector3(PX, 3.3, PZ);
+    o.elevX = x+7.4; o.elevZ = -9.3; o.coalRouteX = x+10.3;   // a esteira sai pela lateral, sem tapar o galpão
+    o.sign = labelSprite(5.4); o.sign.position.set(x, 9.6, -16.3);
+    o.refresh = () => o.sign.userData.draw('⚫ Mina de Carvão', '#e8e8ee');
+    o.refresh();
+    return o;
+  }
   const MINES3 = MINES.map((m, i) => {
+    if(m.fuel) return buildCoalMine(m, i);
     const x = MINE_X[i], o = {m, i, x, rocks:[]};
     const unlocked = () => isUnlocked(m);
     const crystalMat = M(m.color, {emissive:new THREE.Color(m.color).multiplyScalar(0.25), shininess:80});
@@ -900,7 +1011,7 @@ function createWorld(){
   // árvores entre as minas
   [-35,-21,-7,7,21,35].forEach((x,k)=>{ pine(x, -14.5, 1.1); pine(x+0.3, -11.2, 0.95); roundTree(x-0.2, -8.6, 0.8); });
   // contorno do mapa
-  for(let x=-47; x<=33; x+=3.3){ (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
+  for(let x=-63; x<=33; x+=3.3){ (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
   for(let z=-1; z<=11; z+=3.2){ pine(-35.2, z, 1); pine(35.2, z+1, 1); }
   [[-26,9.5],[-13,10],[-3.5,9.8],[3.5,10.2],[11,9.3],[29,9],[-30,1.5],[30,2.5],[-14,2.8],[13.2,2.2]].forEach(([x,z],k)=>(k%2?pine:roundTree)(x,z,0.95));
 
@@ -939,9 +1050,11 @@ function createWorld(){
   for(let k=0;k<9;k++){ mesh(new THREE.BoxGeometry(0.12,0.5,0.12), M('#f4f1ec'), 16.8+k*0.7, 0.25, 8.4); }
   mesh(new THREE.BoxGeometry(5.7,0.08,0.06), M('#f4f1ec'), 19.6, 0.38, 8.4).castShadow = false;
   // postes de luz ao longo da estrada
-  [-45,-35,-21,-7,7,21,31].forEach(x=>lampPost(x, -1.9));
-  for(let z=-1; z<=11; z+=3.2) pine(-49.2, z+0.5, 1);
-  [-49,-49].forEach((x,k)=>pine(x, -14.5+k*3.3, 1.1));
+  [-59,-47,-39,-21,-7,7,21,31].forEach(x=>lampPost(x, -1.9));
+  for(let z=-1; z<=11; z+=3.2) pine(-65.2, z+0.5, 1);
+  // corredor de árvores separando a mina de carvão
+  pine(-39.5,-14.6,1.15); pine(-40.4,-12.4,1); roundTree(-39.2,-10.6,0.9); pine(-40.2,-7.9,0.9); roundTree(-38.3,-13.1,0.8);
+  for(let z=-15; z<=-8; z+=3.4) pine(-65.5, z, 1.1);
   // bancos na praça
   for(const x of [-3.2,3.2]){
     mesh(new THREE.BoxGeometry(1.4,0.1,0.45), M('#a0693a'), x, 0.45, 7.4);
@@ -1080,17 +1193,19 @@ function createWorld(){
     coalTexs = [];
     if(!coalLineOn()) return;
     const before = beltTexs.length;
-    const CY = 3.3, ZB = -16.9, cx = COAL_O.x + 4.85;
-    mesh(new THREE.BoxGeometry(0.6, CY+0.35, 0.6), M('#3a3a42'), cx, (CY+0.35)/2, -9.0, coalGroup);
-    mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), M('#ffb020'), cx, CY+0.45, -9.0, coalGroup);
-    beltSeg(coalGroup, cx, -9.0, cx, ZB, CY);
+    const CY = 3.3, ZB = -16.9, cx = COAL_O.elevX ?? COAL_O.x + 4.85, cz = COAL_O.elevZ ?? -9.0;
+    mesh(new THREE.BoxGeometry(0.6, CY+0.35, 0.6), M('#3a3a42'), cx, (CY+0.35)/2, cz, coalGroup);
+    mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), M('#ffb020'), cx, CY+0.45, cz, coalGroup);
+    const rx = COAL_O.coalRouteX ?? cx;
+    if(rx !== cx) beltSeg(coalGroup, cx, cz, rx, cz, CY);
+    beltSeg(coalGroup, rx, cz, rx, ZB, CY);
     const targets = MINES3.filter(o=>!o.m.fuel && S.smelters[o.m.id]);
-    const maxX = targets.length ? Math.max(...targets.map(o=>o.smX)) : cx;
-    if(maxX > cx) beltSeg(coalGroup, cx, ZB, maxX, ZB, CY);
+    const maxX = targets.length ? Math.max(...targets.map(o=>o.smX)) : rx;
+    if(maxX > rx) beltSeg(coalGroup, rx, ZB, maxX, ZB, CY);
     targets.forEach(o=>{
       beltSeg(coalGroup, o.smX, ZB, o.smX, -14.75, CY);
       mesh(new THREE.BoxGeometry(0.4, CY-1.75, 0.4), M('#3a3a42'), o.smX, 1.75 + (CY-1.75)/2, -14.75, coalGroup);
-      o.coalPath = [new THREE.Vector3(cx,0.4,-9), new THREE.Vector3(cx,CY+0.15,-9), new THREE.Vector3(cx,CY+0.15,ZB),
+      o.coalPath = [new THREE.Vector3(cx,0.4,cz), new THREE.Vector3(cx,CY+0.15,cz), new THREE.Vector3(rx,CY+0.15,cz), new THREE.Vector3(rx,CY+0.15,ZB),
         new THREE.Vector3(o.smX,CY+0.15,ZB), new THREE.Vector3(o.smX,CY+0.15,-14.75), new THREE.Vector3(o.smX,1.9,-14.75)];
       o.coalLens = o.coalPath.slice(1).map((v,k)=>v.distanceTo(o.coalPath[k]));
       o.coalTotal = o.coalLens.reduce((a,b)=>a+b,0);
@@ -1210,7 +1325,7 @@ function createWorld(){
     // ajudantes novos
     while(o.workers.length < st.n){
       const k = o.workers.length, obj = makeMiner('#f08a24', '#ffffff', '#5a6b7a');
-      const [dx,z] = HELPER_SPOTS[k]; obj.position.set(o.x+dx, 0, z);
+      const [dx,z] = (o.helperSpots || HELPER_SPOTS)[k]; obj.position.set(o.x+dx, 0, z);
       const rock = o.rocks.reduce((b,r)=> r.position.distanceTo(obj.position) < b.position.distanceTo(obj.position) ? r : b);
       obj.rotation.y = Math.atan2(rock.position.x-obj.position.x, rock.position.z-obj.position.z);
       obj.scale.setScalar(first ? 0.85 : 0.01); world.add(obj);
@@ -1219,7 +1334,7 @@ function createWorld(){
     }
     // gerente
     if(st.mgr && !o.mgrObj){
-      const obj = makeManager(); obj.position.set(o.x+MGR_SPOT[0], 0, MGR_SPOT[1]);
+      const ms = o.mgrSpot || MGR_SPOT; const obj = makeManager(); obj.position.set(o.x+ms[0], 0, ms[1]);
       obj.rotation.y = Math.atan2(o.x - obj.position.x, -10.5 - obj.position.z);
       obj.scale.setScalar(first ? 0.9 : 0.01); world.add(obj);
       o.mgrObj = {obj, pop: first ? 1 : 0};
@@ -1230,7 +1345,7 @@ function createWorld(){
     if(st.mgr) parts.push(`👔 ${MANAGER_MULT}x`);
     o.staffSign = o.staffSign || labelSprite(3);
     o.staffSign.visible = parts.length > 0;
-    if(parts.length){ o.staffSign.position.set(o.x+3.6, 2.7, -9); o.staffSign.userData.draw(parts.join('  '), '#ffffff'); }
+    if(parts.length){ if(o.signPos) o.staffSign.position.copy(o.signPos); else o.staffSign.position.set(o.x+3.6, 2.7, -9); o.staffSign.userData.draw(parts.join('  '), '#ffffff'); }
   }
   const popScale = t => { t -= 1; return 1 + 2.7*t*t*t + 1.7*t*t; };
   function animateStaff(o, dt, time){
@@ -1358,7 +1473,7 @@ function createWorld(){
   const swingAngle = s => s < 0.6 ? -2.6 + s/0.6*0.6 : -2.0 + (s-0.6)/0.4*1.6;
   function nearestMine(){
     const p = player.position;
-    return MINES3.find(o => isUnlocked(o.m) && p.z < FRONT_Z+0.2 && Math.abs(p.x-o.x) < HALF) || null;
+    return MINES3.find(o => isUnlocked(o.m) && p.z < FRONT_Z+0.2 && Math.abs(p.x-o.x) < (o.half || HALF)) || null;
   }
   function update(dt){
     let ix = 0, iz = 0;
@@ -1431,7 +1546,14 @@ function createWorld(){
       const t = o.tool, ok = canBuy(t);
       o.tile.draw(ok ? t.ico : needsFactory(t) ? '🏭' : '🔒', ok ? money(remaining(t)) : needsFactory(t) ? 'Fundição' : 'Bloqueado', 1 - remaining(t)/t.cost, !ok);
     }
-    for(const o of MINES3){ const amt = S.ore[o.m.id]; o.pile.count = amt < 1 ? 0 : Math.min(90, Math.ceil(Math.sqrt(amt)*4)); }
+    for(const o of MINES3){
+      const amt = S.ore[o.m.id];
+      o.pile.count = amt < 1 ? 0 : Math.min(o.pileMax || 90, Math.ceil(Math.sqrt(amt)*(o.pileScale || 4)));
+      if(o.crates){   // galpão da mina de carvão: 1 caixote a cada 25 carvões
+        o.crates.count = o.crateTops.count = Math.min(o.crateMax, Math.floor(amt/CRATE_SIZE));
+        const key = fmt(amt); if(key !== o.stockKey){ o.stockKey = key; o.stockSign.userData.draw(`📦 ${key} carvão`, '#e8e8ee'); }
+      }
+    }
 
     npcT += dt;
     for(const o of MINES3) animateStaff(o, dt, npcT);
