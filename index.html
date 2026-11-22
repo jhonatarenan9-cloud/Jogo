@@ -1962,9 +1962,9 @@ function createWorld(){
   sceneEl.prepend(R.domElement);
   const world = new THREE.Scene();
   world.background = new THREE.Color('#8fd16a');
-  world.fog = new THREE.Fog('#8fd16a', 38, 75);
+  world.fog = new THREE.Fog('#8fd16a', 48, 95);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
-  const CAM_BASE = new THREE.Vector3(9.5, 14.5, 9.5), CAM_OFF = CAM_BASE.clone();
+  const CAM_BASE = new THREE.Vector3(12, 18.3, 12), CAM_OFF = CAM_BASE.clone();
   const LOOK_SHIFT = new THREE.Vector3(-1.5, 0, -3.2);   // olha um pouco à frente do mineiro (para o lado das minas)   // visão isométrica (diagonal)
 
   world.add(new THREE.HemisphereLight(0xfffbe8, 0x5d8a30, 0.85));
@@ -3901,7 +3901,7 @@ function createWorld(){
     pushOut(p);
     if(moving){
       if(!hintGone){ hintGone = true; document.getElementById('mapHint').hidden = true; }
-      const sp = 6.2*mag*dt*(S.gemItems.botas ? 1.2 : 1);
+      const sp = 8.5*mag*dt*(S.gemItems.botas ? 1.2 : 1);
       if(!blocked(p.x + ix*sp, p.z)) p.x += ix*sp;
       if(!blocked(p.x, p.z + iz*sp)) p.z += iz*sp;
       heading += angTo(Math.atan2(ix, iz))*Math.min(1, dt*14);
