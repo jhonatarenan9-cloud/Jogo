@@ -27,7 +27,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `COAL_*`: mina de carvão (combustível das fundições).
 - `SHARPEN_BONUS`, `BOOST_BONUS`, `TURBO_BONUS`, `DRILL_BONUS`: bônus por nível das melhorias (mantenha baixos).
 - `sharpenCost`, `boostCost`, `AUTOSELL_COST`, `beltSpeedCost`, `coalDrillCost`: melhorias.
-- `DEPOT_COST`, `DELIVERY_MULT`, `TRUCK_COSTS`, `bagCap`, `truckCap`: área de entregas.
+- `DEPOT_COST`, `DELIVERY_MULT`, `TRUCK_COSTS`, `LOADER_COSTS`, `COLLECTOR_COST`, `bagCap`, `truckCap`, `collectorCap`: área de entregas. A Metalúrgica (`DELIVERY_MULT`) deve pagar um pouco mais que a barra da fundição (`BAR_MULT/ORES_PER_BAR`), sem exagero.
 - `MISSIONS`: sequência de missões e recompensas.
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 

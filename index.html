@@ -279,8 +279,13 @@ const SMELTER_COST = {cobre:400, ferro:12000, ouro:350000, diamante:9000000, esm
 const BELT_COST    = {cobre:200, ferro:6000, ouro:180000, diamante:4500000, esmeralda:100000000};
 const SELLBELT_COST = {cobre:300, ferro:9000, ouro:260000, diamante:7000000, esmeralda:150000000};
 // Área de Entregas: o mineiro leva minério na mochila até o galpão; caminhões levam até a Metalúrgica Aurora
-const DEPOT_COST = 1500, DELIVERY_MULT = 1.6, PICK_RATE = 14, DROP_RATE = 30;
-const TRUCK_COSTS = [800, 3000, 12000, 45000], TRUCK_SPEED = 8, TRUCK_AWAY = 6;
+// a Metalúrgica paga 5x o Mercado: um pouco mais que a barra da fundição (4x), para compensar o investimento extra
+const DEPOT_COST = 2500, DELIVERY_MULT = 5, PICK_RATE = 14, DROP_RATE = 30;
+const LOADER_COSTS = [600, 2500, 9000, 35000];           // carregadores: 1 por caminhão
+const COLLECTOR_COST = {cobre:1500, ferro:35000, ouro:1000000, diamante:28000000, esmeralda:600000000};
+const COLLECTOR_SPEED = 7, LOADER_TRIP = 2.4, LOADER_TRIPS = 3;
+const collectorCap = () => Math.round(20 * (1 + 0.4*S.truckLvl));
+const TRUCK_COSTS = [1200, 4500, 16000, 60000], TRUCK_SPEED = 8, TRUCK_AWAY = 6;
 const bagCap = () => 20 + 15*S.bagLvl;
 const bagCost = () => Math.ceil(250 * Math.pow(2.6, S.bagLvl));
 const truckCap = () => Math.round(30 * (1 + 0.4*S.truckLvl));
@@ -299,7 +304,7 @@ function newState(){
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
     ach:{}, achNew:0, swings:0,
-    depotOpen:false, trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
+    depotOpen:false, loaders:0, collectors:{}, trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
   };
@@ -309,6 +314,7 @@ try{
   const raw = localStorage.getItem(SAVE_KEY);
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
+    S.collectors = d.collectors || {}; if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
     S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
     S.paid = d.paid || {}; S.belts = d.belts || {}; S.smelters = d.smelters || {}; S.sellBelts = d.sellBelts || {}; S.bars = Object.assign(newState().bars, d.bars);
     if(d.smelter !== undefined){ // fundição central antiga: devolve o dinheiro gasto e recomeça no modelo por mina
@@ -430,8 +436,10 @@ const MISSIONS = [
   {t:'Contrate o gerente da mina de Cobre', p:()=>[+!!S.staff.cobre.mgr, 1], r:600},
   {t:'Abra a 📦 Área de Entregas (sul do vilarejo)', p:()=>[+!!S.depotOpen, 1], r:300, go:()=>S.money >= DEPOT_COST - (S.paid.depot||0) ? {x:0, z:12} : null},
   {t:'Compre o primeiro 🚚 caminhão (Loja → Entregas)', p:()=>[S.trucks, 1], r:250},
+  {t:'Contrate o primeiro 🧑‍🏭 carregador (Loja → Entregas)', p:()=>[S.loaders, 1], r:200},
   {t:'Faça 3 entregas na Metalúrgica Aurora', p:()=>[S.deliveries||0, 3], r:500, go:()=>bagTotal() >= 1 ? {x:-3.4, z:19} : null},
   {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
+  {t:'Compre o 🛺 coletador da mina de Cobre', p:()=>[+!!S.collectors.cobre, 1], r:400},
   {t:'Contrate 3 ajudantes na mina de Ferro', p:()=>[S.staff.ferro.n, 3], r:2000},
   {t:'Complete a fundição do Ferro (3 itens)', p:()=>[3-factoryMissing(MINES[1]).length, 3], r:6000},
   {t:'Ganhe $50.000 em vendas', p:()=>[S.earned, 50000], r:8000},
@@ -551,6 +559,16 @@ function openDepot(){
   buildShop(); render(); save();
 }
 function buyDepot(){ const r = DEPOT_COST - (S.paid.depot||0); if(S.depotOpen || S.money < r) return; S.money -= r; openDepot(); }
+function buyLoader(){
+  const c = LOADER_COSTS[S.loaders]; if(!S.depotOpen || c === undefined || S.money < c) return;
+  S.money -= c; S.loaders++; toast(`🧑‍🏭 Carregador ${S.loaders} contratado! Ele leva as caixas do galpão até o caminhão ${S.loaders}.`);
+  buildShop(); render(); save();
+}
+function buyCollector(m){
+  const c = COLLECTOR_COST[m.id]; if(!S.depotOpen || !isUnlocked(m) || S.collectors[m.id] || S.money < c) return;
+  S.money -= c; S.collectors[m.id] = true; toast(`🛺 Coletador da mina de ${m.name} comprado! Ele busca o minério na pilha e leva ao galpão.`);
+  buildShop(); render(); save();
+}
 function buyTruck(){
   const c = TRUCK_COSTS[S.trucks]; if(!S.depotOpen || c === undefined || S.money < c) return;
   S.money -= c; S.trucks++; toast(`🚚 Caminhão ${S.trucks} comprado! Ele leva o estoque do galpão até a Metalúrgica Aurora.`);
@@ -712,24 +730,35 @@ function buildShop(){
     const step = (on, ico, label) => `<div class="fstep${on?' on':''}"><div class="fico">${ico}</div><div>${label}</div></div>`;
     const arrow = on => `<div class="farrow${on?' on':''}">➜</div>`;
     card.innerHTML = `<div class="flowHead"><b>📦 Área de Entregas</b><span class="flowPct">paga ${xf(DELIVERY_MULT)} o Mercado</span></div>
-      <div class="flow">${step(S.depotOpen,'⛏️','Pilha')}${arrow(S.depotOpen)}${step(S.depotOpen,'🎒','Mochila')}${arrow(S.depotOpen)}${step(S.depotOpen,'📦','Galpão')}${arrow(S.trucks>0)}${step(S.trucks>0,'🚚','Caminhão')}</div>
+      <div class="flow">${step(S.depotOpen,'⛏️','Pilha')}${arrow(S.depotOpen)}${step(Object.keys(S.collectors).length>0,'🛺','Coletador')}${arrow(S.depotOpen)}${step(S.depotOpen,'📦','Galpão')}${arrow(S.loaders>0)}${step(S.loaders>0,'🧑‍🏭','Carregador')}${arrow(S.trucks>0 && S.loaders>0)}${step(S.trucks>0,'🚚','Caminhão')}</div>
       <div class="flowStats">
         <div><small>Mochila</small><b>${fmt(bagTotal())}/${fmt(bagCap())}</b><small>minério</small></div>
         <div><small>Galpão</small><b>${fmt(depotTotal())}</b><small>≈ ${money(depotValue())}</small></div>
-        <div><small>Caminhões</small><b>${S.trucks}/${TRUCK_COSTS.length}</b><small>${fmt(truckCap())} cada</small></div>
+        <div><small>Caminhões</small><b>${S.trucks}/${TRUCK_COSTS.length}</b><small>${Math.min(S.trucks,S.loaders)} com carregador</small></div>
         <div><small>Entregas</small><b>${fmt(S.deliveries||0)}</b><small>feitas</small></div>
       </div>`;
     el.appendChild(card);
-    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Pare em cima da pilha de minério de uma mina para encher a 🎒 mochila, leve até o quadrado <b>📦 DEPOSITAR</b> do galpão (sul do vilarejo) e os caminhões levam tudo até a <b>Metalúrgica Aurora</b>, que paga <b style="color:#9cff7a">${xf(DELIVERY_MULT)}</b> o preço do Mercado. Carvão não é aceito.</p>`);
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Leve minério ao galpão na 🎒 mochila ou com os 🛺 coletadores. Os 🧑‍🏭 carregadores põem as caixas nos caminhões, que levam tudo à <b>Metalúrgica Aurora</b>: ela paga <b style="color:#9cff7a">${xf(DELIVERY_MULT)}</b> o preço do Mercado, mais que a barra da fundição (${xf(BAR_MULT/ORES_PER_BAR)}). Cada caminhão só sai se tiver o seu carregador. Carvão não é aceito.</p>`);
     const r = DEPOT_COST - (S.paid.depot||0);
     add('📦', 'Galpão de Entregas', 'Abre a área de entregas ao sul do vilarejo. Também dá para pagar pisando no quadrado do portão.', S.depotOpen ? tag('✔ Aberto') : btn(money(r), buyDepot, r));
     const tc = TRUCK_COSTS[S.trucks];
     add('🚚', `Caminhão <span class="count">${S.trucks}/${TRUCK_COSTS.length}</span>`, `Leva ${fmt(truckCap())} minérios por viagem do galpão até a Metalúrgica.`,
       !S.depotOpen ? tag('🔒 Galpão','var(--muted)') : tc === undefined ? tag('✔ Frota completa') : btn(money(tc), buyTruck, tc));
+    const lc = LOADER_COSTS[S.loaders];
+    add('🧑‍🏭', `Carregador <span class="count">${S.loaders}/${LOADER_COSTS.length}</span>`, 'Leva as caixas do galpão até a caçamba. Cada caminhão precisa do seu carregador.',
+      !S.depotOpen ? tag('🔒 Galpão','var(--muted)') : lc === undefined ? tag('✔ Equipe completa') : btn(money(lc), buyLoader, lc));
+    if(S.trucks > S.loaders) el.insertAdjacentHTML('beforeend', `<div class="lockedBox">⚠️ ${S.trucks - S.loaders} caminhão(ões) parado(s) sem carregador.</div>`);
     const cc = truckCapCost();
-    add('🛻', `Caçamba Maior <span class="count">nv ${S.truckLvl}</span>`, '+40% de carga em todos os caminhões', S.trucks ? btn(money(cc), buyTruckCap, cc) : tag('🔒 Caminhão','var(--muted)'));
+    add('🛻', `Caçamba Maior <span class="count">nv ${S.truckLvl}</span>`, '+40% de carga nos caminhões e coletadores', S.trucks ? btn(money(cc), buyTruckCap, cc) : tag('🔒 Caminhão','var(--muted)'));
     const bc2 = bagCost();
     add('🎒', `Mochila Maior <span class="count">nv ${S.bagLvl}</span>`, `Carrega +15 minérios (hoje ${fmt(bagCap())})`, S.depotOpen ? btn(money(bc2), buyBag, bc2) : tag('🔒 Galpão','var(--muted)'));
+    el.insertAdjacentHTML('beforeend', `<h3 class="subhead">🛺 Coletadores (um por mina)</h3>`);
+    MINES.filter(m=>!m.fuel).forEach(m=>{
+      const c = COLLECTOR_COST[m.id];
+      add(`<span class="gem" style="display:inline-block;width:24px;height:24px;background:${m.color}"></span>`, `Coletador · ${m.name}`,
+        `Busca até ${fmt(collectorCap())} ${m.name.toLowerCase()} na pilha e leva ao galpão. Na Metalúrgica: ${money(m.value*DELIVERY_MULT)} cada.`,
+        S.collectors[m.id] ? tag('✔ Trabalhando') : !S.depotOpen ? tag('🔒 Galpão','var(--muted)') : !isUnlocked(m) ? tag('🔒 Mina','var(--muted)') : btn(money(c), ()=>buyCollector(m), c));
+    });
   } else if(tab==='factory'){
     // sub-abas: uma por mina
     if(!factoryMine || !MINES.find(m=>m.id===factoryMine)) factoryMine = (coalLineOn() && S.ore.carvao < 1) ? 'carvao' : (MINES.find(m=>!m.fuel && isUnlocked(m) && !factoryDone(m)) || MINES[0]).id;
@@ -1824,21 +1853,27 @@ function createWorld(){
       if(depotBoxes.instanceColor) depotBoxes.instanceColor.needsUpdate = true;
     }
     // caminhões
-    syncTrucks();
+    syncTrucks(); syncLoaders(); updateCollectors(dt);
+    loaders.forEach((l,k)=>{ const tr = trucks[k]; if(!tr || tr.state !== 'loading') idleLoader(l); });
     trucks.forEach(tr=>{
       tr.t += dt;
       if(tr.state === 'parked'){
-        if(depotTotal() >= 1 && tr.t > 1){
+        if(depotTotal() >= 1 && tr.t > 1 && tr.slot < S.loaders){
           const cap = truckCap(); let left = cap, value = 0; tr.load = {};
           const tot = depotTotal();
           for(const m of MINES){ const a = S.depot[m.id]||0; if(a <= 0) continue;
             const take = Math.min(a, cap * a/tot, left); S.depot[m.id] -= take; left -= take; tr.load[m.id] = take; value += take*m.value*DELIVERY_MULT; }
           tr.value = value; tr.state = 'loading'; tr.t = 0;
-          const fill = (cap-left)/cap;
-          tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < Math.max(1, Math.round(fill*6)); });
+          tr.fillBoxes = Math.max(1, Math.round((cap-left)/cap*6));
+          tr.g.userData.boxes.forEach(b=>b.visible = false);
         }
       } else if(tr.state === 'loading'){
-        if(tr.t > 1.5){ tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); }
+        // o carregador faz viagens com caixas; a caçamba vai enchendo
+        const l = loaders[tr.slot], u = tr.t / LOADER_TRIP, trip = Math.floor(u);
+        if(l) animLoader(l, u % 1, true, dt);
+        const shown = Math.min(tr.fillBoxes, Math.round(Math.min(trip + ((u%1) >= 0.5 ? 1 : 0), LOADER_TRIPS) / LOADER_TRIPS * tr.fillBoxes));
+        tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < shown; });
+        if(trip >= LOADER_TRIPS){ tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < tr.fillBoxes; }); if(l) idleLoader(l); tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); }
       } else if(tr.state === 'going'){
         tr.d += dt*TRUCK_SPEED;
         if(moveAlong(tr, tr.d, false)){ tr.state = 'away'; tr.t = 0; tr.g.visible = false; }
@@ -1855,6 +1890,98 @@ function createWorld(){
       }
     });
   }
+  // ---------- carregadores (a pé, do galpão até a caçamba) ----------
+  const loaders = [];
+  function makeLoaderNpc(k){
+    const g = makeMiner('#2f80ed', '#ff8a2a', '#33415c');
+    g.userData.pickHead.parent.visible = false;
+    const box = mesh(new THREE.BoxGeometry(0.5,0.4,0.45), M('#9b6a3c'), 0, 1.05, 0.38, g); box.visible = false;
+    g.userData.box = box;
+    g.scale.setScalar(0.85);
+    const home = new THREE.Vector3(-3.7, 0, SLOTS[k]);
+    g.position.copy(home); g.rotation.y = Math.PI/2; world.add(g);
+    return {g, home, dock:new THREE.Vector3(4.4, 0, SLOTS[k]), ph:0};
+  }
+  function syncLoaders(){ while(loaders.length < S.loaders){ const l = makeLoaderNpc(loaders.length); loaders.push(l); burstBills(l.home.x, l.home.z, 8); } }
+  // posição do carregador ao longo de uma ida e volta (u de 0 a 1)
+  function animLoader(l, u, carrying, dt){
+    const there = u < 0.5, f = there ? u*2 : (u-0.5)*2;
+    l.g.position.lerpVectors(there ? l.home : l.dock, there ? l.dock : l.home, f);
+    l.g.rotation.y = there ? Math.PI/2 : -Math.PI/2;
+    l.ph += dt*11; const s = Math.sin(l.ph), P = l.g.userData;
+    P.legL.rotation.x = s*0.7; P.legR.rotation.x = -s*0.7;
+    const hold = carrying && there;
+    P.box.visible = hold;
+    P.armL.rotation.x = P.armR.rotation.x = hold ? -1.3 : -s*0.5;
+  }
+  function idleLoader(l){
+    l.g.position.copy(l.home); l.g.rotation.y = Math.PI/2;
+    const P = l.g.userData; P.legL.rotation.x = P.legR.rotation.x = 0; P.armL.rotation.x = P.armR.rotation.x = 0; P.box.visible = false;
+  }
+
+  // ---------- coletadores (veículo do galpão até a pilha de cada mina) ----------
+  const collectors = {};
+  function makeCollectorCar(color){
+    const g = new THREE.Group();
+    mesh(new THREE.BoxGeometry(1.5,0.35,0.95), M('#f2b632'), 0, 0.45, 0, g);
+    mesh(new THREE.BoxGeometry(0.55,0.55,0.85), M('#2b2b2b'), 0.45, 0.85, 0, g);
+    mesh(new THREE.BoxGeometry(0.06,0.4,0.7), M('#bfe6f7'), 0.74, 0.95, 0, g);
+    const bin = mesh(new THREE.BoxGeometry(0.75,0.4,0.85), M('#5d6166'), -0.38, 0.82, 0, g);
+    const ore = mesh(new THREE.BoxGeometry(0.66,0.22,0.74), M(color), -0.38, 1.06, 0, g); ore.visible = false;
+    for(const [x,z] of [[0.5,0.48],[0.5,-0.48],[-0.5,0.48],[-0.5,-0.48]]){ const w = mesh(new THREE.CylinderGeometry(0.22,0.22,0.16,10), M('#1b1b1b'), x, 0.22, z, g); w.rotation.x = Math.PI/2; }
+    const flag = mesh(new THREE.BoxGeometry(0.03,0.03,0.03), M(color), 0, 0, 0, g); flag.visible = false;
+    mesh(new THREE.CylinderGeometry(0.02,0.02,0.9,4), M('#888888'), -0.7, 1.25, 0.35, g);
+    mesh(new THREE.BoxGeometry(0.3,0.2,0.02), M(color), -0.55, 1.6, 0.35, g);
+    g.userData.ore = ore;
+    return g;
+  }
+  function collectorPath(o, k){
+    const hx = -0.8 + k*1.15, mx = o.x;
+    return [new THREE.Vector3(hx,0,23.0), new THREE.Vector3(hx,0,16.2), new THREE.Vector3(0,0,15.4), new THREE.Vector3(0,0,-4.0),
+            new THREE.Vector3(mx,0,-4.0), new THREE.Vector3(mx,0,-8.3), new THREE.Vector3(o.pilePos.x-1.4,0,o.pilePos.z+0.4)];
+  }
+  function pathPoint(path, dist){
+    const lens = path.slice(1).map((v,i)=>v.distanceTo(path[i])), total = lens.reduce((a,b)=>a+b,0);
+    let d = Math.max(0, Math.min(dist, total)), s = 0; while(s < lens.length-1 && d > lens[s]){ d -= lens[s]; s++; }
+    return {pos:new THREE.Vector3().lerpVectors(path[s], path[s+1], lens[s] ? d/lens[s] : 1), dir:new THREE.Vector3().subVectors(path[s+1], path[s]), total};
+  }
+  function syncCollectors(){
+    MINES3.forEach(o=>{
+      if(o.m.fuel || !S.collectors[o.m.id] || collectors[o.m.id]) return;
+      const k = MINES.filter(m=>!m.fuel).indexOf(o.m);
+      const g = makeCollectorCar(o.m.color), path = collectorPath(o, k), tot = pathPoint(path, 0).total;
+      g.position.copy(path[0]); g.rotation.y = Math.PI/2; world.add(g);
+      collectors[o.m.id] = {g, o, path, total:tot, state:'home', d:0, t:0, load:0};
+      burstBills(path[0].x, path[0].z, 8);
+    });
+  }
+  function updateCollectors(dt){
+    syncCollectors();
+    for(const id in collectors){
+      const c = collectors[id], m = c.o.m; c.t += dt;
+      if(c.state === 'home'){
+        if(c.t > 0.8 && S.ore[id] >= 1){ c.state = 'out'; c.d = 0; }
+      } else if(c.state === 'out' || c.state === 'back'){
+        c.d += dt*COLLECTOR_SPEED;
+        const {pos, dir} = pathPoint(c.path, c.state === 'out' ? c.d : c.total - c.d);
+        c.g.position.copy(pos);
+        if(dir.lengthSq() > 0.001){ const sgn = c.state === 'out' ? 1 : -1; c.g.rotation.y = Math.atan2(-dir.z*sgn, dir.x*sgn); }
+        if(c.d >= c.total){
+          if(c.state === 'out'){ c.state = 'loading'; c.t = 0; }
+          else { S.depot[id] = (S.depot[id]||0) + c.load; c.load = 0; c.g.userData.ore.visible = false; c.state = 'home'; c.t = 0;
+            flyOre(c.g.position.clone().setY(1.1), new THREE.Vector3(-7.2,1,19), m.color); }
+        }
+      } else if(c.state === 'loading'){
+        if(c.t > 1.4){
+          const take = Math.min(collectorCap(), S.ore[id]); S.ore[id] -= take; c.load = take;
+          c.g.userData.ore.visible = take > 0;
+          for(let i=0;i<3;i++) flyOre(c.o.pilePos.clone(), c.g.position.clone().setY(1.1), m.color);
+          c.state = 'back'; c.d = 0;
+        }
+      }
+    }
+  }
+
   function payDepot(dt){
     if(S.depotOpen || S.money <= 0) return;
     const r = DEPOT_COST - (S.paid.depot||0), pay = Math.min(S.money, r, Math.max(DEPOT_COST*dt/1.6, 1));
