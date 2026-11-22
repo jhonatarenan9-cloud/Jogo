@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mina Idle</title>
+<style>
+  :root{
+    --bg:#16120f; --panel:#221c17; --panel2:#2c241d; --line:#3d3229;
+    --text:#f1e7dc; --muted:#a8998a; --gold:#f2c14e; --ok:#5fbf6a; --bad:#d9634f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background-image:radial-gradient(ellipse at top,#2a2018 0%,var(--bg) 70%);min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:12px 16px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.25);position:sticky;top:0;z-index:5;backdrop-filter:blur(4px)}
+  h1{font-size:20px;margin:0;letter-spacing:.5px}
+  .money{font-size:22px;font-weight:700;color:var(--gold)}
+  .rate{font-size:13px;color:var(--muted)}
+  main{display:grid;grid-template-columns:260px 1fr 340px;gap:16px;padding:16px;max-width:1300px;margin:0 auto}
+  @media (max-width:1000px){main{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .panel h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 10px}
+  .mine{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel2);margin-bottom:8px;cursor:pointer;transition:.15s}
+  .mine:hover{border-color:#6b5847}
+  .mine.active{outline:2px solid var(--gold);border-color:transparent}
+  .mine.locked{opacity:.55;cursor:not-allowed}
+  .gem{width:28px;height:28px;flex:none;clip-path:polygon(50% 0,100% 38%,80% 100%,20% 100%,0 38%);box-shadow:inset 0 0 8px rgba(0,0,0,.5)}
+  .mine .info{flex:1;min-width:0}
+  .mine .name{font-weight:600}
+  .mine .sub{font-size:12px;color:var(--muted)}
+  .center{display:flex;flex-direction:column;gap:16px}
+  .scene{position:relative;height:360px;border-radius:12px;overflow:hidden;border:1px solid var(--line);
+    background:linear-gradient(#1b1511,#0e0b09);display:flex;align-items:center;justify-content:center;user-select:none}
+  .scene .level{position:absolute;top:12px;left:14px;font-size:13px;color:var(--muted)}
+  .scene .level b{color:var(--text);font-size:16px}
+  .scene .tool{position:absolute;top:12px;right:14px;font-size:13px;color:var(--muted);text-align:right}
+  #rock{width:230px;height:200px;cursor:pointer;transition:transform .06s;filter:drop-shadow(0 10px 18px rgba(0,0,0,.6))}
+  #rock:active{transform:scale(.94)}
+  #rock.hit{animation:shake .15s}
+  @keyframes shake{25%{transform:translateX(-4px) rotate(-2deg)}75%{transform:translateX(4px) rotate(2deg)}}
+  .floater{position:absolute;pointer-events:none;font-weight:700;font-size:18px;animation:up 1s ease-out forwards;text-shadow:0 2px 4px #000}
+  @keyframes up{to{transform:translateY(-70px);opacity:0}}
+  .chip{position:absolute;width:8px;height:8px;pointer-events:none;border-radius:2px;animation:chip .6s ease-out forwards}
+  @keyframes chip{to{transform:translate(var(--dx),var(--dy)) rotate(200deg);opacity:0}}
+  .hint{position:absolute;bottom:12px;font-size:13px;color:var(--muted)}
+  .inv{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+  @media (max-width:560px){.inv{grid-template-columns:repeat(3,1fr)}}
+  .invItem{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+  .invItem .gem{margin:0 auto 4px;width:20px;height:20px}
+  .invItem .n{font-weight:700}
+  .invItem .v{font-size:11px;color:var(--muted)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  button{font:inherit;color:var(--text);background:#3a2f26;border:1px solid #5a4838;border-radius:8px;padding:8px 12px;cursor:pointer}
+  button:hover:not(:disabled){background:#4a3c30}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:#7a5a1c;border-color:#a67c2a}
+  button.primary:hover:not(:disabled){background:#8f6a22}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tabs button{flex:1;padding:7px 4px;font-size:13px}
+  .tabs button.on{background:#7a5a1c;border-color:#a67c2a}
+  .item{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;margin-bottom:8px}
+  .item .ico{font-size:26px;width:36px;text-align:center;flex:none}
+  .item .info{flex:1;min-width:0}
+  .item .name{font-weight:600}
+  .item .desc{font-size:12px;color:var(--muted)}
+  .item button{min-width:96px;font-size:13px}
+  .owned{color:var(--ok);font-size:13px;font-weight:600;min-width:96px;text-align:center}
+  .count{font-size:12px;color:var(--gold)}
+  .progress{height:8px;background:#0e0b09;border-radius:99px;overflow:hidden;margin-top:6px}
+  .progress > div{height:100%;background:linear-gradient(90deg,#a67c2a,var(--gold));width:0}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
+    padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:10;max-width:90vw;text-align:center}
+  #toast.show{opacity:1}
+  .small{font-size:12px;color:var(--muted)}
+  a.reset{color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<header>
+  <h1>⛏️ Mina Idle</h1>
+  <div style="text-align:right">
+    <div class="money" id="money">$0</div>
+    <div class="rate" id="rate">0 minério/s</div>
+  </div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Níveis da Mina</h2>
+    <div id="mines"></div>
+    <p class="small">Cada nível exige uma ferramenta nova. Compre-a na loja para descer mais fundo!</p>
+  </section>
+
+  <section class="center">
+    <div class="scene" id="scene">
+      <div class="level">Nível <span id="lvlNum">1</span><br><b id="lvlName">Mina de Cobre</b></div>
+      <div class="tool">Ferramenta<br><b id="toolName" style="color:var(--text)">Picareta de Madeira</b><br><span id="clickPow"></span></div>
+      <svg id="rock" viewBox="0 0 230 200" aria-label="Clique para minerar"></svg>
+      <div class="hint">Clique na rocha para minerar</div>
+    </div>
+
+    <div class="panel">
+      <h2>Inventário</h2>
+      <div class="inv" id="inv"></div>
+      <div class="row">
+        <button class="primary" id="sellBtn">Vender tudo</button>
+        <span class="small" id="sellInfo"></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Objetivo</h2>
+      <div id="goalText" class="small"></div>
+      <div class="progress"><div id="goalBar"></div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="tabs">
+      <button data-tab="tools" class="on">Ferramentas</button>
+      <button data-tab="helpers">Ajudantes</button>
+      <button data-tab="upgrades">Melhorias</button>
+    </div>
+    <div id="shop"></div>
+    <p style="margin-top:14px"><a class="reset" id="reset">Recomeçar jogo</a></p>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+// ===================== DADOS =====================
+const MINES = [
+  {id:'cobre',     name:'Cobre',     color:'#c9773c', value:1,    tool:'madeira'},
+  {id:'ferro',     name:'Ferro',     color:'#a7a9ac', value:8,    tool:'ferro'},
+  {id:'ouro',      name:'Ouro',      color:'#f2c14e', value:60,   tool:'britadeira'},
+  {id:'diamante',  name:'Diamante',  color:'#7fe3f0', value:450,  tool:'carregadeira'},
+  {id:'esmeralda', name:'Esmeralda', color:'#2ecc71', value:3500, tool:'escavadeira'},
+];
+
+// Ferramentas: power = minério por clique; passive = minério/s extra (máquinas)
+const TOOLS = [
+  {id:'madeira',     name:'Picareta de Madeira', ico:'🪵', cost:0,        power:1,   passive:0,   desc:'Ferramenta inicial. Libera a mina de Cobre.'},
+  {id:'ferro',       name:'Picareta de Ferro',   ico:'⛏️', cost:150,      power:3,   passive:0,   desc:'Mais resistente. Libera a mina de Ferro.'},
+  {id:'britadeira',  name:'Britadeira',          ico:'🔨', cost:3000,     power:8,   passive:1,   desc:'Quebra rocha dura. Libera a mina de Ouro.'},
+  {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:75000,    power:20,  passive:8,   desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
+  {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:2000000,  power:60,  passive:40,  desc:'Máquina colossal. Libera a mina de Esmeralda.'},
+];
+
+// Ajudantes: produção automática (minério/s) na mina ativa
+const HELPERS = [
+  {id:'mineiro',  name:'Mineiro',               ico:'👷', base:15,     rate:0.3, desc:'Minera sozinho para você.'},
+  {id:'carrinho', name:'Carrinho de Mina',      ico:'🛒', base:200,    rate:2,   desc:'Transporta minério pelos trilhos.'},
+  {id:'caminhao', name:'Caminhão Basculante',   ico:'🚚', base:4000,   rate:12,  desc:'Leva toneladas para a superfície.'},
+  {id:'esteira',  name:'Esteira Transportadora',ico:'🏭', base:80000,  rate:70,  desc:'Fluxo contínuo de minério.'},
+  {id:'robo',     name:'Robô Minerador',        ico:'🤖', base:1500000,rate:400, desc:'Automação total, nunca descansa.'},
+];
+
+const GOAL = 1000; // esmeraldas para vencer
+
+// ===================== ESTADO =====================
+const SAVE_KEY = 'mina-idle-v1';
+function newState(){
+  return {
+    money:0,
+    ore:Object.fromEntries(MINES.map(m=>[m.id,0])),
+    mined:Object.fromEntries(MINES.map(m=>[m.id,0])),
+    tools:{madeira:true},
+    helpers:Object.fromEntries(HELPERS.map(h=>[h.id,0])),
+    sharpen:0, boost:0, autoSell:false,
+    active:'cobre', won:false, last:Date.now()
+  };
+}
+let S = newState();
+try{
+  const raw = localStorage.getItem(SAVE_KEY);
+  if(raw){ const d = JSON.parse(raw); S = Object.assign(newState(), d);
+    S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
+    S.helpers = Object.assign(newState().helpers, d.helpers); }
+}catch(e){}
+function save(){ S.last = Date.now(); try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
+
+// ===================== CÁLCULOS =====================
+const mineById = id => MINES.find(m=>m.id===id);
+const toolById = id => TOOLS.find(t=>t.id===id);
+const isUnlocked = m => !!S.tools[m.tool];
+function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
+function clickPower(){ return bestTool().power * (1 + 0.5*S.sharpen); }
+function helperCost(h){ return Math.ceil(h.base * Math.pow(1.15, S.helpers[h.id])); }
+function sharpenCost(){ return Math.ceil(50 * Math.pow(2.4, S.sharpen)); }
+function boostCost(){ return Math.ceil(500 * Math.pow(3, S.boost)); }
+const AUTOSELL_COST = 1000;
+function orePerSec(){
+  let r = 0;
+  for(const h of HELPERS) r += S.helpers[h.id]*h.rate;
+  for(const t of TOOLS) if(S.tools[t.id]) r += t.passive;
+  return r * (1 + 0.25*S.boost);
+}
+function fmt(n){
+  if(n < 1000) return (Math.round(n*10)/10).toLocaleString('pt-BR');
+  const u = ['','K','M','B','T','Qa','Qi'];
+  let i = 0; while(n >= 1000 && i < u.length-1){ n/=1000; i++; }
+  return n.toFixed(n<10?2:n<100?1:0).replace('.',',') + u[i];
+}
+const money = n => '$' + fmt(n);
+
+// ===================== AÇÕES =====================
+function addOre(id, amt){
+  S.ore[id] += amt; S.mined[id] += amt;
+  if(S.autoSell) sellAll(true);
+  if(id==='esmeralda' && !S.won && S.mined.esmeralda >= GOAL){ S.won = true; toast('🏆 Parabéns! Você se tornou um Magnata da Mineração!'); }
+}
+function sellAll(silent){
+  let total = 0;
+  for(const m of MINES){ total += S.ore[m.id]*m.value; S.ore[m.id] = 0; }
+  S.money += total;
+  if(!silent && total>0) toast('Vendido por ' + money(total));
+}
+function mineClick(ev){
+  const m = mineById(S.active), p = clickPower();
+  addOre(m.id, p);
+  const rock = document.getElementById('rock');
+  rock.classList.remove('hit'); void rock.offsetWidth; rock.classList.add('hit');
+  const scene = document.getElementById('scene'), r = scene.getBoundingClientRect();
+  const x = (ev.clientX ?? r.left+r.width/2) - r.left, y = (ev.clientY ?? r.top+r.height/2) - r.top;
+  const f = document.createElement('div'); f.className='floater'; f.style.color=m.color;
+  f.style.left=(x-10)+'px'; f.style.top=(y-20)+'px'; f.textContent='+'+fmt(p)+' '+m.name;
+  scene.appendChild(f); setTimeout(()=>f.remove(),1000);
+  for(let i=0;i<6;i++){
+    const c=document.createElement('div'); c.className='chip';
+    c.style.background = i%2? m.color : '#6d5d50';
+    c.style.left=x+'px'; c.style.top=y+'px';
+    c.style.setProperty('--dx',(Math.random()*120-60)+'px'); c.style.setProperty('--dy',(Math.random()*-80+20)+'px');
+    scene.appendChild(c); setTimeout(()=>c.remove(),600);
+  }
+  render();
+}
+function buyTool(t){
+  if(S.tools[t.id] || S.money < t.cost) return;
+  S.money -= t.cost; S.tools[t.id] = true;
+  const m = MINES.find(x=>x.tool===t.id);
+  if(m){ S.active = m.id; toast('🔓 ' + t.name + ' adquirida! Nova mina: ' + m.name); }
+  buildMines(); drawRock(); buildShop(); render(); save();
+}
+function buyHelper(h){
+  const c = helperCost(h); if(S.money < c) return;
+  S.money -= c; S.helpers[h.id]++; render(); save();
+}
+
+// ===================== RENDER =====================
+function drawRock(){
+  const m = mineById(S.active);
+  // pedras com cristais do minério da mina
+  let gems = '';
+  const spots = [[70,70,14],[140,60,11],[110,110,16],[60,130,10],[165,115,13],[95,55,8],[150,150,9],[120,160,8]];
+  spots.forEach(([x,y,s],i)=>{
+    gems += `<polygon points="${x},${y-s} ${x+s},${y-s*0.2} ${x+s*0.6},${y+s} ${x-s*0.6},${y+s} ${x-s},${y-s*0.2}" fill="${m.color}" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>`;
+    gems += `<polygon points="${x},${y-s} ${x+s*0.3},${y-s*0.2} ${x-s*0.3},${y-s*0.2}" fill="rgba(255,255,255,.45)"/>`;
+  });
+  document.getElementById('rock').innerHTML = `
+    <defs><radialGradient id="rg" cx="40%" cy="35%"><stop offset="0" stop-color="#7a6a5c"/><stop offset="1" stop-color="#3b3028"/></radialGradient></defs>
+    <polygon points="30,120 45,55 95,20 160,25 205,70 215,140 175,185 80,190 35,165" fill="url(#rg)" stroke="#231b15" stroke-width="4"/>
+    <polyline points="60,90 90,100 85,130" stroke="#2a211a" stroke-width="3" fill="none"/>
+    <polyline points="170,80 150,95 160,130" stroke="#2a211a" stroke-width="3" fill="none"/>
+    ${gems}`;
+}
+function buildMines(){
+  const el = document.getElementById('mines'); el.innerHTML='';
+  MINES.forEach((m,i)=>{
+    const t = toolById(m.tool), un = isUnlocked(m);
+    const d = document.createElement('div');
+    d.className = 'mine' + (un?'':' locked') + (S.active===m.id?' active':'');
+    d.innerHTML = `<div class="gem" style="background:${m.color}"></div>
+      <div class="info"><div class="name">Nível ${i+1}: ${m.name}</div>
+      <div class="sub">${un ? money(m.value)+' por minério' : '🔒 Requer: '+t.name}</div></div>`;
+    d.onclick = ()=>{ if(!isUnlocked(m)){ toast('Você precisa de: '+t.name); return; } S.active=m.id; drawRock(); render(); save(); };
+    el.appendChild(d);
+  });
+}
+let tab = 'tools';
+function buildShop(){
+  const el = document.getElementById('shop'); el.innerHTML='';
+  const add = (ico,name,desc,right) => {
+    const d = document.createElement('div'); d.className='item';
+    d.innerHTML = `<div class="ico">${ico}</div><div class="info"><div class="name">${name}</div><div class="desc">${desc}</div></div>`;
+    d.appendChild(right); el.appendChild(d);
+  };
+  const btn = (label, fn, cost) => { const b=document.createElement('button'); b.textContent=label; b.onclick=fn; b.dataset.cost=cost; return b; };
+  if(tab==='tools'){
+    TOOLS.forEach((t,i)=>{
+      const prevOwned = i===0 || S.tools[TOOLS[i-1].id];
+      let right;
+      if(S.tools[t.id]){ right=document.createElement('div'); right.className='owned'; right.textContent='✔ Possui'; }
+      else if(!prevOwned){ right=document.createElement('div'); right.className='owned'; right.style.color='var(--muted)'; right.textContent='🔒'; }
+      else right = btn(money(t.cost), ()=>buyTool(t), t.cost);
+      add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/clique${t.passive?' · +'+fmt(t.passive)+'/s':''}`, right);
+    });
+  } else if(tab==='helpers'){
+    HELPERS.forEach(h=>{
+      const c = helperCost(h);
+      add(h.ico, `${h.name} <span class="count">x${S.helpers[h.id]}</span>`, `${h.desc}<br>+${fmt(h.rate)} minério/s cada`, btn(money(c), ()=>{buyHelper(h); buildShop();}, c));
+    });
+  } else {
+    const sc = sharpenCost();
+    add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, '+50% de minério por clique', btn(money(sc), ()=>{ if(S.money<sc)return; S.money-=sc; S.sharpen++; buildShop(); render(); save(); }, sc));
+    const bc = boostCost();
+    add('⚙️', `Manutenção <span class="count">nv ${S.boost}</span>`, '+25% de produção automática', btn(money(bc), ()=>{ if(S.money<bc)return; S.money-=bc; S.boost++; buildShop(); render(); save(); }, bc));
+    let right;
+    if(S.autoSell){ right=document.createElement('div'); right.className='owned'; right.textContent='✔ Ativo'; }
+    else right = btn(money(AUTOSELL_COST), ()=>{ if(S.money<AUTOSELL_COST)return; S.money-=AUTOSELL_COST; S.autoSell=true; sellAll(true); buildShop(); render(); save(); }, AUTOSELL_COST);
+    add('💼', 'Gerente de Vendas', 'Vende todo minério automaticamente', right);
+  }
+}
+function render(){
+  const m = mineById(S.active), idx = MINES.indexOf(m);
+  document.getElementById('money').textContent = money(S.money);
+  const ops = orePerSec();
+  document.getElementById('rate').textContent = `${fmt(ops)} ${m.name.toLowerCase()}/s ≈ ${money(ops*m.value)}/s`;
+  document.getElementById('lvlNum').textContent = idx+1;
+  document.getElementById('lvlName').textContent = 'Mina de ' + m.name;
+  document.getElementById('lvlName').style.color = m.color;
+  document.getElementById('toolName').textContent = bestTool().name;
+  document.getElementById('clickPow').textContent = fmt(clickPower()) + ' por clique';
+  // inventário
+  const inv = document.getElementById('inv'); inv.innerHTML='';
+  let total = 0;
+  MINES.forEach(x=>{
+    total += S.ore[x.id]*x.value;
+    inv.insertAdjacentHTML('beforeend', `<div class="invItem" style="${isUnlocked(x)?'':'opacity:.35'}"><div class="gem" style="background:${x.color}"></div>
+      <div class="n">${fmt(S.ore[x.id])}</div><div class="v">${x.name} · ${money(x.value)}</div></div>`);
+  });
+  document.getElementById('sellBtn').disabled = total<=0;
+  document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total) : '');
+  // botões da loja
+  document.querySelectorAll('#shop button').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
+  // objetivo
+  const next = TOOLS.find(t=>!S.tools[t.id]);
+  let pct, txt;
+  if(next){ pct = Math.min(1, S.money/next.cost); txt = `Próxima ferramenta: <b>${next.name}</b> — ${money(S.money)} / ${money(next.cost)}`; }
+  else { pct = Math.min(1, S.mined.esmeralda/GOAL); txt = S.won ? '🏆 Você venceu! Continue minerando e enriquecendo.' : `Minere <b>${fmt(GOAL)}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(GOAL)}`; }
+  document.getElementById('goalText').innerHTML = txt;
+  document.getElementById('goalBar').style.width = (pct*100)+'%';
+  // minas (estado ativo/desbloqueio)
+  document.querySelectorAll('.mine').forEach((d,i)=>{
+    d.classList.toggle('active', MINES[i].id===S.active);
+    d.classList.toggle('locked', !isUnlocked(MINES[i]));
+  });
+}
+let toastT;
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600); }
+
+// ===================== LOOP =====================
+let lastTick = performance.now(), saveAcc = 0;
+function tick(now){
+  const dt = Math.min(1, (now-lastTick)/1000); lastTick = now;
+  const ops = orePerSec();
+  if(ops>0) addOre(S.active, ops*dt);
+  saveAcc += dt; if(saveAcc > 5){ saveAcc = 0; save(); }
+  render();
+  requestAnimationFrame(tick);
+}
+
+// ganhos offline (50%, até 8h)
+(function offline(){
+  const secs = Math.min(8*3600, (Date.now() - (S.last||Date.now()))/1000);
+  const ops = orePerSec();
+  if(secs > 30 && ops > 0){
+    const amt = ops*secs*0.5, m = mineById(S.active);
+    addOre(m.id, amt);
+    setTimeout(()=>toast(`Enquanto você esteve fora: +${fmt(amt)} ${m.name}`), 300);
+  }
+})();
+
+document.getElementById('rock').addEventListener('click', mineClick);
+document.getElementById('sellBtn').onclick = ()=>{ sellAll(); render(); save(); };
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  tab=b.dataset.tab; document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b)); buildShop(); render();
+});
+document.getElementById('reset').onclick = ()=>{ if(confirm('Apagar todo o progresso?')){ S=newState(); save(); buildMines(); buildShop(); drawRock(); render(); } };
+window.addEventListener('beforeunload', save);
+
+buildMines(); buildShop(); drawRock(); render();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
