@@ -320,14 +320,15 @@
   #topbar,#goalBox{z-index:3}
   #sheet{z-index:10}
   body.sheetOpen #cards{display:none}
-  .bcard{position:absolute;left:0;top:0;width:150px;margin-left:-75px;pointer-events:auto;font-family:var(--fontB);will-change:transform;cursor:pointer;transform-origin:50% 100%}
-  .bcard .bt{background:#2b2f3a;color:#fff;font:13px var(--fontD);text-align:center;padding:3px 6px;border-radius:8px 8px 0 0;border:2px solid #14161d;border-bottom:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .bcard .bb{display:flex;align-items:center;gap:5px;background:linear-gradient(#2f7fd8,#1f5fae);border:2.5px solid var(--navyD);border-radius:0 0 12px 12px;padding:5px;box-shadow:0 3px 0 var(--navyD)}
-  .bcard .bi{position:relative;flex:none;width:36px;height:36px;border-radius:50%;background:#fff3d6;border:2.5px solid var(--navyD);display:flex;align-items:center;justify-content:center;font-size:19px}
-  .bcard .bl{position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);background:#e07a1f;color:#fff;font:11px var(--fontD);padding:0 5px;border-radius:6px;border:2px solid #8a4206;white-space:nowrap}
-  .bcard .bc{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-  .bcard .br{background:rgba(0,0,0,.35);color:#cfe6ff;font-size:11px;font-weight:800;text-align:center;border-radius:6px;padding:1px 3px;white-space:nowrap;overflow:hidden}
-  .bcard .bu{background:linear-gradient(#56d660,#33a83d);border:2px solid var(--greenD);color:#fff;font:12px var(--fontD);line-height:1.05;text-align:center;border-radius:7px;padding:2px 3px;text-shadow:0 1px 0 var(--greenD)}
+  .bcard::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-7px;border:7px solid transparent;border-bottom:0;border-top-color:var(--navyD)}
+  .bcard{position:absolute;left:0;top:0;width:112px;margin-left:-56px;pointer-events:auto;font-family:var(--fontB);will-change:transform;cursor:pointer;transform-origin:50% 100%}
+  .bcard .bt{background:#2b2f3a;color:#fff;font:10.5px var(--fontD);text-align:center;padding:2px 5px;border-radius:7px 7px 0 0;border:2px solid #14161d;border-bottom:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bcard .bb{display:flex;align-items:center;gap:4px;background:linear-gradient(#2f7fd8,#1f5fae);border:2.5px solid var(--navyD);border-radius:0 0 10px 10px;padding:3px 4px 4px;box-shadow:0 3px 0 var(--navyD)}
+  .bcard .bi{position:relative;flex:none;width:28px;height:28px;border-radius:50%;background:#fff3d6;border:2px solid var(--navyD);display:flex;align-items:center;justify-content:center;font-size:15px}
+  .bcard .bl{position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);background:#e07a1f;color:#fff;font:9px var(--fontD);padding:0 5px;border-radius:6px;border:2px solid #8a4206;white-space:nowrap}
+  .bcard .bc{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .bcard .br{background:rgba(0,0,0,.35);color:#cfe6ff;font-size:9px;font-weight:800;text-align:center;border-radius:6px;padding:1px 3px;white-space:nowrap;overflow:hidden}
+  .bcard .bu{background:linear-gradient(#56d660,#33a83d);border:2px solid var(--greenD);color:#fff;font:10px var(--fontD);line-height:1.05;text-align:center;border-radius:7px;padding:2px 3px;text-shadow:0 1px 0 var(--greenD)}
   .bcard .bu.off{background:#7d8ea8;border-color:#55657d;text-shadow:none}
   .bcard .bu.lock{background:#5b5f66;border-color:#33363b}
   .bcard.can .bu{animation:bpulse 1s infinite}
@@ -3127,7 +3128,12 @@ function createWorld(){
   const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4]};
   const cards = lvlBtns.map(b=>{
     const m = mineById(b.id);
-    const pos = m ? new THREE.Vector3(MINES3.find(o=>o.m===m).x + (m.fuel ? 4 : 2.6), 0.4, -5.6) : new THREE.Vector3(...CARD_POS[b.id]);
+    const base = m ? new THREE.Vector3(MINES3.find(o=>o.m===m).x + (m.fuel ? 4 : 2.6), 0, -5.9) : new THREE.Vector3(CARD_POS[b.id][0], 0, CARD_POS[b.id][2]);
+    { const post = new THREE.Group(); post.position.copy(base); world.add(post);   // plaquinha: dois postes de madeira e uma tábua
+      for(const sx of [-0.45, 0.45]) mesh(new THREE.BoxGeometry(0.1,1.5,0.1), M('#7a5230'), sx, 0.75, 0, post);
+      mesh(new THREE.BoxGeometry(1.2,0.55,0.08), M('#a0693a'), 0, 1.25, 0, post);
+      circles.push({x:base.x, z:base.z, r:0.35}); }
+    const pos = base.clone().setY(1.55);
     const el = document.createElement('div'); el.className = 'bcard';
     el.innerHTML = `<div class="bt"></div><div class="bb"><div class="bi"><span class="ic"></span><span class="bl"></span></div><div class="bc"><div class="br"></div><div class="bu"></div></div></div>`;
     el.onclick = ()=>openPanel(b.id);
@@ -3152,7 +3158,7 @@ function createWorld(){
       const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z);
       cv3.copy(c.pos).project(camera);
       const vis = d < maxD && cv3.z < 1 && Math.abs(cv3.x) < 1.15 && cv3.y > -1 && cv3.y < 1.1 && !(c.m && !isUnlocked(c.m) && d > 18);
-      const sy = (1-cv3.y)/2*h - 78;
+      const sy = (1-cv3.y)/2*h - 52;
       const vis2 = vis && sy - 40 > topLim && sy < h - 90;
       c.el.style.display = vis2 ? '' : 'none'; if(!vis2) return;
       const sc = Math.max(0.62, Math.min(1, 1.15 - d/maxD*0.5));
@@ -3175,9 +3181,9 @@ function createWorld(){
       else if(b.id === 'galpao'){ lvl = (S.depotOpen?1:0) + S.trucks + S.loaders + S.truckLvl + S.bagLvl; cost = cheapestDepot(); }
       else { const m = mineById(b.id); open = isUnlocked(m); lvl = mineLevelInfo(m).lvl; cost = cheapestUpgrade(m); }
       b.lvl = lvl; b.cost = cost; b.open = open;
-      b.tile.draw(open ? '⬆️' : '🔒', 'NÍVEL ' + lvl, 0, !open);
+      b.tile.mesh.visible = false;
       const can = open && S.money >= cost;
-      upArrows[k].visible = can; if(can){ upArrows[k].position.y = 1.3 + Math.abs(Math.sin(t*4 + k))*0.35; upArrows[k].rotation.y = t*2; }
+      upArrows[k].visible = false;
     });
   }
 
@@ -3282,8 +3288,6 @@ function createWorld(){
   cv.addEventListener('pointerdown', e=>{
     const r = sceneEl.getBoundingClientRect();
     ndc.set((e.clientX-r.left)/r.width*2-1, -((e.clientY-r.top)/r.height*2-1)); ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(lvlBtns.map(b=>b.tile.mesh).concat(upArrows.filter(a=>a.visible)))[0];
-    if(hit){ const k = Math.max(lvlBtns.findIndex(b=>b.tile.mesh===hit.object), upArrows.indexOf(hit.object)); if(k >= 0){ openPanel(lvlBtns[k].id); return; } }
     if(S.fp && e.clientX - r.left > r.width/2){ look = {id:e.pointerId, x:e.clientX, y:e.clientY}; try{ cv.setPointerCapture(e.pointerId); }catch(_){} return; }
     joy = {id:e.pointerId, x:e.clientX, y:e.clientY, dx:0, dy:0};
     joyEl.style.left = (e.clientX-r.left)+'px'; joyEl.style.top = (e.clientY-r.top)+'px'; joyEl.hidden = false;
@@ -3389,13 +3393,11 @@ function createWorld(){
     else if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
     else if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
-    else if(lvlBtns.some(b=>b.tile.inside(p))) z = 'lvl:' + lvlBtns.find(b=>b.tile.inside(p)).id;
     else if(MINES3.some(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p))) z = 'factory:' + MINES3.find(o=>o.smTile && o.smTile.mesh.visible && o.smTile.inside(p)).i;
     else for(const o of MINES3) if(o.tile && o.tile.mesh.visible && o.tile.inside(p)) z = 'buy:'+o.i;
     if(z !== zone){ zone = z; zoneT = 0;
       if(z === 'market') doSell();
       if(z === 'shop') openShop();
-      if(z && z.startsWith('lvl:')) openPanel(z.slice(4));
       if(z && z.startsWith('buy:')){ const t = MINES3[+z.slice(4)].tool;
         if(needsFactory(t)) toast(`🏭 Antes complete a fundição da mina de ${prevMine(t).name}: ${factoryMissing(prevMine(t)).join(', ')}.`); }
     } else zoneT += dt;
