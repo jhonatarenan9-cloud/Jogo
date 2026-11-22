@@ -327,14 +327,14 @@ const TOOLS = [
   {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:52000000, power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
-const STAFF_COST = {carvao:80, cobre:60, ferro:900, ouro:9000, diamante:90000, esmeralda:900000};
+const STAFF_COST = {carvao:60, cobre:45, ferro:700, ouro:7000, diamante:70000, esmeralda:700000};
 // ferramenta dos ajudantes (por mina): picareta -> martelete -> rompedor
 const HELPER_TOOLS = [
   {name:'Picareta', ico:'⛏️', mult:1, costMult:0},
-  {name:'Martelete', ico:'🔩', mult:1.4, costMult:20},
-  {name:'Rompedor', ico:'💥', mult:2, costMult:150},
+  {name:'Martelete', ico:'🔩', mult:1.4, costMult:15},
+  {name:'Rompedor', ico:'💥', mult:2, costMult:110},
 ];
-const MAX_HELPERS = 3, HELPER_RATE = 0.22, MANAGER_MULT = 1.5, MANAGER_COST_MULT = 40;
+const MAX_HELPERS = 3, HELPER_RATE = 0.22, MANAGER_MULT = 1.5, MANAGER_COST_MULT = 30;
 // Fundição: esteiras levam minério até a máquina, que faz barras (liberada na última mina)
 // cada mina tem a sua própria fundição + esteira
 const ORES_PER_BAR = 5, BAR_MULT = 20;
@@ -346,14 +346,14 @@ const coalMult = () => 1 + DRILL_BONUS*S.coalLvl;
 const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
 const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
 const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // minério/s de cada esteira
-const SMELTER_COST = {cobre:400, ferro:12000, ouro:350000, diamante:9000000, esmeralda:200000000};
-const BELT_COST    = {cobre:200, ferro:6000, ouro:180000, diamante:4500000, esmeralda:100000000};
-const SELLBELT_COST = {cobre:300, ferro:9000, ouro:260000, diamante:7000000, esmeralda:150000000};
+const SMELTER_COST = {cobre:300, ferro:9000, ouro:260000, diamante:6800000, esmeralda:150000000};
+const BELT_COST    = {cobre:150, ferro:4500, ouro:135000, diamante:3400000, esmeralda:75000000};
+const SELLBELT_COST = {cobre:220, ferro:6800, ouro:195000, diamante:5200000, esmeralda:110000000};
 // Área de Entregas: o mineiro leva minério na mochila até o galpão; caminhões levam até a Metalúrgica Aurora
 // a Metalúrgica paga 5x o Mercado: um pouco mais que a barra da fundição (4x), para compensar o investimento extra
 const DEPOT_COST = 2500, DELIVERY_MULT = 5, PICK_RATE = 14, DROP_RATE = 30;
 const LOADER_COSTS = [600, 2500, 9000, 35000];           // carregadores: 1 por caminhão
-const COLLECTOR_COST = {cobre:1500, ferro:35000, ouro:1000000, diamante:28000000, esmeralda:600000000};
+const COLLECTOR_COST = {cobre:900, ferro:20000, ouro:600000, diamante:16000000, esmeralda:350000000};
 const COLLECTOR_SPEED = 7, LOADER_TRIP = 2.4, LOADER_TRIPS = 3;
 const collectorCap = () => Math.round(20 * (1 + 0.4*S.truckLvl));
 const TRUCK_COSTS = [1200, 4500, 16000, 60000], TRUCK_SPEED = 8, TRUCK_AWAY = 6;
@@ -458,7 +458,7 @@ const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
 const SHARPEN_BONUS = 0.18, BOOST_BONUS = 0.08, TURBO_BONUS = 0.25, DRILL_BONUS = 0.25;   // bônus por nível das melhorias
 function clickPower(){ return bestTool().power * (1 + SHARPEN_BONUS*S.sharpen) * (S.gemItems.capacete ? 1.1 : 1); }
-function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.5, S.staff[m.id].n)); }
+function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.2, S.staff[m.id].n)); }
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
 const boostMult = () => 1 + BOOST_BONUS*S.boost;
 // minério/s de uma mina vindo dos ajudantes
