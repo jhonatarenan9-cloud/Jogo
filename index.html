@@ -11,6 +11,7 @@
     color-scheme:dark;
   }
   *{box-sizing:border-box}
+  [hidden]{display:none!important}
   body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background-image:radial-gradient(ellipse at top,#2a2018 0%,var(--bg) 70%);min-height:100vh}
   header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
@@ -21,7 +22,7 @@
   body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
   main > *{min-width:0}
   main{display:grid;grid-template-columns:260px 1fr 340px;gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1300px;margin:0 auto}
-  @media (max-width:1000px){main{grid-template-columns:1fr}}
+  @media (max-width:1000px){main{grid-template-columns:1fr} .center{order:-1}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
   .panel h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 10px}
   .mine{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;border:1px solid var(--line);
@@ -34,8 +35,11 @@
   .mine .name{font-weight:600}
   .mine .sub{font-size:12px;color:var(--muted)}
   .center{display:flex;flex-direction:column;gap:16px}
-  .scene{position:relative;height:360px;border-radius:12px;overflow:hidden;border:1px solid var(--line);
-    background:linear-gradient(#1b1511,#0e0b09);display:flex;align-items:center;justify-content:center;user-select:none}
+  .scene{position:relative;height:clamp(320px,52vw,460px);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#2f5a2a;user-select:none;-webkit-user-select:none;touch-action:none}
+  #map{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:pointer}
+  .mapHint{position:absolute;left:10px;bottom:10px;font-size:12px;color:#f1e7dc;background:rgba(0,0,0,.55);padding:5px 9px;border-radius:8px;pointer-events:none;max-width:calc(100% - 20px)}
+  #mineView{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#1b1511,#0e0b09)}
+  #exitBtn{position:absolute;left:12px;bottom:12px}
   .scene .level{position:absolute;top:12px;left:14px;font-size:13px;color:var(--muted)}
   .scene .level b{color:var(--text);font-size:16px}
   .scene .tool{position:absolute;top:12px;right:14px;font-size:13px;color:var(--muted);text-align:right}
@@ -48,7 +52,7 @@
   @keyframes up{to{transform:translateY(-70px);opacity:0}}
   .chip{position:absolute;width:8px;height:8px;pointer-events:none;border-radius:2px;animation:chip .6s ease-out forwards}
   @keyframes chip{to{transform:translate(var(--dx),var(--dy)) rotate(200deg);opacity:0}}
-  .hint{position:absolute;bottom:12px;font-size:13px;color:var(--muted)}
+  .hint{position:absolute;bottom:18px;right:14px;font-size:13px;color:var(--muted)}
   .inv{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
   @media (max-width:560px){.inv{grid-template-columns:repeat(3,1fr)}}
   .invItem{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
@@ -95,15 +99,20 @@
   <section class="panel">
     <h2>Níveis da Mina</h2>
     <div id="mines"></div>
-    <p class="small">Cada nível exige uma ferramenta nova. Compre-a na loja para descer mais fundo!</p>
+    <p class="small">Cada nível exige uma ferramenta nova. Compre-a na loja para abrir a entrada da mina no mapa. Toque numa mina desta lista para o mineiro caminhar até ela.</p>
   </section>
 
   <section class="center">
     <div class="scene" id="scene">
-      <div class="level">Nível <span id="lvlNum">1</span><br><b id="lvlName">Mina de Cobre</b></div>
-      <div class="tool">Ferramenta<br><b id="toolName" style="color:var(--text)">Picareta de Madeira</b><br><span id="clickPow"></span></div>
-      <svg id="rock" viewBox="0 0 230 200" aria-label="Clique para minerar"></svg>
-      <div class="hint">Clique na rocha para minerar</div>
+      <canvas id="map" aria-label="Mapa: toque para andar até uma mina"></canvas>
+      <div class="mapHint" id="mapHint">Toque/clique no mapa ou use as setas (WASD) para andar até uma mina</div>
+      <div id="mineView" hidden>
+        <div class="level">Nível <span id="lvlNum">1</span><br><b id="lvlName">Mina de Cobre</b></div>
+        <div class="tool">Ferramenta<br><b id="toolName" style="color:var(--text)">Picareta de Madeira</b><br><span id="clickPow"></span></div>
+        <svg id="rock" viewBox="0 0 230 200" aria-label="Clique para minerar"></svg>
+        <div class="hint">Clique na rocha para minerar</div>
+        <button id="exitBtn">⬅ Sair da mina</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -245,7 +254,7 @@ function buyTool(t){
   if(S.tools[t.id] || S.money < t.cost) return;
   S.money -= t.cost; S.tools[t.id] = true;
   const m = MINES.find(x=>x.tool===t.id);
-  if(m){ S.active = m.id; toast('🔓 ' + t.name + ' adquirida! Nova mina: ' + m.name); }
+  if(m){ toast('🔓 ' + t.name + ' adquirida! A mina de ' + m.name + ' foi aberta no mapa.'); }
   buildMines(); drawRock(); buildShop(); render(); save();
 }
 function buyHelper(h){
@@ -279,7 +288,7 @@ function buildMines(){
     d.innerHTML = `<div class="gem" style="background:${m.color}"></div>
       <div class="info"><div class="name">Nível ${i+1}: ${m.name}</div>
       <div class="sub">${un ? money(m.value)+' por minério' : '🔒 Requer: '+t.name}</div></div>`;
-    d.onclick = ()=>{ if(!isUnlocked(m)){ toast('Você precisa de: '+t.name); return; } S.active=m.id; drawRock(); render(); save(); };
+    d.onclick = ()=>{ if(!isUnlocked(m)){ toast('Você precisa de: '+t.name); return; } walkToMine(i); };
     el.appendChild(d);
   });
 }
@@ -355,6 +364,255 @@ function render(){
 let toastT;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600); }
 
+// ===================== MAPA E PERSONAGEM =====================
+const W = 800, H = 450;
+const CAVES = MINES.map((m,i)=>({mine:m, idx:i, x:100+i*150}));
+const CAVE_DOOR_Y = 112, MOUNTAIN_Y = 138;
+const BUILDINGS = [
+  {id:'casa',    name:'Casa',               x:70,  y:300, w:110, h:78, wall:'#a77b52', roof:'#9c3d2c'},
+  {id:'loja',    name:'Loja de Ferramentas',x:340, y:305, w:120, h:78, wall:'#8c8f96', roof:'#3d5a80'},
+  {id:'mercado', name:'Mercado',            x:620, y:300, w:120, h:78, wall:'#c9a66b', roof:'#2f7d4f'},
+].map(b=>({...b, door:{x:b.x+b.w/2, y:b.y+b.h+10}}));
+const TREES = [[40,225],[245,245],[290,425],[530,240],[565,425],[770,240],[22,410],[785,415],[200,410],[470,425],[330,235],[620,235]];
+let view = 'map', hintGone = false;
+const P = {x:400, y:240, dir:1, phase:0, moving:false};
+let target = null, zone = null;
+const keys = {};
+const canvas = document.getElementById('map'), ctx = canvas.getContext('2d');
+let cam = {x:0, y:0, s:1, ox:0, oy:0};
+
+function inBuilding(x,y){
+  return BUILDINGS.find(b => x > b.x-8 && x < b.x+b.w+8 && y > b.y+10 && y < b.y+b.h+4);
+}
+function walkable(x,y){
+  if(x < 12 || x > W-12 || y > H-10) return false;
+  if(y < MOUNTAIN_Y){
+    const c = CAVES.find(c => Math.abs(x-c.x) < 15);
+    if(!c || !isUnlocked(c.mine) || y < CAVE_DOOR_Y-14) return false;
+  }
+  return !inBuilding(x,y);
+}
+function updatePlayer(dt){
+  let vx = 0, vy = 0;
+  if(keys.left) vx--; if(keys.right) vx++; if(keys.up) vy--; if(keys.down) vy++;
+  if(vx || vy) target = null;
+  else if(target){
+    const dx = target.x-P.x, dy = target.y-P.y, d = Math.hypot(dx,dy);
+    if(d < 3) target = null; else { vx = dx/d; vy = dy/d; }
+  }
+  const len = Math.hypot(vx,vy);
+  P.moving = len > 0;
+  if(P.moving && !hintGone){ hintGone = true; document.getElementById('mapHint').hidden = true; }
+  if(P.moving){
+    vx/=len; vy/=len;
+    const sp = 150*dt, ox = P.x, oy = P.y;
+    if(walkable(P.x+vx*sp, P.y)) P.x += vx*sp;
+    if(walkable(P.x, P.y+vy*sp)) P.y += vy*sp;
+    if(Math.hypot(P.x-ox, P.y-oy) < sp*0.2 && target){
+      // contorna obstáculos: prédio à frente ou paredão da montanha
+      const b = inBuilding(P.x+vx*12, P.y+vy*12);
+      if(b && P.y >= b.y+12){ if(walkable(P.x, P.y+sp)) P.y += sp; }   // ao lado do prédio: desce até a porta
+      else {
+        const side = b ? (P.x < b.x+b.w/2 ? -1 : 1) : Math.sign(target.x-P.x) || 1;
+        if(walkable(P.x+side*sp, P.y)) P.x += side*sp;
+        else if(walkable(P.x, P.y+sp)) P.y += sp;
+      }
+    }
+    if(Math.abs(vx) > 0.2) P.dir = Math.sign(vx);
+    P.phase += dt*12;
+  }
+  checkZones();
+}
+function checkZones(){
+  let z = null;
+  for(const c of CAVES){
+    if(Math.abs(P.x-c.x) < 20){
+      if(isUnlocked(c.mine) && P.y < CAVE_DOOR_Y+4) z = 'in:'+c.idx;
+      else if(!isUnlocked(c.mine) && P.y < MOUNTAIN_Y+8) z = 'lock:'+c.idx;
+    }
+  }
+  for(const b of BUILDINGS) if(Math.hypot(P.x-b.door.x, P.y-b.door.y) < 16) z = 'b:'+b.id;
+  if(z === zone) return;
+  zone = z;
+  if(!z) return;
+  const [kind, id] = z.split(':');
+  if(kind === 'in') enterMine(+id);
+  else if(kind === 'lock'){ const c = CAVES[+id]; toast('🔒 Mina de '+c.mine.name+' fechada. Precisa de: '+toolById(c.mine.tool).name); target = null; }
+  else if(id === 'mercado'){
+    let total = 0; for(const m of MINES) total += S.ore[m.id]*m.value;
+    if(total > 0){ sellAll(); render(); save(); } else toast('🏪 Mercado: você não tem minério para vender');
+  } else if(id === 'loja'){
+    tab = 'tools';
+    document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on', x.dataset.tab==='tools'));
+    buildShop(); render();
+    const shop = document.getElementById('shop').closest('.panel');
+    if(window.innerWidth <= 1000) shop.scrollIntoView({behavior:'smooth', block:'start'});
+    shop.animate([{outlineColor:'#f2c14e'},{outlineColor:'transparent'}],{duration:1200});
+    shop.style.outline = '2px solid transparent';
+    toast('🛠️ Bem-vindo à Loja de Ferramentas!');
+  } else if(id === 'casa'){ save(); toast('🏠 Em casa. Jogo salvo!'); }
+}
+function enterMine(i){
+  S.active = MINES[i].id; view = 'mine'; target = null; zone = null;
+  document.getElementById('mineView').hidden = false;
+  document.getElementById('mapHint').hidden = true;
+  buildMines(); drawRock(); render(); save();
+}
+function exitMine(){
+  const c = CAVES[MINES.findIndex(m=>m.id===S.active)];
+  P.x = c.x; P.y = MOUNTAIN_Y+28; P.dir = 1; zone = null; target = null;
+  view = 'map';
+  document.getElementById('mineView').hidden = true;
+  document.getElementById('mapHint').hidden = hintGone;
+}
+function walkToMine(i){
+  if(view === 'mine'){ if(MINES[i].id === S.active) return; exitMine(); }
+  target = {x:CAVES[i].x, y:CAVE_DOOR_Y};
+  document.getElementById('scene').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+// ---------- desenho ----------
+function resizeCanvas(){
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(r.width*dpr); canvas.height = Math.round(r.height*dpr);
+}
+function updateCamera(){
+  const r = canvas.getBoundingClientRect();
+  const s = Math.max(Math.min(r.width/W, r.height/H), Math.min(0.8, r.height/H*1.25));
+  const vw = r.width/s, vh = r.height/s;
+  cam.s = s;
+  cam.x = vw >= W ? (W-vw)/2 : Math.max(0, Math.min(W-vw, P.x-vw/2));
+  cam.y = vh >= H ? (H-vh)/2 : Math.max(0, Math.min(H-vh, P.y-vh/2));
+}
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x,y,w,h,r) : ctx.rect(x,y,w,h); }
+function label(text, x, y, color){
+  ctx.font = '600 12px system-ui, sans-serif';
+  const w = ctx.measureText(text).width + 12;
+  ctx.fillStyle = 'rgba(20,15,12,.8)'; rr(x-w/2, y-10, w, 18, 6); ctx.fill();
+  ctx.fillStyle = color || '#f1e7dc'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+const GRASS = Array.from({length:160}, (_,i)=>[(i*97.3)%W, 140+((i*53.7)%(H-140)), 2+(i%3)]);
+function drawGround(){
+  ctx.fillStyle = '#3f7236'; ctx.fillRect(-400,-400,W+800,H+800);
+  ctx.fillStyle = '#4a8040';
+  for(const [x,y,r] of GRASS){ ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill(); }
+  // caminhos de terra
+  ctx.strokeStyle = '#9a7b52'; ctx.lineWidth = 24; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(60,185); ctx.lineTo(740,185);
+  for(const c of CAVES){ ctx.moveTo(c.x,128); ctx.lineTo(c.x,185); }
+  for(const b of BUILDINGS){ ctx.moveTo(b.door.x,185); ctx.lineTo(b.door.x,b.door.y+6); }
+  ctx.stroke();
+  ctx.strokeStyle = '#ad8d60'; ctx.lineWidth = 14; ctx.stroke();
+}
+function drawMountain(){
+  ctx.fillStyle = '#5c4b3f';
+  ctx.beginPath(); ctx.moveTo(-400,-400); ctx.lineTo(W+400,-400); ctx.lineTo(W+400,128);
+  for(let x=W; x>=0; x-=40) ctx.lineTo(x, 128 + ((x/40)%2 ? 10 : 0));
+  ctx.lineTo(-400,128); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#6f5c4d';
+  for(let i=0;i<9;i++){ const x = 40+i*92; ctx.beginPath(); ctx.moveTo(x-50,128); ctx.lineTo(x,22+(i%3)*14); ctx.lineTo(x+50,128); ctx.fill(); }
+  ctx.fillStyle = '#e8e2da';
+  for(let i=0;i<9;i++){ const x = 40+i*92, t = 22+(i%3)*14; ctx.beginPath(); ctx.moveTo(x-11,t+22); ctx.lineTo(x,t); ctx.lineTo(x+11,t+22); ctx.fill(); }
+  for(const c of CAVES){
+    const un = isUnlocked(c.mine), m = c.mine;
+    // moldura de madeira e entrada
+    ctx.fillStyle = '#120d0a';
+    ctx.beginPath(); ctx.moveTo(c.x-22,132); ctx.lineTo(c.x-22,98); ctx.quadraticCurveTo(c.x,70,c.x+22,98); ctx.lineTo(c.x+22,132); ctx.fill();
+    ctx.strokeStyle = '#7a5530'; ctx.lineWidth = 6; ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.moveTo(c.x-24,134); ctx.lineTo(c.x-24,92); ctx.lineTo(c.x+24,92); ctx.lineTo(c.x+24,134); ctx.stroke();
+    // cristais do minério ao redor
+    ctx.fillStyle = m.color;
+    for(const [dx,dy,s] of [[-36,110,7],[34,104,6],[-31,84,5],[38,124,5]]){
+      ctx.beginPath(); ctx.moveTo(c.x+dx,dy-s); ctx.lineTo(c.x+dx+s*.8,dy); ctx.lineTo(c.x+dx,dy+s); ctx.lineTo(c.x+dx-s*.8,dy); ctx.fill();
+    }
+    if(!un){
+      ctx.strokeStyle = '#6b4a2b'; ctx.lineWidth = 5;
+      for(const y of [104,118]){ ctx.beginPath(); ctx.moveTo(c.x-22,y); ctx.lineTo(c.x+22,y+4); ctx.stroke(); }
+      ctx.font = '16px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🔒', c.x, 112);
+    } else if(m.id === S.active){
+      ctx.fillStyle = 'rgba(242,193,78,.25)'; ctx.beginPath(); ctx.arc(c.x,112,18,0,7); ctx.fill();
+    }
+    label((c.idx+1)+' · '+m.name, c.x, 66, un ? m.color : '#a8998a');
+  }
+}
+function drawBuilding(b){
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(b.x+6, b.y+b.h-6, b.w, 10);
+  ctx.fillStyle = b.wall; ctx.fillRect(b.x, b.y+24, b.w, b.h-24);
+  ctx.fillStyle = b.roof; ctx.beginPath(); ctx.moveTo(b.x-8,b.y+28); ctx.lineTo(b.x+b.w/2,b.y-6); ctx.lineTo(b.x+b.w+8,b.y+28); ctx.fill();
+  ctx.fillStyle = '#4a2f1c'; ctx.fillRect(b.door.x-10, b.y+b.h-30, 20, 30);
+  ctx.fillStyle = '#cfe8f5';
+  ctx.fillRect(b.x+12, b.y+38, 20, 16); ctx.fillRect(b.x+b.w-32, b.y+38, 20, 16);
+  const icon = {casa:'🏠', loja:'🛠️', mercado:'💰'}[b.id];
+  label(icon+' '+b.name, b.x+b.w/2, b.y-16);
+}
+function drawTree(x,y){
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(x,y,14,5,0,0,7); ctx.fill();
+  ctx.fillStyle = '#6b4a2b'; ctx.fillRect(x-3,y-14,6,14);
+  ctx.fillStyle = '#2d5e2a'; ctx.beginPath(); ctx.arc(x,y-24,16,0,7); ctx.fill();
+  ctx.fillStyle = '#3b7a35'; ctx.beginPath(); ctx.arc(x-4,y-28,9,0,7); ctx.fill();
+}
+function drawPlayer(){
+  const {x,y,dir} = P, sw = P.moving ? Math.sin(P.phase)*4 : 0, bob = P.moving ? Math.abs(Math.sin(P.phase))*1.5 : 0;
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0,0,11,4,0,0,7); ctx.fill();
+  ctx.translate(0,-bob);
+  ctx.fillStyle = '#3a3a48'; ctx.fillRect(-6,-11+sw*0.3,5,11-sw*0.3); ctx.fillRect(1,-11-sw*0.3,5,11+sw*0.3);
+  ctx.fillStyle = '#2a1d14'; ctx.fillRect(-7,-2+sw*0.3,6,3); ctx.fillRect(1,-2-sw*0.3,6,3);
+  ctx.fillStyle = '#2f6fb3'; rr(-8,-26,16,17,3); ctx.fill();
+  ctx.fillStyle = '#f2c14e'; ctx.fillRect(-8,-20,16,2);
+  // picareta na mão
+  const t = bestTool().id, head = {madeira:'#8b5a2b', ferro:'#b8bcc2'}[t] || '#e8c35a';
+  ctx.save(); ctx.translate(dir*8,-18); ctx.rotate(dir*(0.5 + (P.moving ? Math.sin(P.phase)*0.15 : 0)));
+  ctx.fillStyle = '#7a5530'; ctx.fillRect(-1.5,-18,3,20);
+  ctx.strokeStyle = head; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0,-10,10,-Math.PI*0.85,-Math.PI*0.15); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#f0c29a'; ctx.beginPath(); ctx.arc(0,-32,7,0,7); ctx.fill();
+  ctx.fillStyle = '#2a1d14'; ctx.fillRect(dir*3-1,-33,2,2);
+  ctx.fillStyle = '#f2c14e'; ctx.beginPath(); ctx.arc(0,-34,8,Math.PI,0); ctx.fill(); ctx.fillRect(-10,-35,20,3);
+  ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(dir*4,-38,2.5,0,7); ctx.fill();
+  ctx.restore();
+}
+function drawMap(){
+  updateCamera();
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(cam.s*dpr,0,0,cam.s*dpr,-cam.x*cam.s*dpr,-cam.y*cam.s*dpr);
+  drawGround();
+  drawMountain();
+  if(target){ ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(target.x,target.y,7,0,7); ctx.stroke(); }
+  const items = [
+    ...BUILDINGS.map(b=>({y:b.y+b.h, d:()=>drawBuilding(b)})),
+    ...TREES.map(([x,y])=>({y, d:()=>drawTree(x,y)})),
+    {y:P.y, d:drawPlayer},
+  ].sort((a,b)=>a.y-b.y);
+  for(const it of items) it.d();
+}
+function screenToWorld(ev){
+  const r = canvas.getBoundingClientRect();
+  return {x:(ev.clientX-r.left)/cam.s + cam.x, y:(ev.clientY-r.top)/cam.s + cam.y};
+}
+canvas.addEventListener('pointerdown', ev=>{
+  const w = screenToWorld(ev);
+  const c = CAVES.find(c=>Math.abs(w.x-c.x) < 30 && w.y < MOUNTAIN_Y+10 && w.y > 55);
+  const b = BUILDINGS.find(b=>w.x > b.x-8 && w.x < b.x+b.w+8 && w.y > b.y-20 && w.y < b.y+b.h+16);
+  if(c) target = {x:c.x, y: isUnlocked(c.mine) ? CAVE_DOOR_Y : MOUNTAIN_Y+4};
+  else if(b) target = {...b.door};
+  else target = {x:Math.max(12,Math.min(W-12,w.x)), y:Math.max(MOUNTAIN_Y+2,Math.min(H-10,w.y))};
+});
+const KEYMAP = {ArrowLeft:'left',a:'left',A:'left',ArrowRight:'right',d:'right',D:'right',ArrowUp:'up',w:'up',W:'up',ArrowDown:'down',s:'down',S:'down'};
+window.addEventListener('keydown', e=>{
+  if(e.target.closest && e.target.closest('input,textarea')) return;
+  if(view==='mine' && e.key==='Escape'){ exitMine(); return; }
+  const k = KEYMAP[e.key]; if(!k || view!=='map') return;
+  keys[k] = true; if(e.key.startsWith('Arrow')) e.preventDefault();
+});
+window.addEventListener('keyup', e=>{ const k = KEYMAP[e.key]; if(k) keys[k] = false; });
+window.addEventListener('blur', ()=>{ for(const k in keys) keys[k] = false; });
+window.addEventListener('resize', resizeCanvas);
+document.getElementById('exitBtn').onclick = exitMine;
+resizeCanvas();
+
 // ===================== LOOP =====================
 let lastTick = performance.now(), saveAcc = 0;
 function tick(now){
@@ -362,6 +620,7 @@ function tick(now){
   const ops = orePerSec();
   if(ops>0) addOre(S.active, ops*dt);
   saveAcc += dt; if(saveAcc > 5){ saveAcc = 0; save(); }
+  if(view==='map'){ updatePlayer(dt); drawMap(); }
   render();
   requestAnimationFrame(tick);
 }

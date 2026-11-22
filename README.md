@@ -3,7 +3,9 @@
 Jogo idle de mineração no navegador. Abra o `index.html` para jogar.
 
 ## Como jogar
-- Clique na rocha para minerar e venda o minério para ganhar dinheiro.
+- Ande com o mineiro pelo mapa (toque/clique no mapa ou setas/WASD) e entre nas cavernas para minerar.
+- No vilarejo: Loja de Ferramentas, Mercado (vende todo o minério) e Casa (salva o jogo).
+- Dentro da mina, clique na rocha para minerar e venda o minério para ganhar dinheiro.
 - São 5 níveis: **Cobre → Ferro → Ouro → Diamante → Esmeralda**.
 - Cada nível exige uma ferramenta nova:
   1. Cobre — Picareta de Madeira (inicial)
