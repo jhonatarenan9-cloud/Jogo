@@ -8,7 +8,7 @@ e escolha **Adicionar à Tela de Início**. Ele abre em tela cheia, funciona sem
 sempre que uma nova versão é enviada para o repositório.
 
 ## Como jogar
-- Arraste o dedo na tela (joystick) ou use WASD/setas para andar com o mineiro pelo mapa.
+- O jogo começa em **primeira pessoa**: lado esquerdo da tela anda, lado direito olha em volta (no computador: W/S andam, A/D ou setas giram). O botão **👁️** troca para a visão de cima (3ª pessoa).
 - Pare perto das pedras de uma mina aberta: o mineiro golpeia sozinho e o minério cai na pilha ao lado.
 - Pise no quadrado **💰 VENDER** do Mercado para vender tudo, ou no **🛠️ LOJA** para abrir a loja.
 - Cada mina e o galpão têm um botão **⬆️ NÍVEL** no chão, ao lado do portão: pise nele (ou toque) para abrir o painel com todas as melhorias daquele lugar (equipe, ferramenta, gerente, fundição, esteiras, coletador, caminhões, carregadores).

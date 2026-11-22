@@ -56,6 +56,10 @@
   #dock button:active{transform:translateY(2px);border-bottom-width:2px}
   #dock i{position:absolute;top:-4px;right:-4px;background:#e5483b;color:#fff;font-style:normal;font-size:11px;min-width:20px;height:20px;line-height:20px;
     border-radius:10px;padding:0 5px;box-shadow:0 2px 4px rgba(0,0,0,.3)}
+  #viewBtn{position:absolute;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(165px + env(safe-area-inset-bottom,0px));
+    background:rgba(24,34,14,.7);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:22px;padding:8px 12px;font-size:12px;font-weight:700}
+  #crosshair{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:rgba(255,255,255,.85);
+    box-shadow:0 0 0 2px rgba(0,0,0,.35);pointer-events:none}
   #joy{position:absolute;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;background:rgba(255,255,255,.18);
     border:3px solid rgba(255,255,255,.55);pointer-events:none}
   #knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 3px 8px rgba(0,0,0,.3)}
@@ -268,6 +272,8 @@
   </div>
   <div id="goalBox"><div id="goalText"></div><div class="progress"><div id="goalBar"></div></div></div>
   <div id="joy" hidden><div id="knob"></div></div>
+  <div id="crosshair" hidden></div>
+  <button id="viewBtn" aria-label="Trocar câmera">👁️ <span id="viewLbl">1ª pessoa</span></button>
   <div class="mapHint" id="mapHint">Arraste o dedo para andar (ou WASD/setas). Pare perto das pedras para minerar.</div>
   <nav id="dock">
     <button data-open="shop"><span>🛠️</span>Loja</button>
@@ -422,7 +428,7 @@ function newState(){
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false, tool:0}])),
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
-    ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
+    fp:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
@@ -2449,6 +2455,28 @@ function createWorld(){
     sceneEl.appendChild(f); setTimeout(()=>f.remove(), 1000);
   }
 
+  // ---------- primeira pessoa ----------
+  world.add(camera);
+  let fpYaw = Math.PI, fpPitch = -0.12, fpBob = 0, look = null;
+  const vm = new THREE.Group(); camera.add(vm); vm.position.set(0.3, -0.3, -0.7); vm.scale.setScalar(0.6);
+  { const arm = new THREE.Group(); vm.add(arm); vm.userData.arm = arm;
+    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.16,0.5), M('#d94a4a')); sleeve.position.set(0.02,-0.05,0.25); arm.add(sleeve);
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.14,0.14,0.14), M('#f2c29b')); hand.position.set(0,0,-0.02); arm.add(hand);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.7,6), M('#8a5a2b')); handle.position.set(0,0.22,-0.02); arm.add(handle);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.06,0.5), M('#8b5a2b')); head.position.set(0,0.52,-0.08); arm.add(head); vm.userData.head = head;
+    arm.rotation.set(0.25, 0.15, 0.25);
+    vm.traverse(o=>{ if(o.isMesh){ o.material = o.material.clone(); o.material.depthTest = false; o.renderOrder = 20; o.castShadow = false; } }); }
+  function setView(fp){
+    S.fp = fp; save();
+    player.visible = ring.visible = !fp; vm.visible = fp;
+    document.getElementById('crosshair').hidden = !fp;
+    document.getElementById('viewLbl').textContent = fp ? '3ª pessoa' : '1ª pessoa';
+    document.getElementById('mapHint').textContent = fp ? 'Lado esquerdo: andar · Lado direito: olhar em volta. Pare perto das pedras para minerar.'
+      : 'Arraste o dedo para andar (ou WASD/setas). Pare perto das pedras para minerar.';
+    resize();
+  }
+  document.getElementById('viewBtn').onclick = ()=>setView(!S.fp);
+
   // ---------- controles ----------
   const keys = {};
   const KEYMAP = {ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r',ArrowUp:'u',w:'u',W:'u',ArrowDown:'d',s:'d',S:'d'};
@@ -2467,27 +2495,33 @@ function createWorld(){
     ndc.set((e.clientX-r.left)/r.width*2-1, -((e.clientY-r.top)/r.height*2-1)); ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(lvlBtns.map(b=>b.tile.mesh).concat(upArrows.filter(a=>a.visible)))[0];
     if(hit){ const k = Math.max(lvlBtns.findIndex(b=>b.tile.mesh===hit.object), upArrows.indexOf(hit.object)); if(k >= 0){ openPanel(lvlBtns[k].id); return; } }
+    if(S.fp && e.clientX - r.left > r.width/2){ look = {id:e.pointerId, x:e.clientX, y:e.clientY}; try{ cv.setPointerCapture(e.pointerId); }catch(_){} return; }
     joy = {id:e.pointerId, x:e.clientX, y:e.clientY, dx:0, dy:0};
     joyEl.style.left = (e.clientX-r.left)+'px'; joyEl.style.top = (e.clientY-r.top)+'px'; joyEl.hidden = false;
     knob.style.transform = ''; try{ cv.setPointerCapture(e.pointerId); }catch(_){}
   });
   cv.addEventListener('pointermove', e=>{
+    if(look && e.pointerId === look.id){
+      fpYaw -= (e.clientX - look.x)*0.006; fpPitch = Math.max(-0.95, Math.min(0.6, fpPitch - (e.clientY - look.y)*0.004));
+      look.x = e.clientX; look.y = e.clientY; return;
+    }
     if(!joy || e.pointerId !== joy.id) return;
     let dx = e.clientX-joy.x, dy = e.clientY-joy.y; const d = Math.hypot(dx,dy);
     if(d > 45){ dx *= 45/d; dy *= 45/d; }
     joy.dx = dx; joy.dy = dy; knob.style.transform = `translate(${dx}px,${dy}px)`;
   });
-  const endJoy = e=>{ if(joy && e.pointerId === joy.id){ joy = null; joyEl.hidden = true; } };
+  const endJoy = e=>{ if(look && e.pointerId === look.id) look = null; if(joy && e.pointerId === joy.id){ joy = null; joyEl.hidden = true; } };
   cv.addEventListener('pointerup', endJoy); cv.addEventListener('pointercancel', endJoy);
 
   // ---------- redimensionar ----------
   function resize(){
     const w = sceneEl.clientWidth, h = sceneEl.clientHeight; if(!w || !h) return;
     R.setSize(w, h, false); camera.aspect = w/h;
-    camera.fov = w/h < 0.9 ? 50 : 42; camera.updateProjectionMatrix();
+    camera.fov = S.fp ? (w/h < 0.9 ? 75 : 65) : (w/h < 0.9 ? 50 : 42); camera.updateProjectionMatrix();
     CAM_OFF.copy(CAM_BASE).multiplyScalar(w/h < 0.9 ? 1.3 : 1);
   }
   new ResizeObserver(resize).observe(sceneEl); resize();
+  setView(S.fp !== false);
 
   // ---------- lógica por quadro ----------
   let heading = Math.PI, phase = 0, swingT = 0, zone = null, zoneT = 0, hintGone = false, npcT = 0, payAcc = 0;
@@ -2500,8 +2534,16 @@ function createWorld(){
   }
   function update(dt){
     let ix = 0, iz = 0;
-    if(keys.l) ix--; if(keys.r) ix++; if(keys.u) iz--; if(keys.d) iz++;
-    if(joy && Math.hypot(joy.dx, joy.dy) > 6){ ix = joy.dx/45; iz = joy.dy/45; }
+    if(S.fp){
+      // W/S ou ↑/↓ andam; A/D ou ←/→ giram; o joystick anda e desvia para os lados
+      fpYaw -= ((keys.r?1:0) - (keys.l?1:0))*dt*2.4;
+      let fwd = (keys.u?1:0) - (keys.d?1:0), str = 0;
+      if(joy && Math.hypot(joy.dx, joy.dy) > 6){ fwd = -joy.dy/45; str = joy.dx/45; }
+      ix = Math.sin(fpYaw)*fwd - Math.cos(fpYaw)*str; iz = Math.cos(fpYaw)*fwd + Math.sin(fpYaw)*str;
+    } else {
+      if(keys.l) ix--; if(keys.r) ix++; if(keys.u) iz--; if(keys.d) iz++;
+      if(joy && Math.hypot(joy.dx, joy.dy) > 6){ ix = joy.dx/45; iz = joy.dy/45; }
+    }
     let mag = Math.hypot(ix, iz); if(mag > 1){ ix/=mag; iz/=mag; mag = 1; }
     const moving = mag > 0.05, P = player.userData, p = player.position;
     pushOut(p);
@@ -2607,9 +2649,25 @@ function createWorld(){
     if(g){
       const dx = g.x - p.x, dz = g.z - p.z;
       if(Math.hypot(dx,dz) < 2){ arrow.visible = false; guide = null; }
+      else if(S.fp){ const d = Math.hypot(dx,dz); arrow.visible = true; arrow.position.set(p.x + dx/d*1.6, 0.55 + Math.sin(npcT*5)*0.05, p.z + dz/d*1.6); arrow.rotation.y = Math.atan2(dx,dz); }
       else { arrow.visible = true; arrow.position.set(p.x, 0.25 + Math.sin(npcT*5)*0.06, p.z); arrow.rotation.y = Math.atan2(dx,dz); }
     } else arrow.visible = false;
 
+    if(S.fp){
+      fpBob = moving ? fpBob + dt*10*Math.max(0.5,mag) : fpBob;
+      const by = moving ? Math.sin(fpBob)*0.05 : 0;
+      camera.position.set(p.x, 1.55 + by, p.z);
+      camera.lookAt(p.x + Math.sin(fpYaw)*Math.cos(fpPitch), 1.55 + by + Math.sin(fpPitch), p.z + Math.cos(fpYaw)*Math.cos(fpPitch));
+      // mão com a picareta: golpe ao minerar, balanço ao andar
+      const arm = vm.userData.arm;
+      vm.userData.head.material.color.copy(P.pickHead.material.color);
+      if(mine){ const s = (swingT/0.42); arm.rotation.x = s < 0.55 ? 0.25 + s/0.55*0.9 : 1.15 - (s-0.55)/0.45*1.6; }
+      else arm.rotation.x += (0.25 + (moving ? Math.sin(fpBob)*0.06 : 0) - arm.rotation.x)*Math.min(1, dt*10);
+      vm.position.x = Math.min(0.32, 0.36*camera.aspect); vm.position.y = -0.3 + (moving ? Math.abs(Math.sin(fpBob))*0.02 : 0);
+      camPos.copy(p).add(CAM_OFF);
+      R.render(world, camera);
+      return;
+    }
     camPos.lerp(new THREE.Vector3().copy(p).add(CAM_OFF), Math.min(1, dt*6));
     camera.position.copy(camPos);
     camera.lookAt(camPos.x - CAM_OFF.x, 0.6, camPos.z - CAM_OFF.z);
