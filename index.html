@@ -428,6 +428,7 @@ function newState(){
     staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false, tool:0}])),
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
+    oil:{open:false, pump:false, sep:false, ref:false, tank:false, lvl:0, fuel:0, buf:{crude:0, clean:0, diesel:0}},
     power:{open:false, br:false, lv:false, cd:false, tb:false, lvl:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
@@ -504,6 +505,7 @@ function produce(sec){
   for(const id in gained) addOre(id, gained[id]);
   smelt(sec);
   powerTick(sec);
+  oilTick(sec);
   sellByBelts();
   return gained;
 }
@@ -589,6 +591,48 @@ function completePowerStage(st){
 }
 function upgradeBoiler(){ const c = boilerCost(); if(!S.power.tb || S.money < c) return; S.money -= c; S.power.lvl++; toast('🔥 Caldeira maior! A usina processa mais carvão.'); render(); save(); }
 
+// ===================== CAMPO DE PETRÓLEO =====================
+// bomba → separador → refinaria → posto: combustível deixa caminhões e coletadores 50% mais rápidos
+const OIL_OPEN_COST = 6000;
+const OIL_STAGES = [
+  {id:'pump', name:'Bomba de Petróleo',   ico:'🛢️', cost:4000,  desc:'O "cavalinho" puxa o petróleo cru do fundo da terra.'},
+  {id:'sep',  name:'Separador',           ico:'🧪', cost:7000,  desc:'Separa a água e a areia do petróleo (20% se perde).'},
+  {id:'ref',  name:'Refinaria',           ico:'🏭', cost:12000, desc:'Torre de destilação: transforma o óleo em combustível.'},
+  {id:'tank', name:'Posto de Combustível',ico:'⛽', cost:9000,  desc:'Guarda o combustível e abastece caminhões e coletadores.'},
+];
+const OIL_BUF_MAX = 60, SEP_LOSS = 0.2, REF_YIELD = 0.9, FUEL_BOOST = 1.5, TRUCK_FUEL = 3, COLLECTOR_FUEL = 1.5;
+const oilRate = () => 0.5 * (1 + 0.5*S.oil.lvl);                      // petróleo cru/s
+const fuelCap = () => 100 + 50*S.oil.lvl;
+const pumpCost = () => Math.ceil(25000 * Math.pow(3, S.oil.lvl));
+const oilStageLeft = st => Math.max(0, st.cost - (S.paid['oil_'+st.id]||0));
+const oilOpenLeft = () => Math.max(0, OIL_OPEN_COST - (S.paid.oil_open||0));
+const nextOilStage = () => OIL_STAGES.find(st=>!S.oil[st.id]);
+let fuelNow = 0;   // litros/s produzidos agora
+function oilTick(sec){
+  const O = S.oil; if(!O.open || sec <= 0){ fuelNow = 0; return; }
+  const r = oilRate()*sec, b = O.buf; let made = 0;
+  if(O.pump){ b.crude = Math.min(OIL_BUF_MAX, b.crude + r); }
+  if(O.sep){ const t = Math.max(0, Math.min(b.crude, r, OIL_BUF_MAX - b.clean)); b.crude -= t; b.clean += t*(1-SEP_LOSS); }
+  if(O.ref){ const t = Math.max(0, Math.min(b.clean, r, OIL_BUF_MAX - b.diesel)); b.clean -= t; b.diesel += t*REF_YIELD; }
+  if(O.tank){ const t = Math.max(0, Math.min(b.diesel, r, fuelCap() - O.fuel)); b.diesel -= t; O.fuel += t; made = t; }
+  const now = made/sec; fuelNow = sec > 1 ? now : fuelNow + (now - fuelNow)*Math.min(1, sec*2);
+}
+// gasta combustível numa viagem; devolve o multiplicador de velocidade
+function useFuel(liters){ const O = S.oil; if(O.tank && O.fuel >= liters){ O.fuel -= liters; return FUEL_BOOST; } return 1; }
+function openOil(){ S.oil.open = true; delete S.paid.oil_open; toast('🛢️ Campo de Petróleo liberado! Construa a Bomba primeiro.'); if(window.world3d) world3d.onOilChanged(); render(); save(); }
+function buildOilStage(st){
+  if(!S.oil.open || S.oil[st.id] || nextOilStage() !== st) return;
+  const r = oilStageLeft(st); if(S.money < r) return;
+  S.money -= r; completeOilStage(st);
+}
+function completeOilStage(st){
+  S.oil[st.id] = true; delete S.paid['oil_'+st.id];
+  toast(st.id === 'tank' ? '⛽ Posto pronto! Caminhões e coletadores agora abastecem e andam 50% mais rápido.' : `${st.ico} ${st.name} construído! Falta: ${nextOilStage().name}.`);
+  if(window.world3d) world3d.onOilChanged();
+  render(); save();
+}
+function upgradePump(){ const c = pumpCost(); if(!S.oil.tank || S.money < c) return; S.money -= c; S.oil.lvl++; toast('🛢️ Mais bombas! O campo produz mais petróleo e o tanque guarda mais.'); render(); save(); }
+
 // ===================== MISSÕES =====================
 // uma de cada vez; recompensa ~20-30% do próximo passo, para ajudar sem estragar o desafio
 const MISSIONS = [
@@ -613,6 +657,8 @@ const MISSIONS = [
   {t:'Compre o 🛺 coletador da mina de Cobre', p:()=>[+!!S.collectors.cobre, 1], r:400},
   {t:'Abra o terreno da ⚡ Usina de Energia', p:()=>[+!!S.power.open, 1], r:800, go:()=>S.money >= powerOpenLeft() ? {x:24, z:12} : null},
   {t:'Ligue a Turbina da Usina (4 etapas)', p:()=>[POWER_STAGES.filter(st=>S.power[st.id]).length, 4], r:5000},
+  {t:'Abra o 🛢️ Campo de Petróleo', p:()=>[+!!S.oil.open, 1], r:1200, go:()=>S.money >= oilOpenLeft() ? {x:-32, z:12} : null},
+  {t:'Produza combustível no Posto (4 etapas)', p:()=>[OIL_STAGES.filter(st=>S.oil[st.id]).length, 4], r:6000},
   {t:'Contrate 3 ajudantes na mina de Ferro', p:()=>[S.staff.ferro.n, 3], r:2000},
   {t:'Complete a fundição do Ferro (3 itens)', p:()=>[3-factoryMissing(MINES[1]).length, 3], r:6000},
   {t:'Ganhe $50.000 em vendas', p:()=>[S.earned, 50000], r:8000},
@@ -897,6 +943,33 @@ function buildPanel(){
   const step = (on, ico, label) => `<div class="fstep${on?' on':''}"><div class="fico">${ico}</div><div>${label}</div></div>`;
   const arrow = on => `<div class="farrow${on?' on':''}">➜</div>`;
 
+  if(panelTarget === 'oil'){
+    const O = S.oil;
+    document.getElementById('sheetTitle').textContent = '🛢️ Campo de Petróleo';
+    const users = S.trucks + MINES.filter(m=>S.collectors[m.id]).length;
+    el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">⛽</span>
+        <div><small>Combustível no tanque</small><b>${fmt(O.fuel)} / ${fmt(fuelCap())} L</b></div><span class="lvlBadge">${O.tank ? '+' + Math.round((FUEL_BOOST-1)*100) + '%' : 'off'}</span></div>
+      <div class="lvlNext"><small>Tanque</small><div>${!O.tank ? 'Termine as 4 etapas para produzir combustível' : O.fuel >= TRUCK_FUEL ? '✔ Veículos abastecidos: 50% mais rápidos' : '⚠️ Tanque vazio: veículos na velocidade normal'}</div>
+        <div class="progress"><div style="width:${Math.min(1, O.fuel/fuelCap())*100}%"></div></div></div>
+      <div class="flow">${step(O.open,'⛰️','Poço')}${arrow(O.pump)}${step(O.pump,'🛢️','Bomba')}${arrow(O.sep)}${step(O.sep,'🧪','Separador')}${arrow(O.ref)}${step(O.ref,'🏭','Refinaria')}${arrow(O.tank)}${step(O.tank,'⛽','Posto')}</div>
+      <div class="lvlRows">
+        <div><span>🛢️ Produção</span><b>${fmt(oilRate())} petróleo/s → ${fmt(fuelNow)} L/s</b></div>
+        <div><span>Cru · Limpo · Refinado</span><b>${fmt(O.buf.crude)} · ${fmt(O.buf.clean)} · ${fmt(O.buf.diesel)}</b></div>
+        <div><span>🚚 Gasto por viagem</span><b>caminhão ${TRUCK_FUEL} L · coletador ${COLLECTOR_FUEL} L</b></div>
+        <div><span>Veículos usando</span><b>${users}</b></div>
+      </div></div>`);
+    if(!O.open){ const r = oilOpenLeft(); add('🏗️', 'Terreno do Campo de Petróleo', 'Libera a área a sudoeste do vilarejo, perto do lago. Também dá para pagar pisando no quadrado da entrada.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openOil(); } }, r)); return; }
+    sec('🏭 Etapas (construa em ordem)');
+    OIL_STAGES.forEach((st,i)=>{
+      const r = oilStageLeft(st), isNext = nextOilStage() === st;
+      add(st.ico, `${i+1}. ${st.name}`, st.desc, O[st.id] ? tag('✔ Construído') : isNext ? btn(money(r), ()=>buildOilStage(st), r) : tag('🔒 Etapa anterior','var(--muted)'));
+    });
+    sec('🔧 Melhorias');
+    const pc = pumpCost();
+    add('🛢️', `Mais Bombas <span class="count">nv ${O.lvl}</span>`, `+50% de petróleo e +50 L de tanque (hoje ${fmt(oilRate())}/s, tanque ${fmt(fuelCap())} L)`, O.tank ? btn(money(pc), upgradePump, pc) : tag('🔒 Posto','var(--muted)'));
+    el.insertAdjacentHTML('beforeend', `<p class="small">Sem combustível os caminhões e coletadores continuam trabalhando, só que na velocidade normal.</p>`);
+    return;
+  }
   if(panelTarget === 'usina'){
     const P = S.power, ratio = powerRatio(), dem = powerDemand();
     document.getElementById('sheetTitle').textContent = '⚡ Usina de Energia';
@@ -1058,6 +1131,7 @@ function buildStats(){
   const c = mineById('carvao');
   h += `<h3 class="subhead">Carvão e frota</h3><div class="statTot">
     <div><small>⚫ Carvão</small><b>${fmt(mineRate(c)*60)}/min</b><small>consumo até ${fmt(coalUseMax()*60)}/min</small></div>
+    <div><small>⛽ Combustível</small><b>${fmt(S.oil.fuel)} L</b><small>${S.oil.tank ? 'veículos +50% com tanque cheio' : 'campo de petróleo desligado'}</small></div>
     <div><small>⚡ Energia</small><b>${fmt(powerNow)}/${fmt(powerDemand())} kW</b><small>${S.power.tb ? Math.round(powerRatio()*100)+'% da rede ligada' : 'usina desligada'}</small></div>
     <div><small>🚚 Frota</small><b>${S.trucks} caminhão(ões)</b><small>${Array.from({length:S.trucks},(_,k)=>Math.round(cond('truck_'+k)*100)+'%').join(' · ') || 'sem caminhões'}</small></div></div>`;
   el.innerHTML = h;
@@ -1722,7 +1796,7 @@ function createWorld(){
   // árvores entre as minas
   [-35,-21,-7,7,21,35].forEach((x,k)=>{ pine(x, -14.5, 1.1); pine(x+0.3, -11.2, 0.95); roundTree(x-0.2, -8.6, 0.8); });
   // contorno do mapa
-  for(let x=-63; x<=33; x+=3.3){ if(x > -13) continue; (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
+  for(let x=-63; x<=33; x+=3.3){ if(x > -41) continue; (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
   for(let x=-40; x<=40; x+=3.6) (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 29 + rnd()*1.5, 0.9 + rnd()*0.35);
   for(let z=15; z<=23; z+=3.4){ pine(-13.5, z, 1); roundTree(-17, z+1.5, 0.9); }
   for(let z=-1; z<=11; z+=3.2){ pine(-35.2, z, 1); pine(35.2, z+1, 1); }
@@ -1780,7 +1854,9 @@ function createWorld(){
     if(z > -2.2 && z < 7.2 && Math.abs(x) < 9) return false;          // vilarejo
     if(z > 8 && Math.abs(x) < 14) return false;                        // área de entregas
     if(z > 23.5 && x > 8) return false;
-    if(x > 12 && z > 10) return false;                                 // usina
+    if(x > 12 && z > 10) return false;
+    if(x < -12 && x > -40 && z > 10) return false;                     // petróleo
+    if(Math.abs(x+32) < 1.8 && z > -3 && z < 13) return false;         // caminho do petróleo                                 // usina
     if(Math.abs(x-24) < 1.8 && z > -3 && z < 13) return false;         // caminho da usina                                // estrada dos caminhões
     if(z > -5.8 && z < -2.2) return false;                             // estrada
     if(Math.hypot(x+19, z-5.6) < 4.2) return false;                    // lago
@@ -2101,6 +2177,110 @@ function createWorld(){
     const r = powerStageLeft(st), pay = Math.min(S.money, r, Math.max(st.cost*dt/1.6, 1)); S.money -= pay; S.paid['pw_'+st.id] = (S.paid['pw_'+st.id]||0) + pay;
     if(Math.random() < dt*8) burstBills(UST[st.id], 21.6, 1);
     if(powerStageLeft(st) <= 0.0001) completePowerStage(st);
+  }
+
+  // ---------- campo de petróleo (sudoeste, perto do lago) ----------
+  const OZ = 18.2, OST = {pump:-35, sep:-31, ref:-27, tank:-22.5};
+  const oilEntry = makeTile(-32, 12.0);
+  const oilTiles = {}; OIL_STAGES.forEach(st=>{ oilTiles[st.id] = makeTile(OST[st.id], 21.6); });
+  pathRect(-33, -2.7, -31, 12.0);
+  const oilFloor = new THREE.Group(); world.add(oilFloor);
+  { const f = new THREE.Mesh(new THREE.BoxGeometry(20, 0.04, 9.4), M('#6b5a48')); f.position.set(-28.5, 0.022, 18.2); f.receiveShadow = true; oilFloor.add(f);
+    const e = new THREE.Mesh(new THREE.BoxGeometry(20.5, 0.03, 9.9), M('#4f4235')); e.position.set(-28.5, 0.015, 18.2); e.receiveShadow = true; oilFloor.add(e);
+    for(let k=0;k<7;k++){ const sp = new THREE.Mesh(new THREE.CircleGeometry(0.4+rnd()*0.5, 12), M('#1b1814')); sp.rotation.x = -Math.PI/2; sp.position.set(-37 + rnd()*17, 0.05, 14.5 + rnd()*7); oilFloor.add(sp); } }
+  const oilSign = labelSprite(4.6); oilSign.position.set(-28.5, 3.2, 13.6);
+  const oilObj = {};
+  function buildOilObj(id){
+    const g = new THREE.Group(); g.position.set(OST[id], 0, OZ); world.add(g); const P = {};
+    if(id === 'pump'){                       // cavalinho de petróleo
+      mesh(new THREE.BoxGeometry(2.6,0.3,1.2), M('#3b3f45'), 0, 0.15, 0, g);
+      for(const s of [-0.35,0.35]){ const leg = mesh(new THREE.BoxGeometry(0.14,2.2,0.14), M('#5b5f66'), 0, 1.2, s, g); leg.rotation.x = -s*0.35; }
+      P.beam = new THREE.Group(); P.beam.position.set(0, 2.3, 0); g.add(P.beam);
+      mesh(new THREE.BoxGeometry(3.0,0.26,0.3), M('#e0a43a'), 0, 0, 0, P.beam);
+      mesh(new THREE.BoxGeometry(0.35,0.9,0.4), M('#c2453a'), -1.6, -0.25, 0, P.beam);           // cabeça
+      mesh(new THREE.BoxGeometry(0.5,0.5,0.6), M('#3b3f45'), 1.45, -0.1, 0, P.beam);            // contrapeso
+      P.rod = mesh(new THREE.BoxGeometry(0.05,1.6,0.05), M('#222226'), -1.75, 1.0, 0, g);
+      mesh(new THREE.CylinderGeometry(0.2,0.25,0.3,10), M('#5b5f66'), -1.75, 0.3, 0, g);
+      P.crank = mesh(new THREE.CylinderGeometry(0.45,0.45,0.12,12), M('#2b2b2b'), 1.2, 0.8, 0.45, g); P.crank.rotation.x = Math.PI/2;
+    } else if(id === 'sep'){                 // tanque separador deitado
+      const t = mesh(new THREE.CylinderGeometry(0.85,0.85,2.8,16), M('#c9d1d9'), 0, 1.3, 0, g); t.rotation.z = Math.PI/2;
+      for(const s of [-1,1]) mesh(new THREE.SphereGeometry(0.85,14,8,0,Math.PI*2,0,Math.PI/2), M('#c9d1d9'), s*1.4, 1.3, 0, g).rotation.z = -s*Math.PI/2;
+      for(const s of [-0.9,0.9]) mesh(new THREE.BoxGeometry(0.2,0.6,1.0), M('#5b5f66'), s, 0.3, 0, g);
+      P.glass = new THREE.MeshBasicMaterial({color:'#3a2a16'}); mesh(new THREE.BoxGeometry(1.2,0.3,0.05), P.glass, 0, 1.4, 0.86, g).castShadow = false;
+      mesh(new THREE.CylinderGeometry(0.1,0.1,0.8,8), M('#3b3f45'), 0.6, 2.4, 0, g);
+    } else if(id === 'ref'){                 // torre de destilação
+      mesh(new THREE.CylinderGeometry(0.7,0.8,5.2,14), M('#d0d4da'), 0, 2.6, 0, g);
+      for(let k=0;k<5;k++) mesh(new THREE.CylinderGeometry(0.78,0.78,0.08,14), M('#6f747c'), 0, 0.8+k*1.0, 0, g);
+      mesh(new THREE.CylinderGeometry(0.12,0.12,1.4,8), M('#6f747c'), 0.45, 5.9, 0, g);
+      P.flare = new THREE.MeshBasicMaterial({color:'#ff8a2a', transparent:true}); P.flame = mesh(new THREE.ConeGeometry(0.2,0.6,8), P.flare, 0.45, 6.9, 0, g); P.flame.castShadow = false;
+      mesh(new THREE.CylinderGeometry(0.5,0.5,1.4,12), M('#e0a43a'), 1.3, 0.7, 0.4, g);
+    } else {                                 // posto: tanque de combustível
+      mesh(new THREE.CylinderGeometry(1.3,1.3,2.4,20), M('#f4f1ec'), 0, 1.2, 0, g);
+      mesh(new THREE.CylinderGeometry(1.32,1.32,0.3,20), M('#ff8a2a'), 0, 1.6, 0, g);
+      mesh(new THREE.CylinderGeometry(1.0,1.3,0.4,20), M('#d0d4da'), 0, 2.6, 0, g);
+      P.gauge = labelSprite(2.6); world.remove(P.gauge); P.gauge.position.set(0, 3.6, 0); g.add(P.gauge); P.gaugeKey = '';
+    }
+    const lb = labelSprite(3.2); world.remove(lb); lb.position.set(0, id === 'ref' ? 7.6 : id === 'tank' ? 4.4 : 3.6, 0); g.add(lb);
+    const st = OIL_STAGES.find(s=>s.id===id); lb.userData.draw(`${st.ico} ${st.name}`, '#ffffff');
+    circles.push({x:OST[id], z:OZ, r:id === 'pump' ? 1.5 : 1.4});
+    oilObj[id] = {g, P};
+  }
+  const oilLinks = new THREE.Group(); world.add(oilLinks);
+  const oilPaths = {};
+  function pipe(x1,z1,x2,z2,y=0.6,col='#2b2b2b'){
+    const len = Math.hypot(x2-x1, z2-z1), m = mesh(new THREE.CylinderGeometry(0.12,0.12,len,8), M(col), (x1+x2)/2, y, (z1+z2)/2, oilLinks);
+    m.rotation.z = Math.PI/2; m.rotation.y = -Math.atan2(z2-z1, x2-x1);
+  }
+  function buildOilLinks(){
+    while(oilLinks.children.length) oilLinks.remove(oilLinks.children[0]);
+    const O = S.oil;
+    if(O.sep){ pipe(-33.6, OZ, -32.4, OZ); oilPaths.pump = [new THREE.Vector3(-33.6,0.6,OZ), new THREE.Vector3(-32.4,0.6,OZ)]; }
+    if(O.ref){ pipe(-29.6, OZ, -27.8, OZ); oilPaths.sep = [new THREE.Vector3(-29.6,0.6,OZ), new THREE.Vector3(-27.8,0.6,OZ)]; }
+    if(O.tank){ pipe(-26.2, OZ, -23.8, OZ); oilPaths.ref = [new THREE.Vector3(-26.2,0.6,OZ), new THREE.Vector3(-23.8,0.6,OZ)];
+      // cano até a bomba de abastecimento no galpão
+      pipe(-22.5, 19.5, -22.5, 25.2, 0.35, '#ff8a2a'); pipe(-22.5, 25.2, -8, 25.2, 0.35, '#ff8a2a');
+      for(let x=-21; x<-8; x+=3) mesh(new THREE.BoxGeometry(0.15,0.35,0.15), M('#5b5f66'), x, 0.17, 25.2, oilLinks);
+      const pumpSt = new THREE.Group(); pumpSt.position.set(-7.4, 0, 25.2); oilLinks.add(pumpSt);
+      mesh(new THREE.BoxGeometry(0.7,1.4,0.5), M('#c2453a'), 0, 0.7, 0, pumpSt);
+      mesh(new THREE.BoxGeometry(0.5,0.35,0.06), M('#bfe6f7'), 0, 1.05, -0.26, pumpSt);
+      oilPaths.tank = [new THREE.Vector3(-22.5,0.35,19.5), new THREE.Vector3(-22.5,0.35,25.2), new THREE.Vector3(-8,0.35,25.2)];
+      circles.push({x:-7.4, z:25.2, r:0.5});
+    }
+  }
+  function refreshOil(){
+    const O = S.oil;
+    oilFloor.visible = oilSign.visible = O.open; if(O.open) oilSign.userData.draw('🛢️ Campo de Petróleo', '#ffb36b');
+    oilEntry.mesh.visible = !O.open;
+    OIL_STAGES.forEach(st=>{ if(O[st.id] && !oilObj[st.id]) buildOilObj(st.id); oilTiles[st.id].mesh.visible = O.open && !O[st.id] && nextOilStage() === st; });
+    buildOilLinks();
+  }
+  refreshOil();
+  const oilRiders = [], oilT = {};
+  function updateOil(dt, t){
+    const O = S.oil;
+    if(oilEntry.mesh.visible){ const r = oilOpenLeft(); oilEntry.draw('🛢️', money(r), 1 - r/OIL_OPEN_COST, false); }
+    OIL_STAGES.forEach(st=>{ const tl = oilTiles[st.id]; if(tl.mesh.visible){ const r = oilStageLeft(st); tl.draw(st.ico, money(r), 1 - r/st.cost, false); } });
+    const op = oilObj.pump; if(op){ const w = O.buf.crude < OIL_BUF_MAX - 0.5; const a = w ? Math.sin(t*2.2)*0.32 : 0;
+      op.P.beam.rotation.z = a; op.P.rod.position.y = 1.0 + a*1.2; op.P.crank.rotation.y = w ? t*2.2 : 0; }
+    const os = oilObj.sep; if(os) os.P.glass.color.setHSL(0.08, 0.5, 0.12 + Math.min(1, O.buf.clean/OIL_BUF_MAX)*0.35);
+    const orf = oilObj.ref; if(orf){ const w = O.buf.clean > 0.1; orf.P.flame.visible = w; orf.P.flame.scale.set(1, 1 + Math.sin(t*12)*0.25, 1); orf.P.flare.color.setHSL(0.07 + Math.sin(t*9)*0.02, 1, 0.55); }
+    const ot = oilObj.tank; if(ot){ const k = Math.round(O.fuel); if(k !== ot.P.gaugeKey){ ot.P.gaugeKey = k; ot.P.gauge.userData.draw(`⛽ ${fmt(O.fuel)} L`, O.fuel >= TRUCK_FUEL ? '#9cff7a' : '#ff9b7a'); } }
+    const spawn = (key, ok, col) => { oilT[key] = (oilT[key]||0) + dt; if(ok && oilPaths[key] && oilT[key] > 0.8){ oilT[key] = 0;
+      const r = new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6), M(col)); world.add(r); oilRiders.push({r, path:oilPaths[key], d:0}); } };
+    spawn('pump', O.sep && O.buf.crude > 0.3, '#1b1814'); spawn('sep', O.ref && O.buf.clean > 0.3, '#5a3d1c'); spawn('ref', O.tank && O.buf.diesel > 0.3, '#ffb020');
+    spawn('tank', O.tank && O.fuel >= 1, '#ff8a2a');
+    for(let k=oilRiders.length-1;k>=0;k--){ const it = oilRiders[k]; it.d += dt*2.2;
+      const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,b)=>a+b,0);
+      if(it.d >= tot){ world.remove(it.r); oilRiders.splice(k,1); continue; }
+      let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; } it.r.position.lerpVectors(it.path[s], it.path[s+1], d/lens[s]); }
+  }
+  function payOil(dt){
+    const O = S.oil; if(S.money <= 0) return;
+    if(!O.open){ const r = oilOpenLeft(), pay = Math.min(S.money, r, Math.max(OIL_OPEN_COST*dt/1.6, 1)); S.money -= pay; S.paid.oil_open = (S.paid.oil_open||0) + pay; if(Math.random() < dt*8) burstBills(-32, 12, 1); if(oilOpenLeft() <= 0.0001) openOil(); return; }
+    const st = nextOilStage(); if(!st || !oilTiles[st.id].inside(player.position)) return;
+    const r = oilStageLeft(st), pay = Math.min(S.money, r, Math.max(st.cost*dt/1.6, 1)); S.money -= pay; S.paid['oil_'+st.id] = (S.paid['oil_'+st.id]||0) + pay;
+    if(Math.random() < dt*8) burstBills(OST[st.id], 21.6, 1);
+    if(oilStageLeft(st) <= 0.0001) completeOilStage(st);
   }
 
   // ---------- personagem ----------
@@ -2425,9 +2605,9 @@ function createWorld(){
         if(l) animLoader(l, u % 1, true, dt);
         const shown = Math.min(tr.fillBoxes, Math.round(Math.min(trip + ((u%1) >= 0.5 ? 1 : 0), LOADER_TRIPS) / LOADER_TRIPS * tr.fillBoxes));
         tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < shown; });
-        if(trip >= LOADER_TRIPS){ tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < tr.fillBoxes; }); if(l) idleLoader(l); tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); }
+        if(trip >= LOADER_TRIPS){ tr.g.userData.boxes.forEach((b,i)=>{ b.visible = i < tr.fillBoxes; }); if(l) idleLoader(l); tr.state = 'going'; tr.d = 0; tr.path = truckPath(tr.slot); tr.boost = useFuel(TRUCK_FUEL); if(tr.boost > 1) floatText('⛽', tr.g.position.clone().setY(2.2), '#ffb020'); }
       } else if(tr.state === 'going'){
-        tr.d += dt*TRUCK_SPEED*(S.gemItems.dourado ? 1.25 : 1)*(0.6 + 0.4*cond('truck_'+tr.slot));
+        tr.d += dt*TRUCK_SPEED*(S.gemItems.dourado ? 1.25 : 1)*(0.6 + 0.4*cond('truck_'+tr.slot))*(tr.boost||1);
         if(moveAlong(tr, tr.d, false)){ tr.state = 'away'; tr.t = 0; tr.g.visible = false; }
       } else if(tr.state === 'away'){
         if(tr.t > TRUCK_AWAY){
@@ -2439,7 +2619,7 @@ function createWorld(){
           tr.state = 'returning'; tr.d = 0; tr.g.visible = true; save();
         }
       } else if(tr.state === 'returning'){
-        tr.d += dt*TRUCK_SPEED*(S.gemItems.dourado ? 1.25 : 1)*(0.6 + 0.4*cond('truck_'+tr.slot));
+        tr.d += dt*TRUCK_SPEED*(S.gemItems.dourado ? 1.25 : 1)*(0.6 + 0.4*cond('truck_'+tr.slot))*(tr.boost||1);
         if(moveAlong(tr, tr.d, true)){ tr.state = 'parked'; tr.t = 0; tr.g.rotation.y = 0; }
       }
     });
@@ -2514,9 +2694,9 @@ function createWorld(){
     for(const id in collectors){
       const c = collectors[id], m = c.o.m; c.t += dt;
       if(c.state === 'home'){
-        if(c.t > 0.8 && haulAvail(m) >= 1){ c.state = 'out'; c.d = 0; }
+        if(c.t > 0.8 && haulAvail(m) >= 1){ c.state = 'out'; c.d = 0; c.boost = useFuel(COLLECTOR_FUEL); }
       } else if(c.state === 'out' || c.state === 'back'){
-        c.d += dt*COLLECTOR_SPEED;
+        c.d += dt*COLLECTOR_SPEED*(c.boost||1);
         const {pos, dir} = pathPoint(c.path, c.state === 'out' ? c.d : c.total - c.d);
         c.g.position.copy(pos);
         if(dir.lengthSq() > 0.001){ const sgn = c.state === 'out' ? 1 : -1; c.g.rotation.y = Math.atan2(-dir.z*sgn, dir.x*sgn); }
@@ -2575,11 +2755,14 @@ function createWorld(){
   MINES3.forEach(o=>{ const bx = o.m.fuel ? o.x - 5.0 : o.x - 3.4; lvlBtns.push({id:o.m.id, tile:makeTile(bx, -6.2), x:bx, z:-6.2}); });
   lvlBtns.push({id:'galpao', tile:makeTile(-4.0, 12.2), x:-4.0, z:12.2});
   lvlBtns.push({id:'usina', tile:makeTile(27.4, 12.2), x:27.4, z:12.2});
+  lvlBtns.push({id:'oil', tile:makeTile(-28.6, 12.2), x:-28.6, z:12.2});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
   function updateLvlBtns(t){
     lvlBtns.forEach((b,k)=>{
       let lvl, cost, open = true;
-      if(b.id === 'usina'){ const P2 = S.power, ns = nextPowerStage(); lvl = (P2.open?1:0) + POWER_STAGES.filter(st=>P2[st.id]).length + P2.lvl;
+      if(b.id === 'oil'){ const O2 = S.oil, ns = nextOilStage(); lvl = (O2.open?1:0) + OIL_STAGES.filter(st=>O2[st.id]).length + O2.lvl;
+        cost = !O2.open ? oilOpenLeft() : ns ? oilStageLeft(ns) : pumpCost(); }
+      else if(b.id === 'usina'){ const P2 = S.power, ns = nextPowerStage(); lvl = (P2.open?1:0) + POWER_STAGES.filter(st=>P2[st.id]).length + P2.lvl;
         cost = !P2.open ? powerOpenLeft() : ns ? powerStageLeft(ns) : boilerCost(); }
       else if(b.id === 'galpao'){ lvl = (S.depotOpen?1:0) + S.trucks + S.loaders + S.truckLvl + S.bagLvl; cost = cheapestDepot(); }
       else { const m = mineById(b.id); open = isUnlocked(m); lvl = mineLevelInfo(m).lvl; cost = cheapestUpgrade(m); }
@@ -2790,7 +2973,8 @@ function createWorld(){
 
     // zonas: quadrados de compra, mercado, loja
     let z = null;
-    if((powerEntry.mesh.visible && powerEntry.inside(p)) || POWER_STAGES.some(st=>stageTiles[st.id].mesh.visible && stageTiles[st.id].inside(p))) z = 'pw';
+    if((oilEntry.mesh.visible && oilEntry.inside(p)) || OIL_STAGES.some(st=>oilTiles[st.id].mesh.visible && oilTiles[st.id].inside(p))) z = 'oil';
+    else if((powerEntry.mesh.visible && powerEntry.inside(p)) || POWER_STAGES.some(st=>stageTiles[st.id].mesh.visible && stageTiles[st.id].inside(p))) z = 'pw';
     else if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
     else if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
@@ -2809,6 +2993,8 @@ function createWorld(){
     if(z && z.startsWith('factory:')) payFactory(MINES3[+z.slice(8)], dt);
     if(z === 'depot') payDepot(dt);
     if(z === 'pw') payPower(dt);
+    if(z === 'oil') payOil(dt);
+    updateOil(dt, npcT);
     updatePower(dt, npcT, p);
     updateDelivery(dt, p);
     updateTrophies(npcT);
@@ -2910,6 +3096,7 @@ function createWorld(){
       floatText('💎 Gema!', pos.clone().setY(2.6), '#bff3ff');
     },
     onGemItem(id){ if(id === 'capacete') refreshHelmet(); burstBills(player.position.x, player.position.z, 10); },
+    onOilChanged(){ refreshOil(); burstBills(player.position.x, player.position.z, 10); },
     onPowerChanged(){ refreshPower(); burstBills(player.position.x, player.position.z, 10); },
     celebrate(){ burstBills(player.position.x, player.position.z, 18); },
     onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },
