@@ -40,7 +40,8 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `MISSIONS`: sequência de missões e recompensas.
 - `SM_WEAR_TIME`, `TRUCK_WEAR_TRIP`, `MIN_EFF`: manutenção (desgaste e custo de conserto).
 - `GEM_CHANCE`, `GEM_DELIVERY_CHANCE`, `GEM_ITEMS`: gemas raras e itens da loja de gemas (bônus pequenos).
-- `POWER_*`, `powerIntake`, `boilerCost`, `ENERGY_PER_COAL`: usina de energia (britador, lavadora, caldeira, turbina).
+- `POWER_ITEMS`, `powerStep`, `boilerCost`, `ENERGY_PER_COAL`, `BATTERY_*`: usina de energia (britadores com operadores, lavadora com maquinista,
+  caldeira com 2 ajudantes, turbina, banco de baterias). Bateria rende pouco por segundo de propósito.
 - `OIL_*`, `oilRate`, `fuelCap`, `pumpCost`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo (combustível dos veículos).
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 

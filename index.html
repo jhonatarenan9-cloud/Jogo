@@ -360,7 +360,7 @@ const ORES_PER_BAR = 5, BAR_MULT = 20;
 // carvão: cada barra queima 1 carvão; a esteira de carvão leva o carvão por trás das minas até as fundições
 const COAL_PER_BAR = 1, COAL_HELPER_MULT = 3;
 // a esteira de carvão é montada sozinha quando a primeira fundição abre
-const coalLineOn = () => MINES.some(m=>!m.fuel && S.smelters[m.id]) || !!(S.power && S.power.br);
+const coalLineOn = () => MINES.some(m=>!m.fuel && S.smelters[m.id]) || !!(S.power && S.power.brA);
 const coalMult = () => 1 + DRILL_BONUS*S.coalLvl;
 const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
 const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
@@ -429,7 +429,7 @@ function newState(){
     smelters:{}, belts:{}, sellBelts:{}, coalLvl:0, beltLvl:0, bars:Object.fromEntries(MINES.map(m=>[m.id,0])),
     sharpen:0, boost:0, autoSell:false, mission:0, earned:0,
     oil:{open:false, pump:false, sep:false, ref:false, tank:false, lvl:0, fuel:0, buf:{crude:0, clean:0, diesel:0}},
-    power:{open:false, br:false, lv:false, cd:false, tb:false, lvl:0, buf:{moido:0, limpo:0, vapor:0}},
+    power:{open:false, lvl:0, batteries:0, charge:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
@@ -443,6 +443,9 @@ try{
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
     S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
+    if(d.power && d.power.br !== undefined){   // usina antiga (outro lado do mapa): mantém o que foi construído, com a equipe mínima
+      const o = d.power; S.power = Object.assign(newState().power, {open:!!o.open, lvl:o.lvl||0, brA:!!o.br, opA:!!o.br, lv:!!o.lv, maq:!!o.lv, cd:!!o.cd, aj1:!!o.cd, tb:!!o.tb});
+    } else if(d.power) S.power = Object.assign(newState().power, d.power, {buf:Object.assign(newState().power.buf, d.power.buf)});
     S.paid = d.paid || {}; S.belts = d.belts || {}; S.smelters = d.smelters || {}; S.sellBelts = d.sellBelts || {}; S.bars = Object.assign(newState().bars, d.bars);
     if(d.smelter !== undefined){ // fundição central antiga: devolve o dinheiro gasto e recomeça no modelo por mina
       const OLD_BELT = {cobre:100000, ferro:200000, ouro:400000, diamante:800000, esmeralda:1600000};
@@ -523,7 +526,7 @@ const xf = v => String(Math.round(v*100)/100).replace('.', ',') + 'x';   // mult
 const barValue = m => m.value * BAR_MULT;
 const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 // valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
-const oreValue = (auto) => MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
+const oreValue = (auto) => (auto || !S.power ? 0 : (S.power.batteries||0)*BATTERY_VALUE) + MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*m.value) + (S.bars[m.id]||0)*barValue(m), 0);
 const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl) * (1 + POWER_BELT_BONUS*powerRatio());
 const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
 const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
@@ -552,47 +555,66 @@ function smelt(sec){
 }
 
 // ===================== USINA DE ENERGIA =====================
-// carvão → britador → lavadora → caldeira → turbina → energia (postes e esteiras)
+// à esquerda da mina de Carvão. Carvão → 2 britadores (com operadores) → lavadora (com maquinista)
+// → caldeira (2 ajudantes levam o carvão da lavadora) → turbina → rede elétrica + baterias para vender
 const POWER_OPEN_COST = 3000;
-const POWER_STAGES = [
-  {id:'br', name:'Britador', ico:'🪨', cost:2000,  desc:'Quebra o carvão em pedaços menores.'},
-  {id:'lv', name:'Lavadora', ico:'💧', cost:4000,  desc:'Lava o carvão moído (10% se perde na lavagem).'},
-  {id:'cd', name:'Caldeira', ico:'🔥', cost:7000,  desc:'Queima o carvão limpo e gera vapor.'},
-  {id:'tb', name:'Turbina',  ico:'⚡', cost:12000, desc:'O vapor gira a turbina, que gera energia.'},
+const POWER_ITEMS = [
+  {id:'brA', kind:'m', name:'Britador 1', ico:'🪨', cost:2000, need:null,  desc:'Quebra o carvão. Só funciona com operador.'},
+  {id:'opA', kind:'w', name:'Operador do Britador 1', ico:'👷', cost:400, need:'brA', desc:'Opera o Britador 1.'},
+  {id:'brB', kind:'m', name:'Britador 2', ico:'🪨', cost:3000, need:'opA', desc:'Dobra o carvão quebrado. Precisa de operador.'},
+  {id:'opB', kind:'w', name:'Operador do Britador 2', ico:'👷', cost:600, need:'brB', desc:'Opera o Britador 2.'},
+  {id:'lv',  kind:'m', name:'Lavadora Industrial', ico:'💧', cost:5000, need:'opA', desc:'Lava o carvão quebrado (10% se perde). Precisa de maquinista.'},
+  {id:'maq', kind:'w', name:'Maquinista da Lavadora', ico:'🧑‍🔧', cost:900, need:'lv', desc:'Controla a lavadora.'},
+  {id:'cd',  kind:'m', name:'Caldeira', ico:'🔥', cost:7000, need:'maq', desc:'Queima o carvão limpo e gera vapor. Precisa de ajudantes.'},
+  {id:'aj1', kind:'w', name:'Ajudante da Caldeira 1', ico:'👷', cost:500, need:'cd', desc:'Leva o carvão da lavadora até a caldeira.'},
+  {id:'aj2', kind:'w', name:'Ajudante da Caldeira 2', ico:'👷', cost:700, need:'aj1', desc:'Mais um ajudante: a caldeira queima o dobro.'},
+  {id:'tb',  kind:'m', name:'Turbina', ico:'⚡', cost:12000, need:'aj1', desc:'O vapor gira a turbina e gera energia para a rede.'},
+  {id:'bat', kind:'m', name:'Banco de Baterias', ico:'🔋', cost:8000, need:'tb', desc:'Guarda a energia que sobra em baterias para vender.'},
 ];
 const ENERGY_PER_COAL = 10, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POWER_BUF_MAX = 40, WASH_LOSS = 0.1;
-const powerIntake = () => 0.4 * (1 + 0.5*S.power.lvl);                    // carvão/s que a usina processa
+const BATTERY_KWS = 20, BATTERY_VALUE = 100, BATTERY_CAP = 40;           // energia por bateria, preço e capacidade
+const powerStep = () => 0.3 * (1 + 0.5*S.power.lvl);                    // carvão/s por britador, ajudante...
 const boilerCost = () => Math.ceil(20000 * Math.pow(3, S.power.lvl));
-let powerNow = 0;                                                          // kW gerados agora
-// consumo: 1 kW para os postes + 1 kW por esteira ligada
+let powerNow = 0;
 const powerDemand = () => 1 + MINES.filter(m=>hasBelt(m)).length + MINES.filter(m=>hasSellBelt(m)).length + (coalLineOn() ? 1 : 0);
 const powerRatio = () => S.power.tb ? Math.min(1, powerNow / powerDemand()) : 0;
-const powerStageLeft = st => Math.max(0, st.cost - (S.paid['pw_'+st.id]||0));
+const pwItem = id => POWER_ITEMS.find(x=>x.id===id);
+const pwLeft = it => Math.max(0, it.cost - (S.paid['pw_'+it.id]||0));
 const powerOpenLeft = () => Math.max(0, POWER_OPEN_COST - (S.paid.pw_open||0));
-const nextPowerStage = () => POWER_STAGES.find(st=>!S.power[st.id]);
+const pwCan = it => S.power.open && !S.power[it.id] && (!it.need || S.power[it.need]);
+const crushers = () => (S.power.brA && S.power.opA ? 1 : 0) + (S.power.brB && S.power.opB ? 1 : 0);
+const boilerHands = () => (S.power.cd ? (S.power.aj1 ? 1 : 0) + (S.power.aj2 ? 1 : 0) : 0);
+const powerOn = () => !!(S.power.tb && crushers() && S.power.maq && boilerHands());
+const powerIntake = () => powerStep()*crushers();
+const batteryValue = () => (S.power.batteries||0) * BATTERY_VALUE;
 function powerTick(sec){
   const P = S.power; if(!P.open || sec <= 0){ powerNow = 0; return; }
-  const r = powerIntake()*sec, b = P.buf; let gen = 0;
-  if(P.br){ const t = Math.max(0, Math.min(S.ore.carvao, r, POWER_BUF_MAX - b.moido)); S.ore.carvao -= t; b.moido += t; }
-  if(P.lv){ const t = Math.max(0, Math.min(b.moido, r, POWER_BUF_MAX - b.limpo)); b.moido -= t; b.limpo += t*(1-WASH_LOSS); }
-  if(P.cd){ const t = Math.max(0, Math.min(b.limpo, r, POWER_BUF_MAX - b.vapor)); b.limpo -= t; b.vapor += t; }
-  if(P.tb){ const t = Math.min(b.vapor, r); b.vapor -= t; gen = t*ENERGY_PER_COAL; }
-  const now = gen/sec;
-  powerNow = sec > 1 ? now : powerNow + (now - powerNow)*Math.min(1, sec*2);   // suaviza o número na tela
+  const r = powerStep()*sec, b = P.buf; let gen = 0;
+  if(crushers()){ const t = Math.max(0, Math.min(S.ore.carvao, r*crushers(), POWER_BUF_MAX - b.moido)); S.ore.carvao -= t; b.moido += t; }
+  if(P.lv && P.maq){ const t = Math.max(0, Math.min(b.moido, r*2, POWER_BUF_MAX - b.limpo)); b.moido -= t; b.limpo += t*(1-WASH_LOSS); }
+  if(boilerHands()){ const t = Math.max(0, Math.min(b.limpo, r*boilerHands(), POWER_BUF_MAX - b.vapor)); b.limpo -= t; b.vapor += t; }
+  if(P.tb){ const t = Math.min(b.vapor, r*2); b.vapor -= t; gen = t*ENERGY_PER_COAL; }
+  // o que sobra da rede vira bateria
+  if(P.bat){ const extra = Math.max(0, gen - powerDemand()*sec);
+    P.charge = (P.charge||0) + extra;
+    while(P.charge >= BATTERY_KWS && (P.batteries||0) < BATTERY_CAP){ P.charge -= BATTERY_KWS; P.batteries = (P.batteries||0) + 1; }
+    if((P.batteries||0) >= BATTERY_CAP) P.charge = Math.min(P.charge, BATTERY_KWS); }
+  const now = gen/sec; powerNow = sec > 1 ? now : powerNow + (now - powerNow)*Math.min(1, sec*2);
 }
-function openPower(){ S.power.open = true; delete S.paid.pw_open; toast('⚡ Terreno da Usina liberado! Construa o Britador primeiro.'); if(window.world3d) world3d.onPowerChanged(); buildShop(); render(); save(); }
-function buildPowerStage(st){
-  if(!S.power.open || S.power[st.id] || nextPowerStage() !== st) return;
-  const r = powerStageLeft(st); if(S.money < r) return;
-  S.money -= r; completePowerStage(st);
+function sellBatteries(){
+  const v = batteryValue(); if(v <= 0) return 0;
+  S.power.sold = (S.power.sold||0) + (S.power.batteries||0); S.power.batteries = 0; S.money += v; S.earned += v;
+  toast(`🔋 Baterias vendidas por ${money(v)}!`); if(window.world3d) world3d.celebrate(); render(); save(); return v;
 }
-function completePowerStage(st){
-  S.power[st.id] = true; delete S.paid['pw_'+st.id];
-  toast(st.id === 'tb' ? '⚡ Turbina ligada! A usina está gerando energia para os postes e as esteiras.' : `${st.ico} ${st.name} construído! Falta: ${nextPowerStage().name}.`);
-  if(window.world3d) world3d.onPowerChanged();
-  buildShop(); render(); save();
+function openPower(){ S.power.open = true; delete S.paid.pw_open; toast('⚡ Terreno da Usina liberado! Construa o Britador 1 e contrate o operador.'); if(window.world3d) world3d.onPowerChanged(); render(); save(); }
+function buildPowerItem(it){ if(!pwCan(it)) return; const r = pwLeft(it); if(S.money < r) return; S.money -= r; completePowerItem(it); }
+function completePowerItem(it){
+  S.power[it.id] = true; delete S.paid['pw_'+it.id];
+  toast(it.id === 'tb' ? '⚡ Turbina ligada! A energia vai para os postes e as esteiras.' : it.id === 'bat' ? '🔋 Banco de Baterias pronto! A energia que sobra vira baterias para vender.'
+    : it.kind === 'w' ? `${it.ico} ${it.name} contratado!` : `${it.ico} ${it.name} construído!`);
+  if(window.world3d) world3d.onPowerChanged(); render(); save();
 }
-function upgradeBoiler(){ const c = boilerCost(); if(!S.power.tb || S.money < c) return; S.money -= c; S.power.lvl++; toast('🔥 Caldeira maior! A usina processa mais carvão.'); render(); save(); }
+function upgradeBoiler(){ const c = boilerCost(); if(!S.power.tb || S.money < c) return; S.money -= c; S.power.lvl++; toast('🔥 Usina maior! Todos os setores processam +50%.'); render(); save(); }
 
 // ===================== CAMPO DE PETRÓLEO =====================
 // bomba → separador → refinaria → posto: combustível deixa caminhões e coletadores 50% mais rápidos
@@ -658,8 +680,9 @@ const MISSIONS = [
   {t:'Faça 3 entregas na Metalúrgica Aurora', p:()=>[S.deliveries||0, 3], r:500, go:()=>bagTotal() >= 1 ? {x:-3.4, z:19} : null},
   {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
   {t:'Compre o 🛺 coletador da mina de Cobre', p:()=>[+!!S.collectors.cobre, 1], r:400},
-  {t:'Abra o terreno da ⚡ Usina de Energia', p:()=>[+!!S.power.open, 1], r:800, go:()=>S.money >= powerOpenLeft() ? {x:24, z:12} : null},
-  {t:'Ligue a Turbina da Usina (4 etapas)', p:()=>[POWER_STAGES.filter(st=>S.power[st.id]).length, 4], r:5000},
+  {t:'Abra o terreno da ⚡ Usina (à esquerda da mina de Carvão)', p:()=>[+!!S.power.open, 1], r:800, go:()=>S.money >= powerOpenLeft() ? {x:-80, z:-4} : null},
+  {t:'Ligue a Usina: britador, lavadora, caldeira e turbina com equipe', p:()=>[(crushers()>0)+(S.power.lv&&S.power.maq?1:0)+(boilerHands()>0)+(S.power.tb?1:0), 4], r:5000},
+  {t:'Venda 10 baterias da Usina', p:()=>[S.power.sold||0, 10], r:3000},
   {t:'Abra o 🛢️ Campo de Petróleo', p:()=>[+!!S.oil.open, 1], r:1200, go:()=>S.money >= oilOpenLeft() ? {x:-32, z:12} : null},
   {t:'Produza combustível no Posto (4 etapas)', p:()=>[OIL_STAGES.filter(st=>S.oil[st.id]).length, 4], r:6000},
   {t:'Contrate 3 ajudantes na mina de Ferro', p:()=>[S.staff.ferro.n, 3], r:2000},
@@ -823,6 +846,7 @@ function addOre(id, amt){
 function sellAll(silent, auto){
   const total = oreValue(auto);
   for(const m of MINES){ if(m.fuel) continue; if(!(auto && hasBelt(m))) S.ore[m.id] = 0; S.bars[m.id] = 0; }
+  if(!auto && S.power){ S.power.sold = (S.power.sold||0) + (S.power.batteries||0); S.power.batteries = 0; }
   S.money += total; S.earned += total;
   if(!silent && total>0) toast('💰 Vendido por ' + money(total));
   return total;
@@ -974,29 +998,30 @@ function buildPanel(){
     return;
   }
   if(panelTarget === 'usina'){
-    const P = S.power, ratio = powerRatio(), dem = powerDemand();
+    const P = S.power, ratio = powerRatio(), dem = powerDemand(), on = powerOn();
     document.getElementById('sheetTitle').textContent = '⚡ Usina de Energia';
     el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">⚡</span>
-        <div><small>Energia</small><b>${fmt(powerNow)} / ${fmt(dem)} kW</b></div><span class="lvlBadge">${Math.round(ratio*100)}%</span></div>
-      <div class="lvlNext"><small>Abastecimento da rede</small><div>${!P.tb ? 'Termine as 4 etapas para gerar energia' : ratio >= 1 ? '✔ Tudo ligado com energia total' : '⚠️ Energia fraca: precisa de mais carvão ou caldeira maior'}</div>
+        <div><small>Energia gerada / rede</small><b>${fmt(powerNow)} / ${fmt(dem)} kW</b></div><span class="lvlBadge">${Math.round(ratio*100)}%</span></div>
+      <div class="lvlNext"><small>Situação</small><div>${!P.open ? 'Compre o terreno ao lado da mina de Carvão' : !on ? 'Falta: ' + [!crushers() && 'britador com operador', !(P.lv && P.maq) && 'lavadora com maquinista', !boilerHands() && 'caldeira com ajudante', !P.tb && 'turbina'].filter(Boolean).join(', ') : ratio >= 1 ? '✔ Rede com energia total' : '⚠️ Energia fraca: precisa de mais carvão ou usina maior'}</div>
         <div class="progress"><div style="width:${ratio*100}%"></div></div></div>
-      <div class="flow">${step(P.open,'⚫','Carvão')}${arrow(P.br)}${step(P.br,'🪨','Britador')}${arrow(P.lv)}${step(P.lv,'💧','Lavadora')}${arrow(P.cd)}${step(P.cd,'🔥','Caldeira')}${arrow(P.tb)}${step(P.tb,'⚡','Turbina')}</div>
+      <div class="flow">${step(crushers()>0,'🪨','Britadores')}${arrow(P.lv&&P.maq)}${step(P.lv&&P.maq,'💧','Lavadora')}${arrow(boilerHands()>0)}${step(boilerHands()>0,'🔥','Caldeira')}${arrow(P.tb)}${step(P.tb,'⚡','Turbina')}${arrow(P.bat)}${step(P.bat,'🔋','Baterias')}</div>
       <div class="lvlRows">
-        <div><span>⚫ Usa até</span><b>${fmt(powerIntake())} carvão/s</b></div>
-        <div><span>🪨 Moído · 💧 Limpo · ♨️ Vapor</span><b>${fmt(P.buf.moido)} · ${fmt(P.buf.limpo)} · ${fmt(P.buf.vapor)}</b></div>
-        <div><span>💡 Postes (minas iluminadas)</span><b>ajudantes +${Math.round(POWER_LIGHT_BONUS*ratio*100)}%</b></div>
-        <div><span>🛤️ Esteiras</span><b>+${Math.round(POWER_BELT_BONUS*ratio*100)}% de velocidade</b></div>
+        <div><span>🪨 Britadores ligados</span><b>${crushers()}/2 · ${fmt(powerIntake())} carvão/s</b></div>
+        <div><span>Quebrado · Limpo · Vapor</span><b>${fmt(P.buf.moido)} · ${fmt(P.buf.limpo)} · ${fmt(P.buf.vapor)}</b></div>
+        <div><span>💡 Postes · 🛤️ Esteiras</span><b>ajudantes +${Math.round(POWER_LIGHT_BONUS*ratio*100)}% · +${Math.round(POWER_BELT_BONUS*ratio*100)}%</b></div>
+        <div><span>🔋 Baterias</span><b>${P.batteries||0}/${BATTERY_CAP} ≈ ${money(batteryValue())}</b></div>
       </div></div>`);
-    if(!P.open){ const r = powerOpenLeft(); add('🏗️', 'Terreno da Usina', 'Libera a zona industrial ao sul-leste do vilarejo. Também dá para pagar pisando no quadrado da entrada.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openPower(); } }, r)); return; }
-    sec('🏭 Etapas (construa em ordem)');
-    POWER_STAGES.forEach((st,i)=>{
-      const r = powerStageLeft(st), isNext = nextPowerStage() === st;
-      add(st.ico, `${i+1}. ${st.name}`, st.desc, P[st.id] ? tag('✔ Construído') : isNext ? btn(money(r), ()=>buildPowerStage(st), r) : tag('🔒 Etapa anterior','var(--muted)'));
-    });
+    if(!P.open){ const r = powerOpenLeft(); add('🏗️', 'Terreno da Usina', 'Libera a área à esquerda da mina de Carvão. Também dá para pagar pisando no quadrado da estrada.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openPower(); } }, r)); return; }
+    if(P.bat){ const b = document.createElement('button'); b.className = 'primary'; b.style.width = '100%'; b.style.marginBottom = '10px';
+      b.textContent = (P.batteries||0) ? `🔋 Vender ${P.batteries} bateria(s) por ${money(batteryValue())}` : '🔋 Nenhuma bateria carregada ainda'; b.disabled = !(P.batteries||0);
+      b.onclick = ()=>{ sellBatteries(); buildPanel(); }; el.appendChild(b); }
+    const groups = [['🪨 Setor de Britagem', ['brA','opA','brB','opB']], ['💧 Setor de Lavagem', ['lv','maq']], ['🔥 Setor da Caldeira', ['cd','aj1','aj2']], ['⚡ Geração', ['tb','bat']]];
+    groups.forEach(([title, ids])=>{ sec(title); ids.forEach(id=>{ const it = pwItem(id), r = pwLeft(it);
+      add(it.ico, it.name, it.desc, P[id] ? tag(it.kind === 'w' ? '✔ Contratado' : '✔ Construído') : pwCan(it) ? btn(money(r), ()=>buildPowerItem(it), r) : tag('🔒 ' + pwItem(it.need).name,'var(--muted)')); }); });
     sec('🔧 Melhorias');
     const bc = boilerCost();
-    add('🔥', `Caldeira Maior <span class="count">nv ${P.lvl}</span>`, `+50% de carvão processado (hoje ${fmt(powerIntake())}/s, gera até ${fmt(powerIntake()*(1-WASH_LOSS)*ENERGY_PER_COAL)} kW)`, P.tb ? btn(money(bc), upgradeBoiler, bc) : tag('🔒 Turbina','var(--muted)'));
-    el.insertAdjacentHTML('beforeend', `<p class="small">Cada esteira ligada consome 1 kW e os postes, mais 1 kW. A usina usa carvão do mesmo estoque das fundições: garanta uma boa mina de Carvão.</p>`);
+    add('🏭', `Usina Maior <span class="count">nv ${P.lvl}</span>`, `+50% em todos os setores (hoje ${fmt(powerStep())} carvão/s por britador)`, P.tb ? btn(money(bc), upgradeBoiler, bc) : tag('🔒 Turbina','var(--muted)'));
+    el.insertAdjacentHTML('beforeend', `<p class="small">A rede (postes + 1 kW por esteira) recebe energia primeiro; o que sobra carrega as baterias (1 bateria = ${BATTERY_KWS} kW). As baterias também são vendidas no 💰 Mercado.</p>`);
     return;
   }
   if(panelTarget === 'galpao'){
@@ -1435,7 +1460,7 @@ function createWorld(){
     g.fillStyle = '#86d457'; g.fillRect(0,0,256,256); g.fillStyle = '#7dca50'; g.fillRect(0,0,256,128);
     for(let k=0;k<900;k++){ g.fillStyle = rnd()<0.5 ? 'rgba(60,140,40,.25)' : 'rgba(200,255,150,.22)'; g.fillRect(rnd()*256, rnd()*256, 3, 3); }
     const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(14, 28);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(170, 130), new THREE.MeshLambertMaterial({map:tex}));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 130), new THREE.MeshLambertMaterial({map:tex}));
     ground.rotation.x = -Math.PI/2; ground.position.z = -8; ground.receiveShadow = true; world.add(ground);
   }
   const dirt = M('#e2c08a'), dirtEdge = M('#c9a26a'), dirtDark = M('#c4a47a'), dirtDarkEdge = M('#a98a62');
@@ -1445,7 +1470,7 @@ function createWorld(){
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, d), mat); m.position.set(cx, y, cz); m.receiveShadow = true; world.add(m);
   }
   const MINE_X = [-28,-14,0,14,28,-53], HALF = 5.4, BACK_Z = -16, FRONT_Z = -7.5;
-  pathRect(-63,-5.3,33,-2.7);            // estrada principal
+  pathRect(-95,-5.3,33,-2.7);            // estrada principal
   pathRect(-1.3,-2.7,1.3,4.3);           // rua até o vilarejo
   pathRect(-8,4.3,8,6.8);                // praça
   MINE_X.forEach(x=>pathRect(x-1.1,FRONT_Z,x+1.1,-5.3));
@@ -1453,7 +1478,7 @@ function createWorld(){
   // ---------- colisões ----------
   const circles = [], rects = [];
   function blocked(x,z){
-    if(x<-63.5 || x>33.5 || z<BACK_Z+0.2 || z>26.6) return true;
+    if(x<-95.5 || x>33.5 || z<BACK_Z+0.2 || z>26.6) return true;
     for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
     for(const r of rects){ if(r.when && !r.when()) continue;
       if(x>r.x1-0.32 && x<r.x2+0.32 && z>r.z1-0.32 && z<r.z2+0.32) return true; }
@@ -1517,13 +1542,13 @@ function createWorld(){
   // ---------- cordilheira ao fundo ----------
   {
     const cols = ['#8c7b6b','#9d8c7a','#7d6c5d','#a08f7c','#93826f'];
-    for(let x=-74; x<=44; x+=4.2){
+    for(let x=-108; x<=44; x+=4.2){
       const r = 3.6 + rnd()*1.8, z = -21.5 - rnd()*2;
       const m = mesh(new THREE.DodecahedronGeometry(r,0), M(cols[Math.floor(rnd()*cols.length)]), x+rnd()*1.5, r*0.55, z);
       m.rotation.set(rnd()*3, rnd()*3, rnd()*3);
       if(rnd() < 0.55){ const s = mesh(new THREE.DodecahedronGeometry(r*0.45,0), M('#f4f1ec'), m.position.x, r*0.55 + r*0.72, z); s.rotation.copy(m.rotation); }
     }
-    for(let x=-72; x<=42; x+=3.1){
+    for(let x=-106; x<=42; x+=3.1){
       if(MINE_X.some(mx => Math.abs(x-mx) < 2.6)) continue;   // deixa espaço para a entrada das cavernas
       const r = 1.8 + rnd()*1.1;
       const m = mesh(new THREE.DodecahedronGeometry(r,0), M(cols[Math.floor(rnd()*cols.length)]), x+rnd()*0.8, r*0.5, -18.2 - rnd()*0.8);
@@ -1799,7 +1824,7 @@ function createWorld(){
   // árvores entre as minas
   [-35,-21,-7,7,21,35].forEach((x,k)=>{ pine(x, -14.5, 1.1); pine(x+0.3, -11.2, 0.95); roundTree(x-0.2, -8.6, 0.8); });
   // contorno do mapa
-  for(let x=-63; x<=33; x+=3.3){ if(x > -41) continue; (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
+  for(let x=-95; x<=33; x+=3.3){ if(x > -41) continue; (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 12.6 + rnd()*1.2, 0.9 + rnd()*0.35); }
   for(let x=-40; x<=40; x+=3.6) (Math.round(x)%2 ? pine : roundTree)(x + rnd()*0.8, 29 + rnd()*1.5, 0.9 + rnd()*0.35);
   for(let z=15; z<=23; z+=3.4){ pine(-13.5, z, 1); roundTree(-17, z+1.5, 0.9); }
   for(let z=-1; z<=11; z+=3.2){ pine(-35.2, z, 1); pine(35.2, z+1, 1); }
@@ -1840,11 +1865,12 @@ function createWorld(){
   for(let k=0;k<9;k++){ mesh(new THREE.BoxGeometry(0.12,0.5,0.12), M('#f4f1ec'), 16.8+k*0.7, 0.25, 8.4); }
   mesh(new THREE.BoxGeometry(5.7,0.08,0.06), M('#f4f1ec'), 19.6, 0.38, 8.4).castShadow = false;
   // postes de luz ao longo da estrada
-  [-59,-47,-39,-21,-7,7,21,31].forEach(x=>lampPost(x, -1.9));
-  for(let z=-1; z<=11; z+=3.2) pine(-65.2, z+0.5, 1);
+  [-91,-81,-71,-59,-47,-39,-21,-7,7,21,31].forEach(x=>lampPost(x, -1.9));
+  for(let z=-1; z<=11; z+=3.2) pine(-97.2, z+0.5, 1);
   // corredor de árvores separando a mina de carvão
   pine(-39.5,-14.6,1.15); pine(-40.4,-12.4,1); roundTree(-39.2,-10.6,0.9); pine(-40.2,-7.9,0.9); roundTree(-38.3,-13.1,0.8);
-  for(let z=-15; z<=-8; z+=3.4) pine(-65.5, z, 1.1);
+  for(const z of [-15.6,-7.2]) pine(-64.3, z, 1.0);
+  for(let z=-15; z<=-4; z+=3.6) pine(-97.5, z, 1.1);
   // bancos na praça
   for(const x of [-3.2,3.2]){
     mesh(new THREE.BoxGeometry(1.4,0.1,0.45), M('#a0693a'), x, 0.45, 7.4);
@@ -1983,7 +2009,6 @@ function createWorld(){
   const coalGroup = new THREE.Group(); world.add(coalGroup);
   let coalTexs = [];
   const COAL_O = MINES3.find(o=>o.m.fuel);
-  let usinaCoalPath = null;
   function buildCoalLine(){
     while(coalGroup.children.length) coalGroup.remove(coalGroup.children[0]);
     for(const t of coalTexs){ const k = beltTexs.indexOf(t); if(k>=0) beltTexs.splice(k,1); }
@@ -2007,14 +2032,6 @@ function createWorld(){
       o.coalLens = o.coalPath.slice(1).map((v,k)=>v.distanceTo(o.coalPath[k]));
       o.coalTotal = o.coalLens.reduce((a,b)=>a+b,0);
     });
-    usinaCoalPath = null;
-    if(S.power.br){   // continua por trás das minas e desce até o britador da usina
-      const ux = 33.6, from = Math.max(maxX, rx), UZ0 = 18.2;
-      if(ux > from) beltSeg(coalGroup, from, ZB, ux, ZB, CY);
-      beltSeg(coalGroup, ux, ZB, ux, UZ0, CY); beltSeg(coalGroup, ux, UZ0, 32.2, UZ0, CY);
-      usinaCoalPath = [new THREE.Vector3(cx,0.4,cz), new THREE.Vector3(cx,CY+0.15,cz), new THREE.Vector3(rx,CY+0.15,cz), new THREE.Vector3(rx,CY+0.15,ZB),
-        new THREE.Vector3(ux,CY+0.15,ZB), new THREE.Vector3(ux,CY+0.15,UZ0), new THREE.Vector3(32.2,CY+0.15,UZ0), new THREE.Vector3(31,2.4,UZ0)];
-    }
     coalTexs = beltTexs.slice(before);
   }
   function refreshFactory(){ MINES3.forEach(o=>{ if(o.refreshFactory) o.refreshFactory(); }); buildCoalLine(); }
@@ -2074,112 +2091,176 @@ function createWorld(){
     }
   }
 
-  // ---------- usina de energia (zona industrial ao sul-leste) ----------
-  const UZ = 18.2, UST = {br:31, lv:27, cd:23, tb:19};
-  const powerGroup = new THREE.Group(); world.add(powerGroup);
-  const powerEntry = makeTile(24, 12.0);
-  const stageTiles = {}; POWER_STAGES.forEach(st=>{ stageTiles[st.id] = makeTile(UST[st.id], 21.6); });
+  // ---------- usina de energia (à esquerda da mina de Carvão) ----------
   const LAMP_ON = new THREE.Color('#ffe9a8'), LAMP_OFF = new THREE.Color('#4e4b44');
-  pathRect(23, -2.7, 25, 12.0);                                                   // caminho do vilarejo até a usina
-  const floorGrp = new THREE.Group(); world.add(floorGrp);
-  { const f = new THREE.Mesh(new THREE.BoxGeometry(20, 0.04, 9.4), M('#8d8a83')); f.position.set(24, 0.022, 18.2); f.receiveShadow = true; floorGrp.add(f);
-    const e = new THREE.Mesh(new THREE.BoxGeometry(20.5, 0.03, 9.9), M('#6f6c66')); e.position.set(24, 0.015, 18.2); e.receiveShadow = true; floorGrp.add(e); }
-  const signU = labelSprite(4.4); signU.position.set(24, 3.2, 13.6);
-  const stageObj = {};
-  function buildStage(id){
-    const g = new THREE.Group(); g.position.set(UST[id], 0, UZ); powerGroup.add(g); const P = {};
-    if(id === 'br'){
-      mesh(new THREE.BoxGeometry(2.2,1.4,2.0), M('#e0a43a'), 0, 0.7, 0, g);
-      const hop = mesh(new THREE.CylinderGeometry(1.1,0.5,1.0,4), M('#5b5f66'), 0, 1.9, 0, g); hop.rotation.y = Math.PI/4;
-      P.g1 = mesh(new THREE.CylinderGeometry(0.35,0.35,2.3,10), M('#3b3f45'), 0, 0.9, 1.05, g); P.g1.rotation.x = Math.PI/2; P.g1.rotation.z = Math.PI/2;
-      for(const s of [-0.6,0.6]){ const w = mesh(new THREE.CylinderGeometry(0.42,0.42,0.12,8), M('#2b2b2b'), s, 0.9, 1.05, g); w.rotation.z = Math.PI/2; (P.wheels = P.wheels || []).push(w); }
-    } else if(id === 'lv'){
-      mesh(new THREE.CylinderGeometry(1.15,1.15,1.5,18), M('#c9d1d9'), 0, 0.75, 0, g);
-      const water = new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.0,0.12,18), new THREE.MeshPhongMaterial({color:'#4fb6e8', shininess:90, transparent:true, opacity:.85})); water.position.y = 1.45; g.add(water); P.water = water;
-      P.drum = mesh(new THREE.CylinderGeometry(0.45,0.45,1.6,10), M('#5b5f66'), 0, 1.85, 0, g); P.drum.rotation.z = Math.PI/2;
-      P.drops = [0,1,2,3].map(k=>{ const d = mesh(new THREE.SphereGeometry(0.08,6,4), new THREE.MeshBasicMaterial({color:'#9fdcff'}), 0, 2, 0, g); d.castShadow = false; return d; });
-    } else if(id === 'cd'){
-      mesh(new THREE.CylinderGeometry(1.0,1.1,2.6,16), M('#9c3d2c'), 0, 1.3, 0, g);
-      mesh(new THREE.CylinderGeometry(1.05,1.05,0.15,16), M('#3b3b44'), 0, 2.65, 0, g);
-      P.fire = new THREE.MeshBasicMaterial({color:'#ff8a2a'}); mesh(new THREE.BoxGeometry(0.7,0.5,0.1), P.fire, 0, 0.6, 1.06, g).castShadow = false;
-      mesh(new THREE.CylinderGeometry(0.22,0.26,2.2,10), M('#6f747c'), 0.5, 3.6, -0.3, g);
-      P.smoke = [0,1,2].map(k=>{ const s = mesh(new THREE.SphereGeometry(0.3,8,6), new THREE.MeshLambertMaterial({color:'#e8e8e8', transparent:true, opacity:0}), 0.5, 4.8, -0.3, g); s.castShadow = false; return s; });
-    } else {
-      mesh(new THREE.BoxGeometry(2.6,0.5,1.6), M('#3b3f45'), 0, 0.25, 0, g);
-      const body = mesh(new THREE.CylinderGeometry(0.7,0.7,1.8,16), M('#2f80ed'), -0.2, 1.2, 0, g); body.rotation.z = Math.PI/2;
-      mesh(new THREE.BoxGeometry(0.9,1.2,1.2), M('#f2b632'), 1.05, 1.1, 0, g);
-      P.fan = new THREE.Group(); P.fan.position.set(-1.25, 1.2, 0); g.add(P.fan);
-      mesh(new THREE.CylinderGeometry(0.75,0.75,0.08,16), M('#c9d1d9'), 0, 0, 0, P.fan).rotation.z = Math.PI/2;
-      for(let k=0;k<4;k++){ const bl = mesh(new THREE.BoxGeometry(0.06,1.3,0.22), M('#3b3f45'), -0.05, 0, 0, P.fan); bl.rotation.x = k*Math.PI/4; }
-      P.bolt = labelSprite(1.6); P.bolt.position.set(1.05, 2.4, 0); P.bolt.userData.draw('⚡', '#ffd23f'); world.remove(P.bolt); g.add(P.bolt);
-    }
-    const lb = labelSprite(2.8); lb.position.set(0, id === 'cd' ? 5.6 : 3.4, 0); world.remove(lb); g.add(lb);
-    const st = POWER_STAGES.find(s=>s.id===id); lb.userData.draw(`${st.ico} ${st.name}`, '#ffffff');
-    circles.push({x:UST[id], z:UZ, r:1.3});
-    stageObj[id] = {g, P};
+  const UZ = -11.6, PX = {brA:[-69.5,-14.0], brB:[-69.5,-9.2], lv:[-77,UZ], cd:[-85,UZ], tb:[-90,UZ], bat:[-89.5,-15.0]};
+  const powerEntry = makeTile(-80, -4.0);
+  const pwTiles = {}; POWER_ITEMS.filter(it=>it.kind==='m').forEach(it=>{ const [x,z] = PX[it.id]; pwTiles[it.id] = makeTile(x, z); });
+  const pwFloor = new THREE.Group(); world.add(pwFloor);
+  { const f = new THREE.Mesh(new THREE.BoxGeometry(28, 0.04, 10.4), M('#8d8a83')); f.position.set(-80, 0.022, -11.4); f.receiveShadow = true; pwFloor.add(f);
+    const e = new THREE.Mesh(new THREE.BoxGeometry(28.5, 0.03, 10.9), M('#6f6c66')); e.position.set(-80, 0.015, -11.4); e.receiveShadow = true; pwFloor.add(e);
+    // faixas amarelas separando os setores
+    for(const x of [-73.2, -81.2, -87.6]){ const st = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 10.2), M('#f2b632')); st.position.set(x, 0.04, -11.4); pwFloor.add(st); } }
+  const signU = labelSprite(5); signU.position.set(-80, 4.2, -6.6);
+  const secSigns = [['🪨 Britagem', -69.5], ['💧 Lavagem', -77], ['🔥 Caldeira', -84.4], ['⚡ Geração', -90.4]].map(([t,x])=>{ const s = labelSprite(2.6); s.position.set(x, 0.9, -6.9); s.userData.draw(t, '#ffe9a8'); return s; });
+  const pwObj = {};
+  function worker(shirt, helmet, x, z, rotY){
+    const w = makeMiner(shirt, helmet, '#33415c'); w.userData.pickHead.parent.visible = false;
+    w.position.set(x, 0, z); w.rotation.y = rotY; w.scale.setScalar(0.85); world.add(w); return w;
   }
-  // esteiras entre as etapas e cano de vapor
-  const linkGrp = new THREE.Group(); world.add(linkGrp);
-  const linkPaths = {};
-  function buildLinks(){
-    while(linkGrp.children.length) linkGrp.remove(linkGrp.children[0]);
-    const S2 = S.power;
-    if(S2.lv){ beltSeg(linkGrp, 29.9, UZ, 28.1, UZ, 1.2); linkPaths.br = [new THREE.Vector3(30,1.35,UZ), new THREE.Vector3(28.1,1.35,UZ)]; }
-    if(S2.cd){ beltSeg(linkGrp, 25.9, UZ, 24.1, UZ, 1.2); linkPaths.lv = [new THREE.Vector3(26,1.35,UZ), new THREE.Vector3(24.1,1.35,UZ)]; }
-    if(S2.tb){ const pipe = mesh(new THREE.CylinderGeometry(0.16,0.16,2.6,10), M('#c9d1d9'), 21, 2.2, UZ, linkGrp); pipe.rotation.z = Math.PI/2;
-      linkPaths.cd = [new THREE.Vector3(22.3,2.2,UZ), new THREE.Vector3(19.9,2.2,UZ)];
+  function buildPw(id){
+    const [x,z] = PX[id] || [0,0], g = new THREE.Group(); g.position.set(x, 0, z); const P = {};
+    if(id === 'brA' || id === 'brB'){
+      world.add(g);
+      mesh(new THREE.BoxGeometry(2.4,1.5,2.0), M('#e0a43a'), 0, 0.75, 0, g);
+      const hop = mesh(new THREE.CylinderGeometry(1.2,0.55,1.1,4), M('#5b5f66'), 0, 2.05, 0, g); hop.rotation.y = Math.PI/4;
+      P.roll = mesh(new THREE.CylinderGeometry(0.35,0.35,2.5,10), M('#3b3f45'), -1.05, 0.9, 0, g); P.roll.rotation.x = Math.PI/2;
+      P.wheels = [-0.7,0.7].map(s=>{ const w = mesh(new THREE.CylinderGeometry(0.45,0.45,0.14,8), M('#2b2b2b'), -1.05, 0.9, s, g); w.rotation.x = Math.PI/2; return w; });
+      mesh(new THREE.BoxGeometry(0.5,0.9,0.3), M('#3b3f45'), 1.45, 0.45, 0, g);                       // painel do operador
+      circles.push({x, z, r:1.35, when:()=>!!S.power[id]});
+    } else if(id === 'lv'){
+      world.add(g);
+      mesh(new THREE.CylinderGeometry(1.9,1.9,1.7,22), M('#c9d1d9'), 0, 0.85, 0, g);
+      mesh(new THREE.CylinderGeometry(1.95,1.95,0.14,22), M('#2f80ed'), 0, 1.15, 0, g);
+      const water = new THREE.Mesh(new THREE.CylinderGeometry(1.75,1.75,0.12,22), new THREE.MeshPhongMaterial({color:'#4fb6e8', shininess:90, transparent:true, opacity:.85})); water.position.y = 1.65; g.add(water);
+      P.drum = mesh(new THREE.CylinderGeometry(0.55,0.55,3.0,12), M('#5b5f66'), 0, 2.15, 0, g); P.drum.rotation.z = Math.PI/2;
+      for(const s of [-1.6,1.6]) mesh(new THREE.BoxGeometry(0.2,1.4,0.2), M('#3b3f45'), s, 2.0, 0, g);
+      P.drops = [0,1,2,3,4].map(k=>{ const d = mesh(new THREE.SphereGeometry(0.09,6,4), new THREE.MeshBasicMaterial({color:'#9fdcff'}), 0, 2, 0, g); d.castShadow = false; return d; });
+      const panel = mesh(new THREE.BoxGeometry(0.9,1.1,0.3), M('#3b3f45'), 0, 0.55, 3.0, g);
+      P.led = mesh(new THREE.BoxGeometry(0.5,0.25,0.05), new THREE.MeshBasicMaterial({color:'#7dff6a'}), 0, 0.85, 2.84, g); P.led.castShadow = false;
+      circles.push({x, z, r:2.0, when:()=>!!S.power.lv}, {x, z:z+3.0, r:0.5, when:()=>!!S.power.lv});
+    } else if(id === 'cd'){
+      world.add(g);
+      mesh(new THREE.CylinderGeometry(1.2,1.3,2.8,16), M('#9c3d2c'), 0, 1.4, 0, g);
+      mesh(new THREE.CylinderGeometry(1.25,1.25,0.15,16), M('#3b3b44'), 0, 2.85, 0, g);
+      P.fire = new THREE.MeshBasicMaterial({color:'#ff8a2a'}); mesh(new THREE.BoxGeometry(0.1,0.6,0.8), P.fire, 1.26, 0.7, 0, g).castShadow = false;
+      mesh(new THREE.CylinderGeometry(0.25,0.3,2.6,10), M('#6f747c'), -0.4, 4.0, -0.4, g);
+      P.smoke = [0,1,2].map(()=>{ const s = mesh(new THREE.SphereGeometry(0.32,8,6), new THREE.MeshLambertMaterial({color:'#e8e8e8', transparent:true, opacity:0}), -0.4, 5.4, -0.4, g); s.castShadow = false; return s; });
+      mesh(new THREE.BoxGeometry(0.9,0.5,0.9), M('#2b2b2b'), 2.0, 0.25, 0, g);                         // caixa de carvão limpo
+      circles.push({x, z, r:1.4, when:()=>!!S.power.cd});
+    } else if(id === 'tb'){
+      world.add(g);
+      mesh(new THREE.BoxGeometry(2.8,0.5,1.8), M('#3b3f45'), 0, 0.25, 0, g);
+      const body = mesh(new THREE.CylinderGeometry(0.75,0.75,1.9,16), M('#2f80ed'), 0.2, 1.25, 0, g); body.rotation.z = Math.PI/2;
+      mesh(new THREE.BoxGeometry(0.9,1.3,1.3), M('#f2b632'), -1.1, 1.15, 0, g);
+      P.fan = new THREE.Group(); P.fan.position.set(1.25, 1.25, 0); g.add(P.fan);
+      mesh(new THREE.CylinderGeometry(0.8,0.8,0.08,16), M('#c9d1d9'), 0, 0, 0, P.fan).rotation.z = Math.PI/2;
+      for(let k=0;k<4;k++){ const bl = mesh(new THREE.BoxGeometry(0.06,1.4,0.24), M('#3b3f45'), 0.05, 0, 0, P.fan); bl.rotation.x = k*Math.PI/4; }
+      const pipe = mesh(new THREE.CylinderGeometry(0.17,0.17,3.6,10), M('#c9d1d9'), 3.3, 2.2, 0, g); pipe.rotation.z = Math.PI/2;
+      P.bolt = labelSprite(1.6); world.remove(P.bolt); P.bolt.position.set(-1.1, 2.5, 0); g.add(P.bolt); P.bolt.userData.draw('⚡', '#ffd23f');
       // torres de transmissão até a estrada
-      const towers = [[16,16],[16,10.5],[16,4.5],[16,-1.4]];
-      towers.forEach(([x,z])=>{ for(const s of [-0.35,0.35]) mesh(new THREE.BoxGeometry(0.12,4.2,0.12), M('#6f747c'), x+s, 2.1, z, linkGrp);
-        mesh(new THREE.BoxGeometry(1.4,0.12,0.12), M('#6f747c'), x, 4.1, z, linkGrp); circles.push({x, z, r:0.5}); });
-      for(let k=0;k<towers.length;k++){ const [x1,z1] = k ? towers[k-1] : [19,UZ], [x2,z2] = towers[k], y1 = k ? 4.15 : 2.0;
-        for(const s of [-0.6,0.6]){ const len = Math.hypot(x2-x1, z2-z1, 4.15-y1); const w = mesh(new THREE.CylinderGeometry(0.02,0.02,len,4), M('#222226'), (x1+x2)/2+s, (y1+4.15)/2-0.15, (z1+z2)/2, linkGrp);
+      const towers = [[-92,-6.8],[-86,-0.6],[-75,-0.6],[-65,-0.6]];
+      towers.forEach(([tx,tz])=>{ for(const s of [-0.35,0.35]) mesh(new THREE.BoxGeometry(0.12,4.2,0.12), M('#6f747c'), tx+s, 2.1, tz);
+        mesh(new THREE.BoxGeometry(1.4,0.12,0.12), M('#6f747c'), tx, 4.1, tz); circles.push({x:tx, z:tz, r:0.5}); });
+      for(let k=0;k<towers.length;k++){ const [x1,z1] = k ? towers[k-1] : [x-1.1, z], [x2,z2] = towers[k], y1 = k ? 4.15 : 1.8;
+        for(const s of [-0.6,0.6]){ const len = Math.hypot(x2-x1, z2-z1, 4.15-y1); const w = mesh(new THREE.CylinderGeometry(0.02,0.02,len,4), M('#222226'), (x1+x2)/2+s, (y1+4.15)/2-0.15, (z1+z2)/2);
           w.lookAt(x2+s, 4.15, z2); w.rotateX(Math.PI/2); w.castShadow = false; } }
+      circles.push({x, z, r:1.5, when:()=>!!S.power.tb});
+    } else if(id === 'bat'){
+      world.add(g);
+      mesh(new THREE.BoxGeometry(4.2,0.2,1.2), M('#3b3f45'), 0, 0.1, 0, g);
+      for(const y of [0.75,1.45]) mesh(new THREE.BoxGeometry(4.2,0.08,1.1), M('#6f747c'), 0, y, 0, g);
+      for(const s of [-2.05,2.05]) mesh(new THREE.BoxGeometry(0.1,2.1,1.1), M('#6f747c'), s, 1.05, 0, g);
+      const cell = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34,0.5,0.4), M('#3aa35a', {emissive:new THREE.Color('#0f3a12')}), BATTERY_CAP);
+      const d = new THREE.Object3D();
+      for(let k=0;k<BATTERY_CAP;k++){ const row = Math.floor(k/20), r = k%20, col = r%10, dep = Math.floor(r/10);
+        d.position.set(-1.8 + col*0.4, 0.45 + row*0.7, -0.22 + dep*0.44); d.updateMatrix(); cell.setMatrixAt(k, d.matrix); }
+      cell.count = 0; cell.castShadow = true; g.add(cell); P.cells = cell;
+      P.lab = labelSprite(2.8); world.remove(P.lab); P.lab.position.set(0, 2.7, 0); g.add(P.lab); P.labKey = '';
+      rects.push({x1:x-2.2, x2:x+2.2, z1:z-0.7, z2:z+0.7, when:()=>!!S.power.bat});
     }
+    if(id !== 'bat'){ const lb = labelSprite(2.6); world.remove(lb); lb.position.set(0, id === 'cd' ? 6.2 : id === 'lv' ? 3.6 : 3.3, 0); g.add(lb); const it = pwItem(id); lb.userData.draw(`${it.ico} ${it.name}`, '#ffffff'); }
+    pwObj[id] = {g, P};
+  }
+  // trabalhadores (aparecem quando contratados)
+  const pwWorkers = {};
+  function syncPwWorkers(){
+    const P = S.power;
+    if(P.opA && !pwWorkers.opA) pwWorkers.opA = worker('#f2b632', '#ffffff', -67.6, -14.0, -Math.PI/2);
+    if(P.opB && !pwWorkers.opB) pwWorkers.opB = worker('#f2b632', '#ffffff', -67.6, -9.2, -Math.PI/2);
+    if(P.maq && !pwWorkers.maq) pwWorkers.maq = worker('#24324a', '#2f80ed', -77, -7.8, Math.PI);
+    ['aj1','aj2'].forEach((k,i)=>{ if(P[k] && !pwWorkers[k]){ const w = worker('#f08a24', '#ffcf3f', -79.8, UZ + (i ? 1.3 : -1.3), Math.PI/2);
+      w.userData.box = mesh(new THREE.BoxGeometry(0.42,0.32,0.36), M('#1c1c22'), 0, 1.05, 0.38, w); w.userData.box.visible = false; pwWorkers[k] = w; } });
+  }
+  // esteiras: carvão chegando da mina, britadores → lavadora, vapor → turbina
+  const pwLinks = new THREE.Group(); world.add(pwLinks);
+  const pwPaths = {};
+  function buildPwLinks(){
+    while(pwLinks.children.length) pwLinks.remove(pwLinks.children[0]);
+    for(const t of pwLinks.userData.texs || []){ const k = beltTexs.indexOf(t); if(k >= 0) beltTexs.splice(k, 1); }
+    const before = beltTexs.length, P = S.power, Y = 3.0;
+    if(P.brA){
+      mesh(new THREE.BoxGeometry(0.6, Y+0.35, 0.6), M('#3a3a42'), -61.1, (Y+0.35)/2, UZ, pwLinks);
+      mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), M('#ffb020'), -61.1, Y+0.45, UZ, pwLinks);
+      beltSeg(pwLinks, -61.1, UZ, -68.3, UZ, Y);
+      beltSeg(pwLinks, -68.3, P.brB ? -9.2 : UZ, -68.3, -14.0, Y);
+      pwPaths.coal = [new THREE.Vector3(-61.1,0.4,UZ), new THREE.Vector3(-61.1,Y+0.15,UZ), new THREE.Vector3(-68.3,Y+0.15,UZ), new THREE.Vector3(-68.3,Y+0.15,-14), new THREE.Vector3(-69.5,2.4,-14)];
+    }
+    if(P.lv){
+      beltSeg(pwLinks, -71.6, P.brB ? -9.2 : -14.0, -71.6, -14.0, 1.0); beltSeg(pwLinks, -71.6, UZ, -75.1, UZ, 1.0);
+      pwPaths.cr = [new THREE.Vector3(-71.6,1.15,-14), new THREE.Vector3(-71.6,1.15,UZ), new THREE.Vector3(-75.1,1.15,UZ)];
+    }
+    if(P.tb) pwPaths.st = [new THREE.Vector3(-86.3,2.2,UZ), new THREE.Vector3(-88.6,2.2,UZ)];
+    pwLinks.userData.texs = beltTexs.slice(before);
   }
   function refreshPower(){
     const P = S.power;
-    floorGrp.visible = P.open; signU.visible = P.open;
-    if(P.open) signU.userData.draw('⚡ Usina de Energia', '#ffd23f');
+    pwFloor.visible = P.open; secSigns.forEach(s=>s.visible = P.open);
+    signU.userData.draw(P.open ? '⚡ Usina de Energia' : '⚡ Terreno da Usina (à venda)', '#ffd23f');
     powerEntry.mesh.visible = !P.open;
-    POWER_STAGES.forEach(st=>{ if(P[st.id] && !stageObj[st.id]) buildStage(st.id); stageTiles[st.id].mesh.visible = P.open && !P[st.id] && nextPowerStage() === st; });
-    buildLinks(); buildCoalLine();
+    POWER_ITEMS.forEach(it=>{ if(it.kind === 'm'){ if(P[it.id] && !pwObj[it.id]) buildPw(it.id); pwTiles[it.id].mesh.visible = pwCan(it); } });
+    syncPwWorkers(); buildPwLinks();
   }
   refreshPower();
-  const pwRiders = []; let pwT = {};
-  function updatePower(dt, t, p){
-    const P = S.power, ratio = powerRatio(), on = ratio > 0;
-    // quadrados de compra
+  const pwRiders = [], pwT = {};
+  function updatePower(dt, t){
+    const P = S.power, ratio = powerRatio(), b = P.buf;
     if(powerEntry.mesh.visible){ const r = powerOpenLeft(); powerEntry.draw('⚡', money(r), 1 - r/POWER_OPEN_COST, false); }
-    POWER_STAGES.forEach(st=>{ const tl = stageTiles[st.id]; if(tl.mesh.visible){ const r = powerStageLeft(st); tl.draw(st.ico, money(r), 1 - r/st.cost, false); } });
-    // postes acesos com energia
+    POWER_ITEMS.forEach(it=>{ const tl = pwTiles[it.id]; if(tl && tl.mesh.visible){ const r = pwLeft(it); tl.draw(it.ico, money(r), 1 - r/it.cost, false); } });
     LAMP_MAT.color.copy(LAMP_OFF).lerp(LAMP_ON, ratio);
-    // animação das etapas
-    const work = id => P[id] && (id === 'br' ? S.ore.carvao > 0.05 : id === 'lv' ? P.buf.moido > 0.05 : id === 'cd' ? P.buf.limpo > 0.05 : P.buf.vapor > 0.02);
-    const sb = stageObj.br; if(sb && work('br')){ sb.P.g1.rotation.y += dt*6; sb.P.wheels.forEach(w=>w.rotation.x += dt*5); sb.g.position.y = Math.abs(Math.sin(t*30))*0.02; }
-    const sl = stageObj.lv; if(sl){ const w = work('lv'); sl.P.drum.rotation.x += dt*(w?4:0); sl.P.drops.forEach((d,k)=>{ const u = (t*1.2 + k/4) % 1; d.visible = w; d.position.set(-0.6 + k*0.4, 1.8 - u*0.4, Math.sin(u*6)*0.2); }); }
-    const sc = stageObj.cd; if(sc){ const w = work('cd'); sc.P.fire.color.setHSL(0.07, 1, w ? 0.55 + Math.sin(t*9)*0.08 : 0.25);
-      sc.P.smoke.forEach((s,k)=>{ const u = (t*0.5 + k/3) % 1; s.position.y = 4.8 + u*2; s.scale.setScalar(0.7 + u*1.2); s.material.opacity = w ? 0.6*(1-u) : 0; }); }
-    const stb = stageObj.tb; if(stb){ stb.P.fan.rotation.x += dt*(work('tb') ? 14 : 0.5); stb.P.bolt.visible = on && Math.sin(t*6) > -0.3; }
-    // blocos andando: carvão chegando, moído e limpo
-    const spawn = (key, path, color, ok) => { pwT[key] = (pwT[key]||0) + dt; if(ok && path && pwT[key] > 0.9){ pwT[key] = 0; const r = new THREE.Mesh(riderGeo, M(color)); world.add(r); pwRiders.push({r, path, d:0}); } };
-    spawn('coal', usinaCoalPath, '#26262c', P.br && S.ore.carvao > 1 && P.buf.moido < POWER_BUF_MAX-1);
-    spawn('br', linkPaths.br, '#4a4a52', P.lv && P.buf.moido > 0.3);
-    spawn('lv', linkPaths.lv, '#1c1c22', P.cd && P.buf.limpo > 0.3);
-    spawn('cd', linkPaths.cd, '#ffffff', P.tb && P.buf.vapor > 0.1);
+    // britadores e operadores
+    [['brA','opA'],['brB','opB']].forEach(([m,w])=>{ const o = pwObj[m]; if(!o) return; const on = P[w] && S.ore.carvao > 0.05 && b.moido < POWER_BUF_MAX - 0.5;
+      if(on){ o.P.roll.rotation.y += dt*6; o.P.wheels.forEach(x=>x.rotation.y += dt*5); o.g.position.y = Math.abs(Math.sin(t*30))*0.02; } else o.g.position.y = 0;
+      const op = pwWorkers[w]; if(op) op.userData.armR.rotation.x = on ? -1.0 + Math.sin(t*6)*0.35 : -0.2; });
+    // lavadora e maquinista
+    const lv = pwObj.lv; if(lv){ const on = P.maq && b.moido > 0.05; lv.P.drum.rotation.x += dt*(on ? 4 : 0);
+      lv.P.drops.forEach((d,k)=>{ const u = (t*1.2 + k/5) % 1; d.visible = on; d.position.set(-1.2 + k*0.6, 2.1 - u*0.5, Math.sin(u*6)*0.3); });
+      lv.P.led.material.color.set(on ? '#7dff6a' : P.maq ? '#ffd23f' : '#ff5a4a');
+      const mq = pwWorkers.maq; if(mq){ mq.userData.armR.rotation.x = -1.2 + Math.sin(t*2)*0.25; mq.userData.armL.rotation.x = -0.9; } }
+    // caldeira e ajudantes (levam o carvão limpo da lavadora até a caldeira)
+    const cd = pwObj.cd, burning = boilerHands() && (b.limpo > 0.05 || b.vapor > 0.05);
+    if(cd){ cd.P.fire.color.setHSL(0.07, 1, burning ? 0.55 + Math.sin(t*9)*0.08 : 0.25);
+      cd.P.smoke.forEach((s,k)=>{ const u = (t*0.5 + k/3) % 1; s.position.y = 5.4 + u*2; s.scale.setScalar(0.7 + u*1.2); s.material.opacity = burning ? 0.6*(1-u) : 0; }); }
+    ['aj1','aj2'].forEach((k,i)=>{ const w = pwWorkers[k]; if(!w) return; const U = w.userData;
+      if(P.cd && b.limpo > 0.05){ const ph = (t*0.35 + i*0.5) % 1, go = ph < 0.5, f = go ? ph*2 : (1-ph)*2;
+        w.position.x = -79.8 + (-83.4 + 79.8)*f; w.rotation.y = go ? -Math.PI/2 : Math.PI/2;
+        const s = Math.sin(t*11 + i); U.legL.rotation.x = s*0.7; U.legR.rotation.x = -s*0.7;
+        U.box.visible = go; U.armL.rotation.x = U.armR.rotation.x = go ? -1.3 : -s*0.5;
+      } else { U.legL.rotation.x = U.legR.rotation.x = 0; U.armL.rotation.x = U.armR.rotation.x = 0; U.box.visible = false; } });
+    // turbina e baterias
+    const tb = pwObj.tb; if(tb){ tb.P.fan.rotation.x += dt*(b.vapor > 0.02 ? 14 : 0.4); tb.P.bolt.visible = ratio > 0 && Math.sin(t*6) > -0.3; }
+    const bt = pwObj.bat; if(bt){ bt.P.cells.count = Math.min(BATTERY_CAP, P.batteries||0);
+      const key = (P.batteries||0) + '|' + Math.round((P.charge||0)/BATTERY_KWS*10);
+      if(key !== bt.P.labKey){ bt.P.labKey = key; bt.P.lab.userData.draw(`🔋 ${P.batteries||0}/${BATTERY_CAP} · ${Math.round((P.charge||0)/BATTERY_KWS*100)}%`, '#9cff7a'); } }
+    // blocos andando
+    const spawn = (key, ok, col, geo) => { pwT[key] = (pwT[key]||0) + dt; if(ok && pwPaths[key] && pwT[key] > 0.8){ pwT[key] = 0;
+      const r = new THREE.Mesh(geo || riderGeo, M(col)); world.add(r); pwRiders.push({r, path:pwPaths[key], d:0}); } };
+    spawn('coal', crushers() && S.ore.carvao > 1 && b.moido < POWER_BUF_MAX - 1, '#26262c');
+    spawn('cr', P.lv && P.maq && b.moido > 0.3, '#4a4a52');
+    spawn('st', P.tb && b.vapor > 0.1, '#ffffff', new THREE.SphereGeometry(0.18,8,6));
     const sp = BELT_SPEED*(1 + POWER_BELT_BONUS*ratio);
     for(let k=pwRiders.length-1;k>=0;k--){ const it = pwRiders[k]; it.d += dt*sp;
-      const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,b)=>a+b,0);
+      const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,c)=>a+c,0);
       if(it.d >= tot){ world.remove(it.r); pwRiders.splice(k,1); continue; }
       let d = it.d, s = 0; while(d > lens[s]){ d -= lens[s]; s++; } it.r.position.lerpVectors(it.path[s], it.path[s+1], d/lens[s]); }
   }
   function payPower(dt){
     const P = S.power; if(S.money <= 0) return;
-    if(!P.open){ const r = powerOpenLeft(), pay = Math.min(S.money, r, Math.max(POWER_OPEN_COST*dt/1.6, 1)); S.money -= pay; S.paid.pw_open = (S.paid.pw_open||0) + pay; if(Math.random() < dt*8) burstBills(24, 12, 1); if(powerOpenLeft() <= 0.0001) openPower(); return; }
-    const st = nextPowerStage(); if(!st || !stageTiles[st.id].inside(player.position)) return;
-    const r = powerStageLeft(st), pay = Math.min(S.money, r, Math.max(st.cost*dt/1.6, 1)); S.money -= pay; S.paid['pw_'+st.id] = (S.paid['pw_'+st.id]||0) + pay;
-    if(Math.random() < dt*8) burstBills(UST[st.id], 21.6, 1);
-    if(powerStageLeft(st) <= 0.0001) completePowerStage(st);
+    if(!P.open){ const r = powerOpenLeft(), pay = Math.min(S.money, r, Math.max(POWER_OPEN_COST*dt/1.6, 1)); S.money -= pay; S.paid.pw_open = (S.paid.pw_open||0) + pay; if(Math.random() < dt*8) burstBills(-80, -4, 1); if(powerOpenLeft() <= 0.0001) openPower(); return; }
+    const it = POWER_ITEMS.find(x=>x.kind === 'm' && pwTiles[x.id].mesh.visible && pwTiles[x.id].inside(player.position)); if(!it) return;
+    const r = pwLeft(it), pay = Math.min(S.money, r, Math.max(it.cost*dt/1.6, 1)); S.money -= pay; S.paid['pw_'+it.id] = (S.paid['pw_'+it.id]||0) + pay;
+    if(Math.random() < dt*8) burstBills(PX[it.id][0], PX[it.id][1], 1);
+    if(pwLeft(it) <= 0.0001) completePowerItem(it);
   }
 
   // ---------- campo de petróleo (sudoeste, perto do lago) ----------
@@ -2757,7 +2838,7 @@ function createWorld(){
   const lvlBtns = [];
   MINES3.forEach(o=>{ const bx = o.m.fuel ? o.x - 5.0 : o.x - 3.4; lvlBtns.push({id:o.m.id, tile:makeTile(bx, -6.2), x:bx, z:-6.2}); });
   lvlBtns.push({id:'galpao', tile:makeTile(-4.0, 12.2), x:-4.0, z:12.2});
-  lvlBtns.push({id:'usina', tile:makeTile(27.4, 12.2), x:27.4, z:12.2});
+  lvlBtns.push({id:'usina', tile:makeTile(-70.5, -4.0), x:-70.5, z:-4.0});
   lvlBtns.push({id:'oil', tile:makeTile(-28.6, 12.2), x:-28.6, z:12.2});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
   function updateLvlBtns(t){
@@ -2765,8 +2846,8 @@ function createWorld(){
       let lvl, cost, open = true;
       if(b.id === 'oil'){ const O2 = S.oil, ns = nextOilStage(); lvl = (O2.open?1:0) + OIL_STAGES.filter(st=>O2[st.id]).length + O2.lvl;
         cost = !O2.open ? oilOpenLeft() : ns ? oilStageLeft(ns) : pumpCost(); }
-      else if(b.id === 'usina'){ const P2 = S.power, ns = nextPowerStage(); lvl = (P2.open?1:0) + POWER_STAGES.filter(st=>P2[st.id]).length + P2.lvl;
-        cost = !P2.open ? powerOpenLeft() : ns ? powerStageLeft(ns) : boilerCost(); }
+      else if(b.id === 'usina'){ const P2 = S.power; lvl = (P2.open?1:0) + POWER_ITEMS.filter(it=>P2[it.id]).length + P2.lvl;
+        const av = POWER_ITEMS.filter(pwCan).map(pwLeft); cost = !P2.open ? powerOpenLeft() : av.length ? Math.min(...av) : P2.tb ? boilerCost() : Infinity; }
       else if(b.id === 'galpao'){ lvl = (S.depotOpen?1:0) + S.trucks + S.loaders + S.truckLvl + S.bagLvl; cost = cheapestDepot(); }
       else { const m = mineById(b.id); open = isUnlocked(m); lvl = mineLevelInfo(m).lvl; cost = cheapestUpgrade(m); }
       b.tile.draw(open ? '⬆️' : '🔒', 'NÍVEL ' + lvl, 0, !open);
@@ -2977,7 +3058,7 @@ function createWorld(){
     // zonas: quadrados de compra, mercado, loja
     let z = null;
     if((oilEntry.mesh.visible && oilEntry.inside(p)) || OIL_STAGES.some(st=>oilTiles[st.id].mesh.visible && oilTiles[st.id].inside(p))) z = 'oil';
-    else if((powerEntry.mesh.visible && powerEntry.inside(p)) || POWER_STAGES.some(st=>stageTiles[st.id].mesh.visible && stageTiles[st.id].inside(p))) z = 'pw';
+    else if((powerEntry.mesh.visible && powerEntry.inside(p)) || POWER_ITEMS.some(it=>pwTiles[it.id] && pwTiles[it.id].mesh.visible && pwTiles[it.id].inside(p))) z = 'pw';
     else if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
     else if(marketTile.inside(p)) z = 'market';
     else if(shopTile.inside(p)) z = 'shop';
@@ -2998,7 +3079,7 @@ function createWorld(){
     if(z === 'pw') payPower(dt);
     if(z === 'oil') payOil(dt);
     updateOil(dt, npcT);
-    updatePower(dt, npcT, p);
+    updatePower(dt, npcT);
     updateDelivery(dt, p);
     updateTrophies(npcT);
     updateLvlBtns(npcT);
