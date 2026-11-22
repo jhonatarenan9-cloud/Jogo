@@ -1,25 +1,47 @@
-# Aluga Ferramentas
+# Controle de Locação
 
-App de locação de ferramentas feito com Expo (React Native) e Expo Router.
+App para donos de locadoras (ferramentas, equipamentos, andaimes etc.) controlarem o negócio pelo celular.
+Feito com Expo (React Native) e Expo Router. O modelo de negócio é por assinatura: plano Grátis com limites e plano Pro.
 
 ## O que o app faz
 
-- **Catálogo:** 12 ferramentas em 5 categorias, com busca (sem diferenciar acentos), filtro por categoria e quantas unidades estão livres hoje.
-- **Reserva:** escolha a data de retirada (próximos 14 dias), quantos dias (1 a 30) e se quer retirar na loja ou receber em casa.
-  O app mostra o orçamento completo e avisa quando a ferramenta não está disponível no período.
-- **Preço:** diária × dias, com desconto progressivo (5% a partir de 3 dias, 15% a partir de 7, 25% a partir de 15)
-  e entrega por R$ 15,00. A caução é informada à parte.
-- **Minhas locações:** reservas agrupadas por situação (agendada, em andamento, atrasada, devolvida, cancelada).
-  Dá para cancelar uma reserva agendada e marcar a devolução.
-- **Conta:** nome, celular (com máscara) e endereço. Na primeira reserva o formulário aparece na própria tela da ferramenta.
+- **Início:** locações abertas, atrasadas, recebido no mês e quanto falta receber. Lista quem está atrasado e quem devolve hoje.
+- **Locações:** registrar locação (cliente, itens e quantidades, data de retirada, dias, desconto, frete, caução e pagamento na hora),
+  registrar pagamentos, devolução com multa automática por atraso (uma diária por dia), cancelamento e filtros.
+- **Estoque:** itens com diária, caução e quantidade. Mostra quantas unidades estão livres, e a nova locação não deixa alugar mais do que há livre no período.
+- **Clientes:** cadastro, histórico, quanto cada um deve e botão para chamar no WhatsApp.
+- **WhatsApp:** enviar recibo da locação ou cobrar uma devolução atrasada com a mensagem pronta.
+- **Relatórios (Pro):** recebido por mês, itens que mais faturam e quem está devendo.
+- **Dados de exemplo:** na primeira abertura, um botão preenche o app com uma locadora de demonstração (bom para apresentar a clientes).
 
-Os dados ficam salvos no aparelho (AsyncStorage). Ainda não há servidor nem pagamento.
+## Planos
+
+Definidos em `src/constants/plano.ts`.
+
+| | Grátis | Pro |
+|---|---|---|
+| Itens no estoque | 10 | sem limite |
+| Clientes | 25 | sem limite |
+| Locações por mês | 15 | sem limite |
+| Relatórios | não | sim |
+| Preço | R$ 0 | R$ 39,90/mês ou R$ 399/ano |
+
+O Pro tem 7 dias de teste grátis (uma vez por aparelho).
+
+**A cobrança ainda não está ligada.** O botão "Assinar" mostra um aviso. Para cobrar de verdade, falta:
+1. Escolher o meio: RevenueCat (assinatura pela App Store e Google Play) ou Mercado Pago / Stripe (pagamento pela web).
+2. Preencher `plano.proAte` com a data de validade que o meio de pagamento informar (`src/store/dados.tsx`).
+
+## Dados
+
+Nesta versão tudo fica salvo no aparelho (AsyncStorage). Para usar em vários celulares ou com funcionários,
+o próximo passo é levar `src/store/dados.tsx` para um backend (por exemplo, Supabase) com login.
 
 ## Rodar
 
 ```bash
 npm install
-npx expo start         # abre o QR code para o app Expo Go no celular
+npx expo start         # QR code para abrir no app Expo Go
 npx expo start --web   # versão para navegador
 ```
 
@@ -27,9 +49,11 @@ npx expo start --web   # versão para navegador
 
 | O quê | Arquivo |
 |---|---|
-| Ferramentas, preços, caução e estoque | `src/data/ferramentas.ts` |
-| Descontos e taxa de entrega | `src/lib/preco.ts` |
-| Reservas, disponibilidade e dados salvos | `src/store/locacoes.tsx` |
+| Limites e preços dos planos | `src/constants/plano.ts` |
+| Regras de cálculo (total, multa, saldo, disponibilidade) | `src/lib/calculos.ts` |
+| Estado, gravação e ações (alugar, pagar, devolver) | `src/store/dados.tsx` |
+| Tipos dos dados | `src/store/tipos.ts` |
+| Dados de demonstração | `src/store/exemplo.ts` |
 | Cores e espaçamentos | `src/constants/theme.ts` |
 | Telas | `src/app/` (cada arquivo é uma rota) |
 
@@ -40,4 +64,4 @@ npx tsc --noEmit
 npx expo lint
 ```
 
-Para gerar o app instalável (APK/IPA), use o EAS: `npx eas-cli@latest build` (precisa de uma conta Expo).
+Para gerar o app instalável (APK/IPA): `npx eas-cli@latest build` (precisa de uma conta Expo).

@@ -2,18 +2,16 @@ import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
 
 import { Cores } from '@/constants/theme';
-import { etapaDaLocacao, useLocacoes } from '@/store/locacoes';
+import { etapaDaLocacao } from '@/lib/calculos';
+import { useDados } from '@/store/dados';
 
 function Icone({ emoji, focado }: { emoji: string; focado: boolean }) {
-  return <Text style={{ fontSize: 22, opacity: focado ? 1 : 0.5 }}>{emoji}</Text>;
+  return <Text style={{ fontSize: 21, opacity: focado ? 1 : 0.45 }}>{emoji}</Text>;
 }
 
 export default function TabsLayout() {
-  const { locacoes } = useLocacoes();
-  const abertas = locacoes.filter((l) => {
-    const e = etapaDaLocacao(l);
-    return e === 'agendada' || e === 'em andamento' || e === 'atrasada';
-  }).length;
+  const { locacoes, loja, hoje } = useDados();
+  const atrasadas = locacoes.filter((l) => etapaDaLocacao(l, hoje) === 'atrasada').length;
 
   return (
     <Tabs
@@ -28,28 +26,31 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Catálogo',
-          headerTitle: 'Aluga Ferramentas',
-          tabBarIcon: ({ focused }) => <Icone emoji="🧰" focado={focused} />,
+          title: 'Início',
+          headerTitle: loja.nome || 'Minha locadora',
+          tabBarIcon: ({ focused }) => <Icone emoji="🏠" focado={focused} />,
         }}
       />
       <Tabs.Screen
         name="locacoes"
         options={{
           title: 'Locações',
-          headerTitle: 'Minhas locações',
-          tabBarBadge: abertas > 0 ? abertas : undefined,
-          tabBarBadgeStyle: { backgroundColor: Cores.primaria },
+          tabBarBadge: atrasadas > 0 ? atrasadas : undefined,
+          tabBarBadgeStyle: { backgroundColor: Cores.perigo },
           tabBarIcon: ({ focused }) => <Icone emoji="📋" focado={focused} />,
         }}
       />
       <Tabs.Screen
-        name="conta"
-        options={{
-          title: 'Conta',
-          headerTitle: 'Minha conta',
-          tabBarIcon: ({ focused }) => <Icone emoji="👤" focado={focused} />,
-        }}
+        name="estoque"
+        options={{ title: 'Estoque', tabBarIcon: ({ focused }) => <Icone emoji="🧰" focado={focused} /> }}
+      />
+      <Tabs.Screen
+        name="clientes"
+        options={{ title: 'Clientes', tabBarIcon: ({ focused }) => <Icone emoji="👥" focado={focused} /> }}
+      />
+      <Tabs.Screen
+        name="mais"
+        options={{ title: 'Mais', tabBarIcon: ({ focused }) => <Icone emoji="⚙️" focado={focused} /> }}
       />
     </Tabs>
   );

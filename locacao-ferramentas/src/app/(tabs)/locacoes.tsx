@@ -1,115 +1,87 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Botao, Cartao, Linha, Selo } from '@/components/ui';
-import { Cores, Espaco, LarguraMaxima } from '@/constants/theme';
-import { buscarFerramenta } from '@/data/ferramentas';
-import { formatarData, formatarPreco } from '@/lib/format';
-import { Etapa, etapaDaLocacao, fimDaLocacao, Locacao, useLocacoes } from '@/store/locacoes';
+import { LinhaLocacao } from '@/components/linha-locacao';
+import { Botao, Busca, Chip, Vazio } from '@/components/ui';
+import { Espaco, LarguraMaxima } from '@/constants/theme';
+import { Etapa, etapaDaLocacao, estaAberta } from '@/lib/calculos';
+import { normalizar } from '@/lib/format';
+import { abrirCriacao } from '@/lib/navegar';
+import { useDados } from '@/store/dados';
+import type { Locacao } from '@/store/tipos';
 
-const SELO: Record<Etapa, { cor: string; fundo: string }> = {
-  agendada: { cor: Cores.primariaEscura, fundo: Cores.primariaClara },
-  'em andamento': { cor: Cores.sucesso, fundo: Cores.sucessoClaro },
-  atrasada: { cor: Cores.perigo, fundo: Cores.perigoClaro },
-  devolvida: { cor: Cores.textoSecundario, fundo: Cores.borda },
-  cancelada: { cor: Cores.textoSecundario, fundo: Cores.borda },
-};
+const FILTROS = ['Abertas', 'Atrasadas', 'Hoje', 'Finalizadas', 'Todas'] as const;
+type Filtro = (typeof FILTROS)[number];
 
-const ORDEM: Etapa[] = ['atrasada', 'em andamento', 'agendada', 'devolvida', 'cancelada'];
+const ORDEM: Etapa[] = ['atrasada', 'vence hoje', 'em andamento', 'agendada', 'devolvida', 'cancelada'];
+
+function passaNoFiltro(l: Locacao, f: Filtro, hoje: string) {
+  const e = etapaDaLocacao(l, hoje);
+  if (f === 'Abertas') return estaAberta(l);
+  if (f === 'Atrasadas') return e === 'atrasada';
+  if (f === 'Hoje') return e === 'vence hoje' || (estaAberta(l) && l.inicio === hoje);
+  if (f === 'Finalizadas') return !estaAberta(l);
+  return true;
+}
 
 export default function Locacoes() {
-  const { locacoes, carregado } = useLocacoes();
-  const { nova } = useLocalSearchParams<{ nova?: string }>();
-  const [avisoVisto, setAvisoVisto] = useState(false);
+  const { locacoes, clientes, hoje, podeCriar } = useDados();
+  const [filtro, setFiltro] = useState<Filtro>('Abertas');
+  const [busca, setBusca] = useState('');
 
-  const ordenadas = [...locacoes].sort(
-    (a, b) => ORDEM.indexOf(etapaDaLocacao(a)) - ORDEM.indexOf(etapaDaLocacao(b)) || (a.inicio < b.inicio ? -1 : 1),
-  );
+  const lista = useMemo(() => {
+    const termo = normalizar(busca.trim().replace(/^#/, ''));
+    const nomes = new Map(clientes.map((c) => [c.id, normalizar(c.nome)]));
+    return locacoes
+      .filter((l) => passaNoFiltro(l, filtro, hoje))
+      .filter(
+        (l) =>
+          !termo ||
+          String(l.numero) === termo ||
+          (nomes.get(l.clienteId) ?? '').includes(termo) ||
+          l.itens.some((i) => normalizar(i.nome).includes(termo)),
+      )
+      .sort((a, b) => {
+        const ordem = ORDEM.indexOf(etapaDaLocacao(a, hoje)) - ORDEM.indexOf(etapaDaLocacao(b, hoje));
+        return ordem || b.numero - a.numero;
+      });
+  }, [locacoes, clientes, filtro, busca, hoje]);
 
   return (
     <FlatList
-      data={ordenadas}
+      data={lista}
       keyExtractor={(l) => l.id}
       contentContainerStyle={styles.conteudo}
+      keyboardShouldPersistTaps="handled"
       ListHeaderComponent={
-        nova && !avisoVisto && locacoes.length > 0 ? (
-          <Cartao style={styles.aviso}>
-            <Text style={styles.avisoTexto}>✅ Locação confirmada! Leve um documento com foto na retirada.</Text>
-            <Botao titulo="Ok" variante="secundario" onPress={() => setAvisoVisto(true)} />
-          </Cartao>
-        ) : undefined
+        <View style={{ gap: Espaco.md, marginBottom: Espaco.xs }}>
+          <Botao titulo="+ Nova locação" onPress={() => abrirCriacao('locacoes', podeCriar)} />
+          <Busca valor={busca} onChange={setBusca} placeholder="Buscar por cliente, item ou nº" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: Espaco.sm }}>
+            {FILTROS.map((f) => (
+              <Chip key={f} rotulo={f} ativo={filtro === f} onPress={() => setFiltro(f)} />
+            ))}
+          </ScrollView>
+        </View>
       }
       ListEmptyComponent={
-        carregado ? (
-          <View style={styles.vazio}>
-            <Text style={{ fontSize: 48 }}>🧰</Text>
-            <Text style={styles.vazioTitulo}>Nenhuma locação ainda</Text>
-            <Text style={styles.vazioTexto}>Escolha uma ferramenta no catálogo e reserve em poucos toques.</Text>
-            <Botao titulo="Ver catálogo" onPress={() => router.navigate('/')} />
-          </View>
-        ) : undefined
+        <Vazio
+          emoji="📋"
+          titulo={locacoes.length === 0 ? 'Nenhuma locação registrada' : 'Nada por aqui'}
+          texto={locacoes.length === 0 ? 'Toque em “Nova locação” para registrar a primeira.' : 'Nenhuma locação neste filtro.'}
+        />
       }
-      renderItem={({ item }) => <ItemLocacao l={item} />}
+      renderItem={({ item }) => <LinhaLocacao l={item} />}
     />
-  );
-}
-
-function ItemLocacao({ l }: { l: Locacao }) {
-  const { devolver, cancelar } = useLocacoes();
-  const ferramenta = buscarFerramenta(l.ferramentaId);
-  const etapa = etapaDaLocacao(l);
-  const [confirmando, setConfirmando] = useState(false);
-
-  return (
-    <Cartao style={{ gap: Espaco.sm }}>
-      <View style={styles.cabecalho}>
-        <Text style={{ fontSize: 30 }}>{ferramenta?.emoji ?? '🔧'}</Text>
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={styles.nome}>{ferramenta?.nome ?? 'Ferramenta'}</Text>
-          <Selo texto={etapa} {...SELO[etapa]} />
-        </View>
-      </View>
-      <Linha rotulo="Retirada" valor={formatarData(l.inicio)} />
-      <Linha rotulo="Devolução" valor={formatarData(fimDaLocacao(l))} />
-      <Linha rotulo="Recebimento" valor={l.entrega ? 'Entrega' : 'Retirar na loja'} />
-      <Linha rotulo="Total" valor={formatarPreco(l.total)} destaque />
-
-      {etapa === 'agendada' &&
-        (confirmando ? (
-          <View style={styles.acoes}>
-            <Botao titulo="Manter" variante="secundario" onPress={() => setConfirmando(false)} style={{ flex: 1 }} />
-            <Botao titulo="Sim, cancelar" variante="perigo" onPress={() => cancelar(l.id)} style={{ flex: 1 }} />
-          </View>
-        ) : (
-          <Botao titulo="Cancelar reserva" variante="secundario" onPress={() => setConfirmando(true)} />
-        ))}
-      {(etapa === 'em andamento' || etapa === 'atrasada') && (
-        <Botao titulo="Marcar como devolvida" onPress={() => devolver(l.id)} />
-      )}
-      {etapa === 'atrasada' && (
-        <Text style={styles.atraso}>O prazo acabou. Devolva logo para não pagar diárias extras.</Text>
-      )}
-    </Cartao>
   );
 }
 
 const styles = StyleSheet.create({
   conteudo: {
     padding: Espaco.lg,
-    gap: Espaco.md,
+    gap: Espaco.sm,
     width: '100%',
     maxWidth: LarguraMaxima,
     alignSelf: 'center',
-    flexGrow: 1,
   },
-  aviso: { backgroundColor: Cores.sucessoClaro, borderColor: Cores.sucessoClaro, gap: Espaco.md },
-  avisoTexto: { fontSize: 15, color: Cores.sucesso, fontWeight: '600' },
-  cabecalho: { flexDirection: 'row', alignItems: 'center', gap: Espaco.md, marginBottom: Espaco.xs },
-  nome: { fontSize: 16, fontWeight: '700', color: Cores.texto },
-  acoes: { flexDirection: 'row', gap: Espaco.sm },
-  atraso: { fontSize: 13, color: Cores.perigo },
-  vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Espaco.md, paddingVertical: 60 },
-  vazioTitulo: { fontSize: 18, fontWeight: '700', color: Cores.texto },
-  vazioTexto: { fontSize: 15, color: Cores.textoSecundario, textAlign: 'center', maxWidth: 280 },
 });
