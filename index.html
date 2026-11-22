@@ -104,6 +104,30 @@
   .tabs{flex-wrap:wrap}
   .tabs button{min-width:30%}
   h3.subhead{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:14px 0 8px}
+  .subtabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;scrollbar-width:thin}
+  .subtab{display:flex;align-items:center;gap:5px;flex:none;padding:6px 9px;border-radius:20px;font-size:12px;background:#2c241d}
+  .subtab small{font-size:10px;color:var(--muted);background:rgba(0,0,0,.25);padding:1px 6px;border-radius:10px}
+  .subtab.on{background:#7a5a1c;border-color:#e0b14a}
+  .subtab.on small{color:#fff}
+  .subtab.locked{opacity:.55}
+  .flowCard{background:linear-gradient(160deg,#2f271f,#231c16);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
+  .flowHead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .flowPct{margin-left:auto;font-size:12px;color:var(--gold)}
+  .flow{display:flex;align-items:center;justify-content:space-between;gap:2px}
+  .fstep{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--muted);flex:1;min-width:0}
+  .fico{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;background:#1a1410;
+    border:2px dashed #5a4838;filter:grayscale(1);opacity:.55;transition:.3s}
+  .fstep.on{color:var(--text)}
+  .fstep.on .fico{border:2px solid #9cff7a;background:#22331a;filter:none;opacity:1;box-shadow:0 0 12px rgba(156,255,122,.25)}
+  .farrow{color:#4a3e33;font-size:16px}
+  .farrow.on{color:#9cff7a;animation:flowPulse 1.2s infinite}
+  @keyframes flowPulse{50%{transform:translateX(3px)}}
+  @media (prefers-reduced-motion:reduce){.farrow.on{animation:none}}
+  .flowStats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+  .flowStats div{background:rgba(0,0,0,.25);border-radius:9px;padding:6px 4px;text-align:center;display:flex;flex-direction:column;min-width:0}
+  .flowStats small{font-size:10px;color:var(--muted)}
+  .flowStats b{font-size:13px;font-variant-numeric:tabular-nums}
+  .doneBox{background:#1f3318;border:1px solid #4f8a3a;color:#b9f59c;border-radius:10px;padding:10px;font-size:13px;margin-bottom:8px}
   .staffCard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
   .staffCard.locked{opacity:.55}
   .staffHead{display:flex;align-items:center;gap:10px}
@@ -426,7 +450,7 @@ function buildStaff(){
     el.appendChild(card);
   });
 }
-let tab = 'tools';
+let tab = 'tools', factoryMine = null;
 function buildShop(){
   const el = document.getElementById('shop'); el.innerHTML='';
   const add = (ico,name,desc,right) => {
@@ -447,24 +471,47 @@ function buildShop(){
       add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}${warn}`, right);
     });
   } else if(tab==='factory'){
-    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem a sua fundição, dentro do cercado. Ela transforma ${ORES_PER_BAR} minérios em 1 barra que vale ${BAR_MULT}x o minério: <b style="color:#9cff7a">${BAR_MULT/ORES_PER_BAR}x mais dinheiro</b> do que vender o minério bruto. <b style="color:var(--gold)">Ela custa bem menos que a próxima mina e quadruplica o que você ganha: vale a pena completar a fundição (fundição, esteira e esteira de venda) antes de seguir.</b> A fundição também pode ser paga pisando no quadrado 🏭 dentro da mina.</p>`);
+    // sub-abas: uma por mina
+    if(!factoryMine || !MINES.find(m=>m.id===factoryMine)) factoryMine = (MINES.find(m=>isUnlocked(m) && !factoryDone(m)) || mineById(S.active)).id;
+    const sub = document.createElement('div'); sub.className = 'subtabs';
     MINES.forEach(m=>{
-      const gem = `<span class="gem" style="display:inline-block;width:24px;height:24px;background:${m.color}"></span>`;
-      let r1, r2;
-      if(!isUnlocked(m)) r1 = tag('🔒','var(--muted)');
-      else if(S.smelters[m.id]) r1 = tag('✔ Construída');
-      else r1 = btn(money(smelterLeft(m)), ()=>buySmelter(m), smelterLeft(m));
-      add(gem, `Fundição · ${m.name}`, `${ORES_PER_BAR} ${m.name.toLowerCase()} = ${money(ORES_PER_BAR*m.value)} → 1 barra = <b style="color:#9cff7a">${money(barValue(m))}</b> (${BAR_MULT/ORES_PER_BAR}x)`, r1);
-      if(S.belts[m.id]) r2 = tag('✔ Instalada');
-      else if(!S.smelters[m.id]) r2 = tag('🔒','var(--muted)');
-      else r2 = btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]);
-      add('🛤️', `Esteira · ${m.name}`, `Leva ${fmt(beltRate(m))} ${m.name.toLowerCase()}/s da pilha até a fundição`, r2);
-      let r3;
-      if(S.sellBelts[m.id]) r3 = tag('✔ Instalada');
-      else if(!S.smelters[m.id]) r3 = tag('🔒','var(--muted)');
-      else r3 = btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]);
-      add('💵', `Esteira de Venda · ${m.name}`, `Leva as barras da fundição até a caixa de venda e vende sozinha. Sem a esteira da fundição, vende o minério direto.`, r3);
+      const b = document.createElement('button'); b.className = 'subtab' + (m.id===factoryMine ? ' on' : '') + (isUnlocked(m) ? '' : ' locked');
+      const n = isUnlocked(m) ? 3 - factoryMissing(m).length : 0;
+      b.innerHTML = `<span class="gem" style="width:16px;height:16px;background:${m.color}"></span><span>${m.name}</span><small>${isUnlocked(m) ? (n===3 ? '✔' : n+'/3') : '🔒'}</small>`;
+      b.onclick = ()=>{ factoryMine = m.id; buildShop(); render(); };
+      sub.appendChild(b);
     });
+    el.appendChild(sub);
+
+    const m = mineById(factoryMine), un = isUnlocked(m);
+    const has = {sm:!!S.smelters[m.id], belt:!!S.belts[m.id], sell:!!S.sellBelts[m.id]};
+    // diagrama do caminho do minério
+    const step = (on, ico, label) => `<div class="fstep${on?' on':''}"><div class="fico">${ico}</div><div>${label}</div></div>`;
+    const arrow = on => `<div class="farrow${on?' on':''}">➜</div>`;
+    const flow = document.createElement('div'); flow.className = 'flowCard';
+    flow.innerHTML = `<div class="flowHead"><span class="gem" style="width:22px;height:22px;background:${m.color}"></span>
+        <b>Mina de ${m.name}</b><span class="flowPct">${un ? (3-factoryMissing(m).length)+'/3 itens' : '🔒 mina fechada'}</span></div>
+      <div class="flow">${step(un,'⛏️','Pilha')}${arrow(has.belt)}${step(has.belt,'🛤️','Esteira')}${arrow(has.belt && has.sm)}${step(has.sm,'🏭','Fundição')}${arrow(has.sell)}${step(has.sell,'💵','Venda')}</div>
+      <div class="flowStats">
+        <div><small>Minério bruto</small><b>${money(ORES_PER_BAR*m.value)}</b><small>por ${ORES_PER_BAR}</small></div>
+        <div><small>Barra</small><b style="color:#9cff7a">${money(barValue(m))}</b><small>${BAR_MULT/ORES_PER_BAR}x mais</small></div>
+        <div><small>Esteira</small><b>${fmt(beltRate(m))}/s</b><small>minério</small></div>
+        <div><small>Barras agora</small><b>${fmt(S.bars[m.id]||0)}</b><small>${hasSellBelt(m) ? 'vendendo' : 'no estoque'}</small></div>
+      </div>`;
+    el.appendChild(flow);
+
+    if(!un){
+      el.insertAdjacentHTML('beforeend', `<div class="lockedBox">🔒 Abra a mina de <b style="color:${m.color}">${m.name}</b> primeiro (${toolById(m.tool).name}, na aba Ferramentas).</div>`);
+    } else {
+      add('🏭', `1. Fundição`, `Transforma ${ORES_PER_BAR} minérios em 1 barra. Também dá para pagar pisando no quadrado 🏭 dentro da mina.`,
+        has.sm ? tag('✔ Construída') : btn(money(smelterLeft(m)), ()=>buySmelter(m), smelterLeft(m)));
+      add('🛤️', `2. Esteira de minério`, `Leva ${fmt(beltRate(m))} ${m.name.toLowerCase()}/s da pilha até a fundição.`,
+        has.belt ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(BELT_COST[m.id]), ()=>buyBelt(m), BELT_COST[m.id]));
+      add('💵', `3. Esteira de venda`, `Leva as barras até a caixa de venda e vende sozinha. Sem a esteira de minério, vende o minério direto.`,
+        has.sell ? tag('✔ Instalada') : !has.sm ? tag('🔒 Fundição','var(--muted)') : btn(money(SELLBELT_COST[m.id]), ()=>buySellBelt(m), SELLBELT_COST[m.id]));
+      if(factoryDone(m)) el.insertAdjacentHTML('beforeend', `<div class="doneBox">✅ Fundição completa! A mina de ${m.name} rende ${BAR_MULT/ORES_PER_BAR}x mais.</div>`);
+    }
+    el.insertAdjacentHTML('beforeend', `<h3 class="subhead">Todas as minas</h3>`);
     const bc = beltSpeedCost();
     add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, '+50% de velocidade em todas as esteiras',
       MINES.some(hasBelt) ? btn(money(bc), ()=>{ if(S.money<bc) return; S.money-=bc; S.beltLvl++; buildShop(); render(); save(); }, bc) : tag('🔒','var(--muted)'));
