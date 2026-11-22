@@ -3463,7 +3463,31 @@ function createWorld(){
     camPos.lerp(new THREE.Vector3().copy(p).add(CAM_OFF).add(LOOK_SHIFT), Math.min(1, dt*6));
     camera.position.copy(camPos);
     camera.lookAt(camPos.x - CAM_OFF.x, 0.6, camPos.z - CAM_OFF.z);
+    fadeOccluders(p);
     R.render(world, camera);
+  }
+  // o que fica entre a câmera e o mineiro fica transparente
+  const occRay = new THREE.Raycaster(), occFaded = new Set(), occTarget = new THREE.Vector3(), occDir = new THREE.Vector3();
+  let occT = 0;
+  function fadeOccluders(p){
+    occT++; if(occT % 3) return;
+    const hitNow = new Set();
+    for(const h of [0.6, 1.4]){
+      occTarget.set(p.x, h, p.z); occDir.subVectors(occTarget, camera.position); const dist = occDir.length(); occDir.normalize();
+      occRay.set(camera.position, occDir); occRay.camera = camera; occRay.far = dist - 0.6;
+      for(const it of occRay.intersectObjects(world.children, true)){
+        const o = it.object; if(!o.isMesh || o.isInstancedMesh || o.isSprite) continue;
+        let q = o, isPlayer = false; while(q){ if(q === player) { isPlayer = true; break; } q = q.parent; } if(isPlayer) continue;
+        if(o.geometry && o.geometry.type === 'PlaneGeometry') continue;   // chão e quadrados
+        const grp = o.parent && o.parent !== world && !o.parent.isScene ? o.parent : null;   // a máquina inteira (ex.: caldeira + chaminé)
+        if(grp) grp.traverse(c=>{ if(c.isMesh && !c.isInstancedMesh && c.geometry.type !== 'PlaneGeometry') hitNow.add(c); }); else hitNow.add(o);
+      }
+    }
+    for(const o of hitNow) if(!occFaded.has(o)){
+      if(!o.userData.fadeMat){ o.userData.origMat = o.material; o.userData.fadeMat = o.material.clone(); o.userData.fadeMat.transparent = true; o.userData.fadeMat.opacity = 0.28; o.userData.fadeMat.depthWrite = false; }
+      o.material = o.userData.fadeMat; o.castShadow = false; occFaded.add(o);
+    }
+    for(const o of [...occFaded]) if(!hitNow.has(o)){ o.material = o.userData.origMat; o.castShadow = true; occFaded.delete(o); }
   }
   function doSell(quiet){
     const v = sellAll(true);
