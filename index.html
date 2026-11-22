@@ -99,6 +99,20 @@
   .owned{color:var(--ok);font-size:13px;font-weight:600;min-width:96px;text-align:center}
   .count{font-size:12px;color:var(--gold)}
   .small{font-size:12px;color:var(--muted)}
+  .staffCard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
+  .staffCard.locked{opacity:.55}
+  .staffHead{display:flex;align-items:center;gap:10px}
+  .staffHead .info{flex:1;min-width:0}
+  .staffCard .name{font-weight:600}
+  .staffCard .sub{font-size:12px;color:var(--muted)}
+  .staffRow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+  .staffRow button{font-size:13px;min-width:120px}
+  .mgrRow{border-top:1px solid var(--line);padding-top:8px}
+  .slots{display:flex;gap:6px}
+  .slot{width:34px;height:34px;border-radius:9px;border:2px dashed #5a4838;display:flex;align-items:center;justify-content:center;font-size:18px}
+  .slot.on{border:2px solid var(--gold);background:#3a2f26}
+  #dock button{width:70px}
+  @media (max-width:380px){#dock{gap:6px} #dock button{width:62px;font-size:11px}}
   a.reset{color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline}
   #toast{position:fixed;left:50%;bottom:calc(104px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
     padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:20;max-width:90vw;text-align:center}
@@ -117,6 +131,7 @@
   <nav id="dock">
     <button data-open="shop"><span>🛠️</span>Loja</button>
     <button data-open="inv"><span>🎒</span>Minério<i id="invBadge" hidden></i></button>
+    <button data-open="staff"><span>👷</span>Funcionários</button>
     <button data-open="mines"><span>⛰️</span>Minas</button>
   </nav>
   <div id="sheet" hidden>
@@ -126,10 +141,13 @@
         <section data-panel="shop" id="shopPanel">
           <div class="tabs">
             <button data-tab="tools" class="on">Ferramentas</button>
-            <button data-tab="helpers">Ajudantes</button>
             <button data-tab="upgrades">Melhorias</button>
           </div>
           <div id="shop"></div>
+        </section>
+        <section data-panel="staff">
+          <p class="small" style="margin-top:0">Cada mina aceita até 3 ajudantes. O gerente faz os ajudantes da mina dele trabalharem 2x mais rápido.</p>
+          <div id="staff"></div>
         </section>
         <section data-panel="inv">
           <div class="inv" id="inv"></div>
@@ -167,13 +185,9 @@ const TOOLS = [
   {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:75000,   power:20, passive:8,  desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
   {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:2000000, power:60, passive:40, desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
-const HELPERS = [
-  {id:'mineiro',  name:'Mineiro',               ico:'👷', base:15,      rate:0.3, desc:'Minera sozinho para você.'},
-  {id:'carrinho', name:'Carrinho de Mina',      ico:'🛒', base:200,     rate:2,   desc:'Transporta minério pelos trilhos.'},
-  {id:'caminhao', name:'Caminhão Basculante',   ico:'🚚', base:4000,    rate:12,  desc:'Leva toneladas para a superfície.'},
-  {id:'esteira',  name:'Esteira Transportadora',ico:'🏭', base:80000,   rate:70,  desc:'Fluxo contínuo de minério.'},
-  {id:'robo',     name:'Robô Minerador',        ico:'🤖', base:1500000, rate:400, desc:'Automação total, nunca descansa.'},
-];
+// Funcionários: até 3 ajudantes por mina + 1 gerente por mina
+const STAFF_COST = {cobre:20, ferro:160, ouro:1300, diamante:10000, esmeralda:80000};
+const MAX_HELPERS = 3, HELPER_RATE = 0.5, MANAGER_MULT = 2, MANAGER_COST_MULT = 25;
 const GOAL = 1000; // esmeraldas para vencer
 
 // ===================== ESTADO =====================
@@ -184,7 +198,7 @@ function newState(){
     ore:Object.fromEntries(MINES.map(m=>[m.id,0])),
     mined:Object.fromEntries(MINES.map(m=>[m.id,0])),
     tools:{madeira:true}, paid:{},
-    helpers:Object.fromEntries(HELPERS.map(h=>[h.id,0])),
+    staff:Object.fromEntries(MINES.map(m=>[m.id,{n:0, mgr:false}])),
     sharpen:0, boost:0, autoSell:false,
     active:'cobre', won:false, last:Date.now()
   };
@@ -194,7 +208,14 @@ try{
   const raw = localStorage.getItem(SAVE_KEY);
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
-    S.helpers = Object.assign(newState().helpers, d.helpers); S.paid = d.paid || {}; }
+    S.paid = d.paid || {};
+    S.staff = newState().staff;
+    if(d.staff){ for(const m of MINES) if(d.staff[m.id]) S.staff[m.id] = {n:Math.min(MAX_HELPERS, d.staff[m.id].n|0), mgr:!!d.staff[m.id].mgr}; }
+    else if(d.helpers){ // save antigo: converte os ajudantes antigos em ajudantes por mina
+      let left = Object.values(d.helpers).reduce((a,v)=>a+(v|0),0);
+      for(const m of MINES) if(S.tools[m.tool] && left>0){ const k = Math.min(MAX_HELPERS, left); S.staff[m.id].n = k; left -= k; }
+    }
+    delete S.helpers; }
 }catch(e){}
 function save(){ S.last = Date.now(); try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
 
@@ -207,15 +228,23 @@ const canBuy = t => toolIndex(t) === 0 || !!S.tools[TOOLS[toolIndex(t)-1].id];
 const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
 function clickPower(){ return bestTool().power * (1 + 0.5*S.sharpen); }
-function helperCost(h){ return Math.ceil(h.base * Math.pow(1.15, S.helpers[h.id])); }
+function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(1.8, S.staff[m.id].n)); }
+function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
+const boostMult = () => 1 + 0.25*S.boost;
+// minério/s de uma mina vindo dos ajudantes
+function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * boostMult() : 0; }
+// minério/s das máquinas (vai para a mina ativa)
+function machineRate(){ let r = 0; for(const t of TOOLS) if(S.tools[t.id]) r += t.passive; return r * boostMult(); }
+function incomePerSec(){ return MINES.reduce((a,m)=>a + mineRate(m)*m.value, 0) + machineRate()*mineById(S.active).value; }
 function sharpenCost(){ return Math.ceil(50 * Math.pow(2.4, S.sharpen)); }
 function boostCost(){ return Math.ceil(500 * Math.pow(3, S.boost)); }
 const AUTOSELL_COST = 1000;
-function orePerSec(){
-  let r = 0;
-  for(const h of HELPERS) r += S.helpers[h.id]*h.rate;
-  for(const t of TOOLS) if(S.tools[t.id]) r += t.passive;
-  return r * (1 + 0.25*S.boost);
+function produce(sec){
+  const gained = {};
+  for(const m of MINES){ const r = mineRate(m); if(r > 0) gained[m.id] = r*sec; }
+  const mr = machineRate(); if(mr > 0) gained[S.active] = (gained[S.active]||0) + mr*sec;
+  for(const id in gained) addOre(id, gained[id]);
+  return gained;
 }
 function fmt(n){
   if(n < 1000) return (Math.floor(n*10)/10).toLocaleString('pt-BR');
@@ -251,10 +280,17 @@ function buyTool(t){
   if(S.tools[t.id] || !canBuy(t) || S.money < r) return;
   S.money -= r; completeTool(t);
 }
-function buyHelper(h){
-  const c = helperCost(h); if(S.money < c) return;
-  S.money -= c; S.helpers[h.id]++; render(); save();
-  toast(`${h.ico} ${h.name} contratado! Trabalhando na mina de ${mineById(S.active).name}.`);
+function hireHelper(m){
+  const st = S.staff[m.id], c = helperCost(m);
+  if(!isUnlocked(m) || st.n >= MAX_HELPERS || S.money < c) return;
+  S.money -= c; st.n++; buildStaff(); render(); save();
+  toast(`👷 Ajudante contratado na mina de ${m.name}! (${st.n}/${MAX_HELPERS})`);
+}
+function hireManager(m){
+  const st = S.staff[m.id], c = managerCost(m);
+  if(!isUnlocked(m) || st.mgr || S.money < c) return;
+  S.money -= c; st.mgr = true; buildStaff(); render(); save();
+  toast(`👔 Gerente contratado! Os ajudantes da mina de ${m.name} trabalham ${MANAGER_MULT}x mais rápido.`);
 }
 
 // ===================== INTERFACE =====================
@@ -277,6 +313,29 @@ function buildMines(){
     el.appendChild(d);
   });
 }
+function buildStaff(){
+  const el = document.getElementById('staff'); el.innerHTML = '';
+  MINES.forEach((m,i)=>{
+    const st = S.staff[m.id], un = isUnlocked(m);
+    const card = document.createElement('div'); card.className = 'staffCard' + (un ? '' : ' locked');
+    const slots = Array.from({length:MAX_HELPERS}, (_,k)=>`<span class="slot${k<st.n?' on':''}">${k<st.n?'👷':''}</span>`).join('');
+    const rate = mineRate(m);
+    card.innerHTML = `<div class="staffHead"><div class="gem" style="background:${m.color}"></div>
+      <div class="info"><div class="name">Nível ${i+1}: ${m.name}</div>
+      <div class="sub">${un ? (rate>0 ? `${fmt(rate)} ${m.name.toLowerCase()}/s ≈ ${money(rate*m.value)}/s` : 'Sem funcionários') : '🔒 Abra a mina primeiro'}</div></div></div>
+      <div class="staffRow"><div class="slots">${slots}</div></div>
+      <div class="staffRow mgrRow"><div><b>👔 Gerente</b><div class="sub">${st.mgr ? 'Ajudantes '+MANAGER_MULT+'x mais rápidos' : 'Deixa os ajudantes '+MANAGER_MULT+'x mais rápidos'}</div></div></div>`;
+    const r1 = card.querySelectorAll('.staffRow')[0], r2 = card.querySelectorAll('.staffRow')[1];
+    const mk = (label, cost, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; if(cost!=null) b.dataset.cost = cost; else b.disabled = true; return b; };
+    if(!un) r1.appendChild(mk('🔒', null));
+    else if(st.n >= MAX_HELPERS) r1.appendChild(mk('Completo', null));
+    else r1.appendChild(mk('Contratar ' + money(helperCost(m)), helperCost(m), ()=>hireHelper(m)));
+    if(st.mgr){ const t = document.createElement('div'); t.className = 'owned'; t.textContent = '✔ Contratado'; r2.appendChild(t); }
+    else if(!un) r2.appendChild(mk('🔒', null));
+    else r2.appendChild(mk('Contratar ' + money(managerCost(m)), managerCost(m), ()=>hireManager(m)));
+    el.appendChild(card);
+  });
+}
 let tab = 'tools';
 function buildShop(){
   const el = document.getElementById('shop'); el.innerHTML='';
@@ -295,25 +354,19 @@ function buildShop(){
       else right = btn(money(remaining(t)), ()=>buyTool(t), remaining(t));
       add(t.ico, t.name, `${t.desc}<br>${fmt(t.power)}/golpe${t.passive?' · +'+fmt(t.passive)+'/s':''}`, right);
     });
-  } else if(tab==='helpers'){
-    HELPERS.forEach(h=>{
-      const c = helperCost(h);
-      add(h.ico, `${h.name} <span class="count">x${S.helpers[h.id]}</span>`, `${h.desc}<br>+${fmt(h.rate)} minério/s cada`, btn(money(c), ()=>{buyHelper(h); buildShop();}, c));
-    });
   } else {
     const sc = sharpenCost();
     add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, '+50% de minério por golpe', btn(money(sc), ()=>{ if(S.money<sc)return; S.money-=sc; S.sharpen++; buildShop(); render(); save(); }, sc));
     const bc = boostCost();
-    add('⚙️', `Manutenção <span class="count">nv ${S.boost}</span>`, '+25% de produção automática', btn(money(bc), ()=>{ if(S.money<bc)return; S.money-=bc; S.boost++; buildShop(); render(); save(); }, bc));
-    add('💼', 'Gerente de Vendas', 'Vende todo minério automaticamente', S.autoSell ? tag('✔ Ativo') :
+    add('⚙️', `Manutenção <span class="count">nv ${S.boost}</span>`, '+25% na produção dos funcionários e máquinas', btn(money(bc), ()=>{ if(S.money<bc)return; S.money-=bc; S.boost++; buildShop(); render(); save(); }, bc));
+    add('💼', 'Vendedor Automático', 'Vende todo minério automaticamente', S.autoSell ? tag('✔ Ativo') :
       btn(money(AUTOSELL_COST), ()=>{ if(S.money<AUTOSELL_COST)return; S.money-=AUTOSELL_COST; S.autoSell=true; sellAll(true); buildShop(); render(); save(); }, AUTOSELL_COST));
   }
 }
 function render(){
   const m = mineById(S.active);
   document.getElementById('money').textContent = money(S.money);
-  const ops = orePerSec();
-  document.getElementById('rate').textContent = `${fmt(ops)} ${m.name.toLowerCase()}/s ≈ ${money(ops*m.value)}/s`;
+  document.getElementById('rate').textContent = `+${money(incomePerSec())}/s em minério`;
   document.getElementById('hud').innerHTML =
     `${bestTool().ico} ${bestTool().name} · <b>${fmt(clickPower())}</b>/golpe<br>Mina ativa: <b style="color:${m.color}">${m.name}</b>`;
   const inv = document.getElementById('inv'); inv.innerHTML='';
@@ -325,7 +378,7 @@ function render(){
   document.getElementById('sellBtn').disabled = total<=0;
   const badge = document.getElementById('invBadge'); badge.hidden = total<=0; badge.textContent = money(total);
   document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
-  document.querySelectorAll('#shop button').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
+  document.querySelectorAll('#shop button, #staff button[data-cost]').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
   if(next){ const r = remaining(next); pct = Math.min(1, (S.money + next.cost - r)/next.cost);
@@ -602,63 +655,68 @@ function createWorld(){
   function refreshPick(){ player.userData.pickHead.material = M(PICK_COL[bestTool().id]); }
   refreshPick();
 
-  // ajudantes visuais: um boneco por ajudante comprado (até 10), minerando na mina ativa
-  const NPC_LOOK = {
-    mineiro: ['#f08a24','#ffffff','#5a6b7a'],
-    carrinho:['#3aa35a','#ffcf3f','#4a5a3a'],
-    caminhao:['#2f80ed','#ff8a2a','#33415c'],
-    esteira: ['#8e5bd6','#ffffff','#3d3550'],
-    robo:    ['#9aa3ad','#5b6b7a','#6b7480','#c9d1d9'],
-  };
-  const NPC_SPOTS = [[-2.6,-9.2],[2.7,-11.3],[-1.1,-12.1],[1.0,-12.1],[-2.7,-11.0],[0.3,-9.3],[2.4,-12.1],[-2.1,-8.2],[-0.6,-8.9],[2.9,-10.2]];
-  const MAX_NPC = NPC_SPOTS.length;
-  let npcs = [], npcSig = '', npcKeys = new Set();
-  const helperSign = labelSprite(3.2); helperSign.visible = false;
-  function makeCart(color){
-    const g = new THREE.Group();
-    mesh(new THREE.BoxGeometry(0.75,0.4,0.5), M('#7a5230'), 0, 0.42, 0, g);
-    for(let k=0;k<3;k++) mesh(new THREE.BoxGeometry(0.2,0.2,0.2), M(color), -0.2+k*0.2, 0.68, (k%2)*0.1-0.05, g);
-    for(const [x,z] of [[-0.25,0.27],[0.25,0.27],[-0.25,-0.27],[0.25,-0.27]]){
-      const w = mesh(new THREE.CylinderGeometry(0.12,0.12,0.06,10), M('#2b2b2b'), x, 0.14, z, g); w.rotation.x = Math.PI/2;
-    }
+  // funcionários visuais: até 3 ajudantes + 1 gerente em cada mina
+  const HELPER_SPOTS = [[-2.6,-9.3],[2.7,-11.3],[-2.7,-11.2]];
+  const MGR_SPOT = [-1.9,-8.1];
+  function makeManager(){
+    const g = makeMiner('#24324a', '#ffffff', '#24324a');
+    const P = g.userData;
+    P.pickHead.parent.visible = false;                       // gerente não usa picareta
+    mesh(new THREE.BoxGeometry(0.08,0.3,0.02), M('#d94a4a'), 0, 1.1, 0.16, g);        // gravata
+    mesh(new THREE.BoxGeometry(0.3,0.08,0.02), M('#ffffff'), 0, 1.3, 0.155, g);       // colarinho
+    const clip = mesh(new THREE.BoxGeometry(0.26,0.34,0.04), M('#8a5a30'), 0, -0.5, 0.12, P.armL);   // prancheta
+    mesh(new THREE.BoxGeometry(0.2,0.26,0.01), M('#ffffff'), 0, 0, 0.025, clip);
+    P.armL.rotation.x = -0.9;
     return g;
   }
-  function syncNpcs(){
-    const o = MINES3[MINES.findIndex(m=>m.id===S.active)];
-    const sig = S.active+'|'+HELPERS.map(h=>S.helpers[h.id]).join(',');
-    if(sig === npcSig) return;
-    const firstSync = npcSig === '';
-    npcSig = sig;
-    for(const n of npcs) world.remove(n.obj);
-    // intercala os tipos para que todos apareçam
-    const left = HELPERS.map(h=>S.helpers[h.id]), list = [], seen = {};
-    while(list.length < MAX_NPC && left.some(v=>v>0)){
-      for(let t=HELPERS.length-1; t>=0 && list.length<MAX_NPC; t--) if(left[t]>0){
-        left[t]--; const id = HELPERS[t].id; seen[id] = (seen[id]||0)+1; list.push({id, key:id+seen[id]});
-      }
-    }
-    const oldKeys = npcKeys; npcKeys = new Set(list.map(l=>l.key));
-    npcs = list.map((l,k)=>{
-      const [shirt, helmet, pants, skin] = NPC_LOOK[l.id];
-      const obj = new THREE.Group(), miner = makeMiner(shirt, helmet, pants, skin);
-      obj.add(miner);
-      if(l.id === 'robo') miner.userData.pickHead.material = M('#ffcf3f');
-      if(l.id === 'carrinho'){ const c = makeCart(o.m.color); c.position.set(-0.75, 0, -0.1); obj.add(c); }
-      const [dx,z] = NPC_SPOTS[k]; obj.position.set(o.x+dx, 0, z);
+  function syncStaff(o){
+    const st = S.staff[o.m.id], sig = st.n + '|' + st.mgr;
+    if(sig === o.staffSig) return;
+    const first = o.staffSig === undefined;
+    o.staffSig = sig; o.workers = o.workers || []; o.mgrObj = o.mgrObj || null;
+    // ajudantes novos
+    while(o.workers.length < st.n){
+      const k = o.workers.length, obj = makeMiner('#f08a24', '#ffffff', '#5a6b7a');
+      const [dx,z] = HELPER_SPOTS[k]; obj.position.set(o.x+dx, 0, z);
       const rock = o.rocks.reduce((b,r)=> r.position.distanceTo(obj.position) < b.position.distanceTo(obj.position) ? r : b);
       obj.rotation.y = Math.atan2(rock.position.x-obj.position.x, rock.position.z-obj.position.z);
-      const isNew = !firstSync && !oldKeys.has(l.key);
-      obj.scale.setScalar(isNew ? 0.01 : 0.85);
-      world.add(obj);
-      if(isNew){
-        const h = HELPERS.find(h=>h.id===l.id);
-        setTimeout(()=>floatText(h.ico+' +1', obj.position.clone().setY(2.2), '#ffffff'), 50);
-      }
-      return {obj, miner, rock, prevS:0, pop: isNew ? 0 : 1};
+      obj.scale.setScalar(first ? 0.85 : 0.01); world.add(obj);
+      o.workers.push({obj, rock, prevS:0, pop: first ? 1 : 0, ph: Math.random()});
+      if(!first) floatText('👷 +1', obj.position.clone().setY(2.2), '#ffffff');
+    }
+    // gerente
+    if(st.mgr && !o.mgrObj){
+      const obj = makeManager(); obj.position.set(o.x+MGR_SPOT[0], 0, MGR_SPOT[1]);
+      obj.rotation.y = Math.atan2(o.x - obj.position.x, -10.5 - obj.position.z);
+      obj.scale.setScalar(first ? 0.9 : 0.01); world.add(obj);
+      o.mgrObj = {obj, pop: first ? 1 : 0};
+      if(!first) floatText('👔 Gerente!', obj.position.clone().setY(2.3), '#ffd27a');
+    }
+    const parts = [];
+    if(st.n) parts.push(`👷 ${st.n}/${MAX_HELPERS}`);
+    if(st.mgr) parts.push(`👔 ${MANAGER_MULT}x`);
+    o.staffSign = o.staffSign || labelSprite(3);
+    o.staffSign.visible = parts.length > 0;
+    if(parts.length){ o.staffSign.position.set(o.x+2.1, 2.5, -9); o.staffSign.userData.draw(parts.join('  '), '#ffffff'); }
+  }
+  const popScale = t => { t -= 1; return 1 + 2.7*t*t*t + 1.7*t*t; };
+  function animateStaff(o, dt, time){
+    syncStaff(o);
+    const fast = S.staff[o.m.id].mgr ? MANAGER_MULT : 1;
+    o.workers.forEach((w,k)=>{
+      w.ph += dt*0.9*fast;
+      const s = (w.ph + k*0.37) % 1;
+      w.obj.userData.armR.rotation.x = swingAngle(s);
+      if(s < w.prevS){ w.rock.userData.shake = 0.12; flyOre(w.rock.position.clone().setY(1), o.pilePos, o.m.color); }
+      w.prevS = s;
+      if(w.pop < 1){ w.pop = Math.min(1, w.pop + dt/0.45); w.obj.scale.setScalar(0.85*popScale(w.pop)); }
     });
-    const total = HELPERS.reduce((a,h)=>a+S.helpers[h.id],0);
-    helperSign.visible = total > 0;
-    if(total > 0){ helperSign.position.set(o.x+2.1, 2.5, -9); helperSign.userData.draw(`👷 ${fmt(total)} ajudante${total>1?'s':''}`, '#ffffff'); }
+    if(o.mgrObj){
+      const g = o.mgrObj.obj.userData;
+      g.armR.rotation.x = -1.3 + Math.sin(time*3)*0.35;        // aponta e dá ordens
+      o.mgrObj.obj.position.y = Math.abs(Math.sin(time*3))*0.03;
+      if(o.mgrObj.pop < 1){ o.mgrObj.pop = Math.min(1, o.mgrObj.pop + dt/0.45); o.mgrObj.obj.scale.setScalar(0.9*popScale(o.mgrObj.pop)); }
+    }
   }
 
   // máquinas (aparecem quando compradas)
@@ -836,16 +894,8 @@ function createWorld(){
     }
     for(const o of MINES3){ const amt = S.ore[o.m.id]; o.pile.count = amt < 1 ? 0 : Math.min(90, Math.ceil(Math.sqrt(amt)*4)); }
 
-    syncNpcs();
     npcT += dt;
-    const am = MINES3[MINES.findIndex(m=>m.id===S.active)];
-    npcs.forEach((n,k)=>{
-      const s = (npcT*1.5 + k*0.37) % 1;
-      n.miner.userData.armR.rotation.x = swingAngle(s);
-      if(s < n.prevS){ n.rock.userData.shake = 0.12; flyOre(n.rock.position.clone().setY(1), am.pilePos, am.m.color); }
-      n.prevS = s;
-      if(n.pop < 1){ n.pop = Math.min(1, n.pop + dt/0.45); const t = n.pop - 1; n.obj.scale.setScalar(0.85*(1 + 2.7*t*t*t + 1.7*t*t)); }
-    });
+    for(const o of MINES3) animateStaff(o, dt, npcT);
 
     for(let k=flyers.length-1;k>=0;k--){ const f = flyers[k]; f.t += dt/f.dur;
       if(f.t >= 1){ world.remove(f.m); flyers.splice(k,1); continue; }
@@ -872,7 +922,7 @@ function createWorld(){
   function doSell(quiet){
     const v = sellAll(true);
     if(v > 0){ burstBills(-6, 5.2, Math.min(14, 4 + Math.floor(Math.log10(v+1)*2))); floatText('+' + money(v), new THREE.Vector3(-6, 2.2, 5.2), '#9cff7a'); render(); save(); }
-    else if(!quiet) toast(S.autoSell ? '💼 O gerente já vende tudo automaticamente' : '💰 Mercado: mine e volte aqui para vender');
+    else if(!quiet) toast(S.autoSell ? '💼 O vendedor automático já vende tudo' : '💰 Mercado: mine e volte aqui para vender');
   }
   function openShop(){
     tab = 'tools';
@@ -898,8 +948,7 @@ function createWorld(){
 let lastT = performance.now(), uiAcc = 0, saveAcc = 0;
 function frame(now){
   const raw = (now - lastT)/1000; lastT = now;
-  const ops = orePerSec();
-  if(ops > 0) addOre(S.active, ops*Math.min(raw, 1));
+  produce(Math.min(raw, 1));
   if(window.world3d) world3d.update(Math.min(raw, 0.05));
   uiAcc += raw; if(uiAcc > 0.1){ uiAcc = 0; render(); }
   saveAcc += raw; if(saveAcc > 5){ saveAcc = 0; save(); }
@@ -909,16 +958,14 @@ function frame(now){
 // ganhos offline (50%, até 8h)
 (function offline(){
   const secs = Math.min(8*3600, (Date.now() - (S.last||Date.now()))/1000);
-  const ops = orePerSec();
-  if(secs > 30 && ops > 0){
-    const amt = ops*secs*0.5, m = mineById(S.active);
-    addOre(m.id, amt);
-    setTimeout(()=>toast(`Enquanto você esteve fora: +${fmt(amt)} ${m.name}`), 400);
+  if(secs > 30 && incomePerSec() > 0){
+    const v0 = S.money + oreValue(); produce(secs*0.5); const gain = S.money + oreValue() - v0;
+    setTimeout(()=>toast(`Enquanto você esteve fora, seus funcionários mineraram ${money(gain)} em minério`), 400);
   }
 })();
 
 // ---------- janelas dentro do jogo ----------
-const SHEETS = {shop:'🛠️ Loja de Ferramentas', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+const SHEETS = {shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
 let sheetOpen = null;
 function openSheet(name){
   sheetOpen = name;
@@ -926,6 +973,7 @@ function openSheet(name){
   document.querySelectorAll('[data-panel]').forEach(s=>s.hidden = s.dataset.panel !== name);
   if(name==='shop') buildShop();
   if(name==='mines') buildMines();
+  if(name==='staff') buildStaff();
   render();
   document.getElementById('sheet').hidden = false;
 }
