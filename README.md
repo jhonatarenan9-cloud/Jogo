@@ -6,6 +6,7 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
 - Arraste o dedo na tela (joystick) ou use WASD/setas para andar com o mineiro pelo mapa.
 - Pare perto das pedras de uma mina aberta: o mineiro golpeia sozinho e o minério cai na pilha ao lado.
 - Pise no quadrado **💰 VENDER** do Mercado para vender tudo, ou no **🛠️ LOJA** para abrir a loja.
+- O jogo ocupa a tela toda. Os botões Loja, Minério e Minas, embaixo, abrem janelas por cima do mapa.
 - Cada mina fechada tem um quadrado com o preço da ferramenta na frente do portão. Fique em cima dele para ir pagando; quando completar, o portão abre.
 - São 5 níveis, cada um exige uma ferramenta:
   1. Cobre — Picareta de Madeira (inicial)

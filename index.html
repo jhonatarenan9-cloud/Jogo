@@ -8,25 +8,64 @@
   :root{
     --bg:#16120f; --panel:#221c17; --panel2:#2c241d; --line:#3d3229;
     --text:#f1e7dc; --muted:#a8998a; --gold:#f2c14e; --ok:#5fbf6a; --bad:#d9634f;
+    --hudbg:rgba(24,34,14,.62);
     color-scheme:dark;
   }
   *{box-sizing:border-box}
   [hidden]{display:none!important}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background-image:radial-gradient(ellipse at top,#2a2018 0%,var(--bg) 70%);min-height:100vh}
-  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
-  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-    padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
-    border-bottom:1px solid var(--line);background:rgba(0,0,0,.25);position:sticky;top:env(safe-area-inset-top,0px);z-index:5;backdrop-filter:blur(4px)}
-  h1{font-size:20px;margin:0;letter-spacing:.5px}
-  .money{font-size:22px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums}
-  .rate{font-size:13px;color:var(--muted)}
-  main{display:grid;grid-template-columns:250px 1fr 330px;gap:16px;padding-block:16px;
-    padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1400px;margin:0 auto}
-  main > *{min-width:0}
-  @media (max-width:1000px){main{grid-template-columns:1fr} .center{order:-1}}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
-  .panel h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 10px}
+  html,body{height:100%;overflow:hidden}
+  body{margin:0;background:#8fd16a;color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+
+  /* ---------- jogo em tela cheia ---------- */
+  .scene{position:fixed;inset:0;overflow:hidden;background:#8fd16a;user-select:none;-webkit-user-select:none;touch-action:none}
+  .scene canvas{display:block;width:100%;height:100%;cursor:grab}
+  #topbar{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
+    display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+  #hud{font-size:12px;line-height:1.45;color:#fff;background:var(--hudbg);padding:6px 10px;border-radius:12px;min-width:0}
+  #hud b{color:var(--gold)}
+  .moneyPill{display:flex;align-items:center;gap:8px;background:var(--hudbg);padding:6px 12px 6px 8px;border-radius:14px;flex:none}
+  .moneyPill .bill{font-size:24px}
+  .money{font-size:22px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;line-height:1.1;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+  .rate{font-size:11px;color:#d9f0c8}
+  #goalBox{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(360px,calc(100% - 20px));
+    background:var(--hudbg);border-radius:12px;padding:6px 10px 8px;font-size:12px;color:#fff;pointer-events:none;text-align:center}
+  #goalBox b{color:var(--gold)}
+  .progress{height:7px;background:rgba(0,0,0,.35);border-radius:99px;overflow:hidden;margin-top:5px}
+  .progress > div{height:100%;background:linear-gradient(90deg,#a6e14a,#f2c14e);width:0}
+  .mapHint{position:absolute;left:50%;bottom:calc(98px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font-size:13px;color:#fff;background:var(--hudbg);
+    padding:7px 12px;border-radius:10px;pointer-events:none;text-align:center;width:max-content;max-width:calc(100% - 24px)}
+  #dock{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:10px}
+  #dock button{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;width:76px;padding:8px 4px 7px;border-radius:16px;
+    background:rgba(255,255,255,.92);color:#2a3a18;border:0;border-bottom:4px solid #b9cf9a;font-weight:700;font-size:12px;box-shadow:0 4px 10px rgba(0,0,0,.2)}
+  #dock button span{font-size:24px;line-height:1}
+  #dock button:hover{background:#fff}
+  #dock button:active{transform:translateY(2px);border-bottom-width:2px}
+  #dock i{position:absolute;top:-4px;right:-4px;background:#e5483b;color:#fff;font-style:normal;font-size:11px;min-width:20px;height:20px;line-height:20px;
+    border-radius:10px;padding:0 5px;box-shadow:0 2px 4px rgba(0,0,0,.3)}
+  #joy{position:absolute;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;background:rgba(255,255,255,.18);
+    border:3px solid rgba(255,255,255,.55);pointer-events:none}
+  #knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 3px 8px rgba(0,0,0,.3)}
+  #err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:#1b2a10;font-weight:600}
+  .floater{position:absolute;pointer-events:none;font-weight:800;font-size:18px;color:#fff;transform:translate(-50%,-50%);
+    animation:up 1s ease-out forwards;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 6px rgba(0,0,0,.4);white-space:nowrap}
+  @keyframes up{to{transform:translate(-50%,-140%);opacity:0}}
+
+  /* ---------- janelas dentro do jogo ---------- */
+  #sheet{position:absolute;inset:0;background:rgba(10,15,5,.35);display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+  .card{width:100%;max-height:78%;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:20px 20px 0 0;
+    padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:0 -8px 30px rgba(0,0,0,.35);animation:rise .2s ease-out}
+  @media (min-width:760px){
+    #sheet{align-items:stretch;justify-content:flex-end;background:rgba(10,15,5,.15)}
+    .card{width:400px;max-height:none;margin:12px;border-radius:18px;animation:slide .2s ease-out}
+  }
+  @keyframes fade{from{opacity:0}}
+  @keyframes rise{from{transform:translateY(40px);opacity:0}}
+  @keyframes slide{from{transform:translateX(40px);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.floater,#sheet,.card{animation-duration:.01s}}
+  .cardHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+  .cardHead h2{margin:0;font-size:18px}
+  #sheetClose{width:36px;height:36px;padding:0;border-radius:50%;font-size:16px}
+  .cardBody{overflow-y:auto;padding:14px 16px 16px;-webkit-overflow-scrolling:touch}
   .mine{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;border:1px solid var(--line);
     background:var(--panel2);margin-bottom:8px;cursor:pointer;transition:.15s}
   .mine:hover{border-color:#6b5847}
@@ -36,34 +75,12 @@
   .mine .info{flex:1;min-width:0}
   .mine .name{font-weight:600}
   .mine .sub{font-size:12px;color:var(--muted)}
-  .center{display:flex;flex-direction:column;gap:16px}
-
-  /* ---------- mundo 3D ---------- */
-  .scene{position:relative;height:clamp(380px,62vh,620px);border-radius:14px;overflow:hidden;border:1px solid var(--line);
-    background:#8fd16a;user-select:none;-webkit-user-select:none;touch-action:none}
-  .scene canvas{display:block;width:100%;height:100%;cursor:grab}
-  #hud{position:absolute;top:10px;left:10px;font-size:12px;line-height:1.45;color:#fff;background:rgba(20,30,10,.55);
-    padding:6px 10px;border-radius:10px;pointer-events:none;max-width:calc(100% - 20px)}
-  #hud b{color:var(--gold)}
-  .mapHint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);font-size:13px;color:#fff;background:rgba(20,30,10,.6);
-    padding:7px 12px;border-radius:10px;pointer-events:none;text-align:center;width:max-content;max-width:calc(100% - 24px)}
-  #joy{position:absolute;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;background:rgba(255,255,255,.18);
-    border:3px solid rgba(255,255,255,.55);pointer-events:none}
-  #knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.85);
-    box-shadow:0 3px 8px rgba(0,0,0,.3)}
-  #err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:#1b2a10;font-weight:600}
-  .floater{position:absolute;pointer-events:none;font-weight:800;font-size:18px;color:#fff;transform:translate(-50%,-50%);
-    animation:up 1s ease-out forwards;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 6px rgba(0,0,0,.4);white-space:nowrap}
-  @keyframes up{to{transform:translate(-50%,-140%);opacity:0}}
-  @media (prefers-reduced-motion:reduce){.floater{animation-duration:.01s}}
-
-  .inv{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-  @media (max-width:560px){.inv{grid-template-columns:repeat(3,1fr)}}
+  .inv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .invItem{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
   .invItem .gem{margin:0 auto 4px;width:20px;height:20px}
   .invItem .n{font-weight:700;font-variant-numeric:tabular-nums}
   .invItem .v{font-size:11px;color:var(--muted)}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
   button{font:inherit;color:var(--text);background:#3a2f26;border:1px solid #5a4838;border-radius:8px;padding:8px 12px;cursor:pointer}
   button:focus-visible,.mine:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   button:hover:not(:disabled){background:#4a3c30}
@@ -81,66 +98,55 @@
   .item button{min-width:96px;font-size:13px}
   .owned{color:var(--ok);font-size:13px;font-weight:600;min-width:96px;text-align:center}
   .count{font-size:12px;color:var(--gold)}
-  .progress{height:8px;background:#0e0b09;border-radius:99px;overflow:hidden;margin-top:6px}
-  .progress > div{height:100%;background:linear-gradient(90deg,#a67c2a,var(--gold));width:0}
-  #toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
-    padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:20;max-width:90vw;text-align:center}
-  #toast.show{opacity:1}
   .small{font-size:12px;color:var(--muted)}
   a.reset{color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline}
-  .flash{animation:flash 1.2s}
-  @keyframes flash{0%{box-shadow:0 0 0 3px var(--gold)}100%{box-shadow:0 0 0 3px transparent}}
+  #toast{position:fixed;left:50%;bottom:calc(104px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#3a2f26;border:1px solid var(--gold);
+    padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:20;max-width:90vw;text-align:center}
+  #toast.show{opacity:1}
 </style>
 </head>
 <body>
-<header>
-  <h1>⛏️ Mina Idle</h1>
-  <div style="text-align:right">
-    <div class="money" id="money">$0</div>
-    <div class="rate" id="rate">0 minério/s</div>
+<div class="scene" id="scene">
+  <div id="topbar">
+    <div id="hud"></div>
+    <div class="moneyPill"><span class="bill">💵</span><div><div class="money" id="money">$0</div><div class="rate" id="rate"></div></div></div>
   </div>
-</header>
-
-<main>
-  <section class="panel">
-    <h2>Níveis da Mina</h2>
-    <div id="mines"></div>
-    <p class="small">Cada mina tem um quadrado com o preço da ferramenta na frente do portão. Fique em cima dele para pagar e abrir a mina. Toque numa mina desta lista e siga a seta dourada.</p>
-  </section>
-
-  <section class="center">
-    <div class="scene" id="scene">
-      <div id="hud"></div>
-      <div id="joy" hidden><div id="knob"></div></div>
-      <div class="mapHint" id="mapHint">Arraste o dedo para andar (ou WASD/setas). Pare perto das pedras para minerar.</div>
-    </div>
-
-    <div class="panel">
-      <h2>Minério estocado</h2>
-      <div class="inv" id="inv"></div>
-      <div class="row">
-        <button class="primary" id="sellBtn">Vender tudo</button>
-        <span class="small" id="sellInfo"></span>
+  <div id="goalBox"><div id="goalText"></div><div class="progress"><div id="goalBar"></div></div></div>
+  <div id="joy" hidden><div id="knob"></div></div>
+  <div class="mapHint" id="mapHint">Arraste o dedo para andar (ou WASD/setas). Pare perto das pedras para minerar.</div>
+  <nav id="dock">
+    <button data-open="shop"><span>🛠️</span>Loja</button>
+    <button data-open="inv"><span>🎒</span>Minério<i id="invBadge" hidden></i></button>
+    <button data-open="mines"><span>⛰️</span>Minas</button>
+  </nav>
+  <div id="sheet" hidden>
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="cardHead"><h2 id="sheetTitle">Loja</h2><button id="sheetClose" aria-label="Fechar">✕</button></div>
+      <div class="cardBody">
+        <section data-panel="shop" id="shopPanel">
+          <div class="tabs">
+            <button data-tab="tools" class="on">Ferramentas</button>
+            <button data-tab="helpers">Ajudantes</button>
+            <button data-tab="upgrades">Melhorias</button>
+          </div>
+          <div id="shop"></div>
+        </section>
+        <section data-panel="inv">
+          <div class="inv" id="inv"></div>
+          <div class="row">
+            <button class="primary" id="sellBtn">Vender tudo</button>
+            <span class="small" id="sellInfo"></span>
+          </div>
+        </section>
+        <section data-panel="mines">
+          <div id="mines"></div>
+          <p class="small">Cada mina fechada tem um quadrado com o preço da ferramenta na frente do portão. Fique em cima dele para pagar e abrir a mina. Toque numa mina e siga a seta dourada.</p>
+          <p><a class="reset" id="reset" href="#">Recomeçar jogo</a></p>
+        </section>
       </div>
     </div>
-
-    <div class="panel">
-      <h2>Objetivo</h2>
-      <div id="goalText" class="small"></div>
-      <div class="progress"><div id="goalBar"></div></div>
-    </div>
-  </section>
-
-  <section class="panel" id="shopPanel">
-    <div class="tabs">
-      <button data-tab="tools" class="on">Ferramentas</button>
-      <button data-tab="helpers">Ajudantes</button>
-      <button data-tab="upgrades">Melhorias</button>
-    </div>
-    <div id="shop"></div>
-    <p style="margin-top:14px"><a class="reset" id="reset" href="#">Recomeçar jogo</a></p>
-  </section>
-</main>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -264,8 +270,8 @@ function buildMines(){
     d.onclick = ()=>{
       if(!window.world3d) return;
       world3d.guideTo(i);
+      closeSheet();
       toast(isUnlocked(m) ? '➡️ Siga a seta até a mina de '+m.name : '➡️ Siga a seta até o portão da mina de '+m.name);
-      document.getElementById('scene').scrollIntoView({behavior:'smooth', block:'nearest'});
     };
     el.appendChild(d);
   });
@@ -316,7 +322,8 @@ function render(){
   });
   const total = oreValue();
   document.getElementById('sellBtn').disabled = total<=0;
-  document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou leve ao 💰 Mercado' : '');
+  const badge = document.getElementById('invBadge'); badge.hidden = total<=0; badge.textContent = money(total);
+  document.getElementById('sellInfo').textContent = S.autoSell ? 'Venda automática ativa' : (total>0 ? 'Valor: '+money(total)+' · ou pise no 💰 VENDER do Mercado' : 'Nada para vender. Minere nas pedras!');
   document.querySelectorAll('#shop button').forEach(b=>{ b.disabled = S.money < Number(b.dataset.cost); });
   const next = TOOLS.find(t=>!S.tools[t.id]);
   let pct, txt;
@@ -344,7 +351,7 @@ function createWorld(){
   world.background = new THREE.Color('#8fd16a');
   world.fog = new THREE.Fog('#8fd16a', 30, 55);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
-  const CAM_OFF = new THREE.Vector3(0, 12.5, 9.5);
+  const CAM_BASE = new THREE.Vector3(0, 12.5, 9.5), CAM_OFF = CAM_BASE.clone();
 
   world.add(new THREE.HemisphereLight(0xffffff, 0x5d8a30, 0.8));
   const sun = new THREE.DirectionalLight(0xfff3dd, 0.75);
@@ -703,7 +710,8 @@ function createWorld(){
   function resize(){
     const w = sceneEl.clientWidth, h = sceneEl.clientHeight; if(!w || !h) return;
     R.setSize(w, h, false); camera.aspect = w/h;
-    camera.fov = w/h < 0.9 ? 55 : 42; camera.updateProjectionMatrix();
+    camera.fov = w/h < 0.9 ? 50 : 42; camera.updateProjectionMatrix();
+    CAM_OFF.copy(CAM_BASE).multiplyScalar(w/h < 0.9 ? 1.3 : 1);
   }
   new ResizeObserver(resize).observe(sceneEl); resize();
 
@@ -817,11 +825,7 @@ function createWorld(){
   function openShop(){
     tab = 'tools';
     document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on', x.dataset.tab==='tools'));
-    buildShop(); render();
-    const el = document.getElementById('shopPanel');
-    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
-    if(window.innerWidth <= 1000) el.scrollIntoView({behavior:'smooth', block:'start'});
-    toast('🛠️ Loja de Ferramentas aberta');
+    openSheet('shop');
   }
   function payTile(o, dt){
     const t = o.tool; if(!canBuy(t) || S.tools[t.id] || S.money <= 0) return;
@@ -860,6 +864,24 @@ function frame(now){
     setTimeout(()=>toast(`Enquanto você esteve fora: +${fmt(amt)} ${m.name}`), 400);
   }
 })();
+
+// ---------- janelas dentro do jogo ----------
+const SHEETS = {shop:'🛠️ Loja de Ferramentas', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+let sheetOpen = null;
+function openSheet(name){
+  sheetOpen = name;
+  document.getElementById('sheetTitle').textContent = SHEETS[name];
+  document.querySelectorAll('[data-panel]').forEach(s=>s.hidden = s.dataset.panel !== name);
+  if(name==='shop') buildShop();
+  if(name==='mines') buildMines();
+  render();
+  document.getElementById('sheet').hidden = false;
+}
+function closeSheet(){ sheetOpen = null; document.getElementById('sheet').hidden = true; }
+document.querySelectorAll('#dock button').forEach(b=>b.onclick=()=>{ sheetOpen===b.dataset.open ? closeSheet() : openSheet(b.dataset.open); });
+document.getElementById('sheetClose').onclick = closeSheet;
+document.getElementById('sheet').addEventListener('pointerdown', e=>{ if(e.target.id==='sheet') closeSheet(); });
+window.addEventListener('keydown', e=>{ if(e.key==='Escape' && sheetOpen) closeSheet(); });
 
 document.getElementById('sellBtn').onclick = ()=>{ sellAll(); render(); save(); };
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
