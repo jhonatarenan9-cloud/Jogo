@@ -17,6 +17,7 @@ Jogo idle de mineração em 3D no navegador. Abra o `index.html` para jogar (pre
   4. Diamante — Máquina Carregadeira
   5. Esmeralda — Escavadeira Gigante
 - Na aba **👷 Funcionários**, contrate até 3 ajudantes por mina. Eles mineram sozinhos, cada um na sua mina.
+- Os ajudantes começam com ⛏️ **Picareta**. Em cada mina dá para melhorar a ferramenta deles para 🔩 **Martelete** (2x) e depois 💥 **Rompedor** (4x); a ferramenta muda na mão dos bonecos.
 - Cada mina também pode ter um **👔 Gerente** (mais caro), que faz os ajudantes daquela mina trabalharem 2x mais rápido.
 - Na aba **🏭 Fundição** da Loja: Cada mina tem a sua própria fundição dentro do cercado (compre na loja ou pisando no quadrado 🏭). Depois compre a esteira daquela mina: ela leva o minério da pilha até a fornalha, que transforma 5 minérios em 1 barra valendo 20x o minério (4x mais dinheiro que vender o minério bruto).
 - Com a fundição de uma mina construída, compre a **💵 Esteira de Venda** dela: leva as barras até uma caixa de venda na frente da mina e vende tudo sozinha.
