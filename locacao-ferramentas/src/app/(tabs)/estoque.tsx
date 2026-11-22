@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Miniatura } from '@/components/fotos';
 import { Botao, Busca, Selo, Vazio } from '@/components/ui';
 import { Cores, Espaco, LarguraMaxima, Raio } from '@/constants/theme';
 import { unidadesLivres } from '@/lib/calculos';
@@ -49,6 +50,7 @@ export default function Estoque() {
             accessibilityRole="button"
             onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })}
             style={({ pressed }) => [styles.linha, pressed && { opacity: 0.8 }]}>
+            <Miniatura foto={item.foto} tamanho={52} vazio="🧰" />
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={styles.nome}>{item.nome}</Text>
               <Text style={styles.sub}>

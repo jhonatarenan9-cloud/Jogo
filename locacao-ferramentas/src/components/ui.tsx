@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
   botaoSecundario: { backgroundColor: Cores.cartao, borderWidth: 1, borderColor: Cores.borda },
   botaoPerigo: { backgroundColor: Cores.perigoClaro },
   botaoDesativado: { opacity: 0.45 },
-  botaoTexto: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  botaoTexto: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
   chip: {
     paddingHorizontal: Espaco.md,
     paddingVertical: Espaco.sm,

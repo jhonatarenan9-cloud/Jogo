@@ -32,7 +32,16 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O app usa suas fotos para cadastrar produtos, documentos de clientes e a vistoria das locações.",
+          "cameraPermission": "O app usa a câmera para fotografar produtos, documentos e a vistoria das locações.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

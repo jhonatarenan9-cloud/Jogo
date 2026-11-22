@@ -2,7 +2,9 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Botao, Campo, Cartao, Chip, Contador, Vazio } from '@/components/ui';
+import { CalendarioDisponibilidade } from '@/components/calendario';
+import { SeletorFoto } from '@/components/fotos';
+import { Botao, Campo, Cartao, Chip, Contador, Titulo, Vazio } from '@/components/ui';
 import { Cores, Espaco, LarguraMaxima } from '@/constants/theme';
 import { estaAberta } from '@/lib/calculos';
 import { lerValor, valorParaCampo } from '@/lib/format';
@@ -20,13 +22,14 @@ export default function TelaItem() {
 }
 
 function FormularioItem({ id }: { id?: string }) {
-  const { itens, locacoes, salvarItem, excluirItem } = useDados();
+  const { itens, locacoes, clientes, hoje, salvarItem, excluirItem } = useDados();
   const original = itens.find((i) => i.id === id);
   const [nome, setNome] = useState(original?.nome ?? '');
   const [categoria, setCategoria] = useState(original?.categoria ?? '');
   const [preco, setPreco] = useState(valorParaCampo(original?.precoDia ?? 0));
   const [caucao, setCaucao] = useState(valorParaCampo(original?.caucao ?? 0));
   const [quantidade, setQuantidade] = useState(original?.quantidade ?? 1);
+  const [foto, setFoto] = useState(original?.foto);
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
 
   const categorias = [...new Set(itens.map((i) => i.categoria).filter(Boolean))].sort();
@@ -41,6 +44,7 @@ function FormularioItem({ id }: { id?: string }) {
       precoDia: lerValor(preco),
       caucao: lerValor(caucao),
       quantidade,
+      foto,
     });
     router.back();
   }
@@ -49,6 +53,9 @@ function FormularioItem({ id }: { id?: string }) {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ title: id ? 'Editar item' : 'Novo item' }} />
       <ScrollView contentContainerStyle={styles.conteudo} keyboardShouldPersistTaps="handled">
+        <Cartao>
+          <SeletorFoto foto={foto} onChange={setFoto} rotulo="Foto do produto (aparece no contrato)" />
+        </Cartao>
         <Cartao style={{ gap: Espaco.md }}>
           <Campo rotulo="Nome do item" valor={nome} onChange={setNome} placeholder="Ex.: Betoneira 150 L" />
           <Campo rotulo="Categoria" valor={categoria} onChange={setCategoria} placeholder="Ex.: Construção" />
@@ -73,6 +80,15 @@ function FormularioItem({ id }: { id?: string }) {
         </Cartao>
 
         <Botao titulo="Salvar item" onPress={salvar} desativado={!valido} />
+
+        {original && (
+          <>
+            <Titulo>Agenda de disponibilidade</Titulo>
+            <Cartao>
+              <CalendarioDisponibilidade item={original} locacoes={locacoes} clientes={clientes} hoje={hoje} />
+            </Cartao>
+          </>
+        )}
 
         {id &&
           (emUso ? (

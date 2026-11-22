@@ -29,7 +29,7 @@ export function subtotal(l: Pick<Locacao, 'itens' | 'dias'>) {
 
 export function totalLocacao(l: Locacao, loja: Loja, hoje = hojeISO()) {
   if (l.situacao === 'cancelada') return 0;
-  return Math.max(0, subtotal(l) - l.desconto + l.taxaEntrega + multaPrevista(l, loja, hoje));
+  return Math.max(0, subtotal(l) - l.desconto + l.taxaEntrega + multaPrevista(l, loja, hoje) + (l.avaria ?? 0));
 }
 
 export function totalPago(l: Pick<Locacao, 'pagamentos'>) {

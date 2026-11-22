@@ -1,0 +1,15 @@
+# Configuração do projeto Supabase (usada pelo comando `supabase`).
+project_id = "controle-locacao"
+
+# Funções chamadas por serviços externos (sem login do app): conferem um segredo próprio.
+[functions.zapsign-webhook]
+verify_jwt = false
+
+[functions.asaas-webhook]
+verify_jwt = false
+
+[functions.apos-assinar]
+verify_jwt = false
+
+[functions.rotina-diaria]
+verify_jwt = false

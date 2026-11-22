@@ -16,8 +16,8 @@ export const PRECO_PRO = {
 export const DIAS_TESTE = 7;
 
 export const VANTAGENS_PRO = [
+  'Contrato com assinatura eletrônica enviado pelo WhatsApp',
+  'Boleto automático quando o cliente assina, com negativação no Serasa se não pagar',
   'Itens, clientes e locações sem limite',
-  'Relatórios: faturamento por mês, itens mais alugados e quem está devendo',
-  'Telefone da sua loja no recibo enviado pelo WhatsApp',
-  'Em breve: dados na nuvem e acesso para funcionários',
+  'Relatórios de faturamento, itens mais alugados e devedores',
 ];

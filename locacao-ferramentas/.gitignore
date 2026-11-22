@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# chaves locais do Supabase (nunca enviar ao git)
+.env

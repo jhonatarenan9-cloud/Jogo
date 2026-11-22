@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GaleriaFotos, Miniatura } from '@/components/fotos';
 import { Botao, Busca, Campo, Cartao, Chip, Contador, Linha, SeletorData, Titulo, Vazio } from '@/components/ui';
 import { Cores, Espaco, LarguraMaxima, Raio } from '@/constants/theme';
 import { unidadesLivres } from '@/lib/calculos';
@@ -14,7 +15,7 @@ const DIAS_RAPIDOS = [1, 2, 3, 7, 15, 30];
 type Pagar = 'depois' | 'tudo' | 'parte';
 
 export default function NovaLocacao() {
-  const { itens, clientes, locacoes, hoje, podeCriar, salvarCliente, criarLocacao } = useDados();
+  const { itens, clientes, locacoes, loja, hoje, podeCriar, salvarCliente, criarLocacao } = useDados();
   const insets = useSafeAreaInsets();
 
   const [clienteId, setClienteId] = useState<string | null>(null);
@@ -34,6 +35,9 @@ export default function NovaLocacao() {
   const [valorParte, setValorParte] = useState('');
   const [forma, setForma] = useState<FormaPagamento>('Pix');
   const [obs, setObs] = useState('');
+  const [fotos, setFotos] = useState<string[]>([]);
+  const [gerarContrato, setGerarContrato] = useState(true);
+  const [vencimento, setVencimento] = useState(() => somarDias(hoje, loja.prazoBoletoDias));
 
   const fim = somarDias(inicio, dias);
   const cliente = clientes.find((c) => c.id === clienteId);
@@ -45,7 +49,7 @@ export default function NovaLocacao() {
 
   const escolhidos: ItemLocado[] = itens
     .filter((i) => (qtds[i.id] ?? 0) > 0)
-    .map((i) => ({ itemId: i.id, nome: i.nome, precoDia: i.precoDia, qtd: qtds[i.id] }));
+    .map((i) => ({ itemId: i.id, nome: i.nome, precoDia: i.precoDia, qtd: qtds[i.id], foto: i.foto }));
   const faltaEstoque = escolhidos.filter((e) => e.qtd > (livres[e.itemId] ?? 0));
 
   const diaria = escolhidos.reduce((s, e) => s + e.precoDia * e.qtd, 0);
@@ -55,6 +59,7 @@ export default function NovaLocacao() {
   const valorEntrega = lerValor(entrega);
   const total = Math.max(0, diaria * dias - valorDesconto + valorEntrega);
   const valorPago = pagar === 'tudo' ? total : pagar === 'parte' ? Math.min(total, lerValor(valorParte)) : 0;
+  const valorBoleto = Math.round((total - valorPago) * 100) / 100;
 
   const clientesFiltrados = useMemo(() => {
     const termo = normalizar(buscaCliente.trim());
@@ -106,6 +111,8 @@ export default function NovaLocacao() {
       taxaEntrega: valorEntrega,
       caucao,
       obs: obs.trim(),
+      fotosRetirada: fotos,
+      contrato: gerarContrato ? { vencimento, valorCobranca: valorBoleto } : undefined,
       pagamentoInicial: valorPago > 0 ? { valor: valorPago, forma } : undefined,
     });
     router.replace({ pathname: '/locacao/[id]', params: { id } });
@@ -202,6 +209,7 @@ export default function NovaLocacao() {
             const semEstoque = qtd > livre;
             return (
               <View key={i.id} style={[styles.linhaItem, idx > 0 && styles.separador]}>
+                <Miniatura foto={i.foto} tamanho={44} vazio="🧰" />
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.nome}>{i.nome}</Text>
                   <Text style={[styles.sub, (livre === 0 || semEstoque) && { color: Cores.perigo }]}>
@@ -263,6 +271,42 @@ export default function NovaLocacao() {
             </View>
           )}
           <Campo rotulo="Observações (opcional)" valor={obs} onChange={setObs} placeholder="Ex.: entregar às 8h" multilinha />
+        </Cartao>
+
+        {/* Contrato */}
+        <Titulo>6. Contrato e boleto</Titulo>
+        <Cartao style={{ gap: Espaco.md }}>
+          <View style={styles.chips}>
+            <Chip rotulo="Enviar contrato para assinar" ativo={gerarContrato} onPress={() => setGerarContrato(true)} />
+            <Chip rotulo="Sem contrato" ativo={!gerarContrato} onPress={() => setGerarContrato(false)} />
+          </View>
+          {gerarContrato && valorBoleto > 0 && (
+            <>
+              <View style={styles.linhaEntre}>
+                <Text style={styles.rotulo}>Vencimento do boleto</Text>
+                <SeletorData valor={vencimento} onChange={(v) => setVencimento(v < hoje ? hoje : v)} rotulo="Vencimento" />
+              </View>
+              <Text style={styles.sub}>
+                Quando o cliente assinar, o boleto de {formatarPreco(valorBoleto)} com vencimento em {formatarData(vencimento)} é gerado e
+                enviado para ele.
+              </Text>
+            </>
+          )}
+          {gerarContrato && valorBoleto === 0 && (
+            <Text style={styles.sub}>Como já está tudo pago, o contrato vai só para assinatura, sem boleto.</Text>
+          )}
+        </Cartao>
+
+        {/* Vistoria */}
+        <Titulo>7. Fotos da retirada</Titulo>
+        <Cartao>
+          <GaleriaFotos
+            titulo="Vistoria"
+            dica="Fotografe o estado dos itens antes de sair. Ajuda a provar avarias na devolução."
+            fotos={fotos}
+            onAdicionar={(f) => setFotos((x) => [...x, ...f])}
+            onRemover={(f) => setFotos((x) => x.filter((y) => y !== f))}
+          />
         </Cartao>
       </ScrollView>
 

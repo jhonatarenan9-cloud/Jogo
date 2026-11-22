@@ -1,5 +1,5 @@
-import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { router, Tabs } from 'expo-router';
+import { Pressable, Text } from 'react-native';
 
 import { Cores } from '@/constants/theme';
 import { etapaDaLocacao } from '@/lib/calculos';
@@ -28,6 +28,16 @@ export default function TabsLayout() {
         options={{
           title: 'Início',
           headerTitle: loja.nome || 'Minha locadora',
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Configurações"
+              onPress={() => router.push('/mais')}
+              hitSlop={10}
+              style={{ paddingHorizontal: 16 }}>
+              <Text style={{ fontSize: 22 }}>⚙️</Text>
+            </Pressable>
+          ),
           tabBarIcon: ({ focused }) => <Icone emoji="🏠" focado={focused} />,
         }}
       />
@@ -41,16 +51,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="estoque"
-        options={{ title: 'Estoque', tabBarIcon: ({ focused }) => <Icone emoji="🧰" focado={focused} /> }}
-      />
-      <Tabs.Screen
         name="clientes"
         options={{ title: 'Clientes', tabBarIcon: ({ focused }) => <Icone emoji="👥" focado={focused} /> }}
       />
       <Tabs.Screen
-        name="mais"
-        options={{ title: 'Mais', tabBarIcon: ({ focused }) => <Icone emoji="⚙️" focado={focused} /> }}
+        name="estoque"
+        options={{ title: 'Estoque', tabBarIcon: ({ focused }) => <Icone emoji="🧰" focado={focused} /> }}
+      />
+      <Tabs.Screen
+        name="financeiro"
+        options={{ title: 'Financeiro', tabBarIcon: ({ focused }) => <Icone emoji="💰" focado={focused} /> }}
       />
     </Tabs>
   );

@@ -7,17 +7,21 @@ import { Cores, Espaco, LarguraMaxima } from '@/constants/theme';
 import { DIAS_TESTE, LIMITES_GRATIS, PRECO_PRO, VANTAGENS_PRO } from '@/constants/plano';
 import { formatarData, formatarPreco } from '@/lib/format';
 import { useDados } from '@/store/dados';
+import { useNuvem } from '@/store/nuvem';
 
 const MOTIVOS: Record<string, string> = {
   itens: `Você chegou ao limite de ${LIMITES_GRATIS.itens} itens do plano Grátis.`,
   clientes: `Você chegou ao limite de ${LIMITES_GRATIS.clientes} clientes do plano Grátis.`,
   locacoes: `Você já registrou ${LIMITES_GRATIS.locacoesPorMes} locações este mês, o limite do plano Grátis.`,
   relatorios: 'Os relatórios fazem parte do plano Pro.',
+  assinatura: 'Assinatura eletrônica, boleto automático e negativação no Serasa fazem parte do plano Pro.',
 };
 
 export default function Plano() {
   const { motivo } = useLocalSearchParams<{ motivo?: string }>();
   const { plano, proAtivo, emTeste, iniciarTeste } = useDados();
+  const nuvem = useNuvem();
+  const [erroTeste, setErroTeste] = useState('');
   const [ciclo, setCiclo] = useState<'mensal' | 'anual'>('anual');
   const [avisoCobranca, setAvisoCobranca] = useState(false);
 
@@ -72,12 +76,19 @@ export default function Plano() {
           {podeTestar && (
             <Botao
               titulo={`Testar grátis por ${DIAS_TESTE} dias`}
-              onPress={() => {
-                iniciarTeste();
-                router.back();
+              onPress={async () => {
+                try {
+                  // com conta na nuvem, o teste é registrado no servidor (vale para a loja toda)
+                  if (nuvem.loja) await nuvem.iniciarTesteNuvem();
+                  else iniciarTeste();
+                  router.back();
+                } catch (e) {
+                  setErroTeste(e instanceof Error ? e.message : 'Não foi possível iniciar o teste.');
+                }
               }}
             />
           )}
+          {erroTeste ? <Text style={[styles.sub, { color: Cores.perigo }]}>{erroTeste}</Text> : null}
           {emTeste && plano.testeAte && (
             <Text style={[styles.sub, { textAlign: 'center' }]}>Seu teste vai até {formatarData(plano.testeAte)}.</Text>
           )}
