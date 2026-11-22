@@ -3123,51 +3123,69 @@ function createWorld(){
   lvlBtns.push({id:'usina', tile:makeTile(-70.5, -4.0), x:-70.5, z:-4.0});
   lvlBtns.push({id:'oil', tile:makeTile(-28.6, 12.2), x:-28.6, z:12.2});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
-  // ---------- cartões flutuando sobre cada construção ----------
-  const cardsEl = document.createElement('div'); cardsEl.id = 'cards'; sceneEl.insertBefore(cardsEl, document.getElementById('topbar'));
+  // ---------- placas fixas na frente de cada construção (cartão pintado na placa) ----------
   const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4]};
+  const signBoards = [];
   const cards = lvlBtns.map(b=>{
     const m = mineById(b.id);
-    const base = m ? new THREE.Vector3(MINES3.find(o=>o.m===m).x + (m.fuel ? 4 : 2.6), 0, -5.9) : new THREE.Vector3(CARD_POS[b.id][0], 0, CARD_POS[b.id][2]);
-    { const post = new THREE.Group(); post.position.copy(base); world.add(post);   // plaquinha: dois postes de madeira e uma tábua
-      for(const sx of [-0.45, 0.45]) mesh(new THREE.BoxGeometry(0.1,1.5,0.1), M('#7a5230'), sx, 0.75, 0, post);
-      mesh(new THREE.BoxGeometry(1.2,0.55,0.08), M('#a0693a'), 0, 1.25, 0, post);
-      circles.push({x:base.x, z:base.z, r:0.35}); }
-    const pos = base.clone().setY(1.55);
-    const el = document.createElement('div'); el.className = 'bcard';
-    el.innerHTML = `<div class="bt"></div><div class="bb"><div class="bi"><span class="ic"></span><span class="bl"></span></div><div class="bc"><div class="br"></div><div class="bu"></div></div></div>`;
-    el.onclick = ()=>openPanel(b.id);
-    cardsEl.appendChild(el);
-    return {b, m, pos, el, t:el.querySelector('.bt'), ic:el.querySelector('.ic'), bl:el.querySelector('.bl'), br:el.querySelector('.br'), bu:el.querySelector('.bu'), key:''};
+    const base = m ? new THREE.Vector3(MINES3.find(o=>o.m===m).x + (m.fuel ? 5.2 : -3.7), 0, -5.9) : new THREE.Vector3(CARD_POS[b.id][0], 0, CARD_POS[b.id][2]);
+    const post = new THREE.Group(); post.position.copy(base); post.rotation.y = Math.PI/4; world.add(post);   // virada para a câmera
+    for(const sx of [-1.2, 1.2]) mesh(new THREE.BoxGeometry(0.16,2.3,0.16), M('#7a5230'), sx, 1.15, -0.07, post);
+    mesh(new THREE.BoxGeometry(2.85,1.95,0.1), M('#5b3d22'), 0, 2.05, -0.09, post);                          // moldura de madeira
+    const c2 = document.createElement('canvas'); c2.width = 384; c2.height = 256;
+    const tex = new THREE.CanvasTexture(c2); tex.anisotropy = 4;
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(2.64, 1.76), new THREE.MeshBasicMaterial({map:tex}));
+    board.position.set(0, 2.05, -0.03); post.add(board); signBoards.push(board);
+    circles.push({x:base.x, z:base.z, r:0.7});
+    return {b, m, board, c2, tex, key:''};
   });
-  const cv3 = new THREE.Vector3(); let cardT = 1;
+  let cardT = 1;
   function cardInfo(c){
     const b = c.b, m = c.m;
     if(m){ const open = isUnlocked(m), inc = m.fuel ? `⚫ ${fmt(mineRate(m))}/s` : `${money(mineIncome(m))}/s`;
       return {name: m.fuel ? 'Mina de Carvão' : 'Mina de ' + m.name, ic: m.fuel ? '⚫' : '⛏️', rate: open ? inc : 'Fechada', open,
-        btn: open ? (isFinite(b.cost) ? 'Melhorar<br>' + money(b.cost) : 'Máximo') : '🔒 ' + money(remaining(toolById(m.tool)))}; }
-    if(b.id === 'galpao') return {name:'Galpão de Entregas', ic:'📦', open:S.depotOpen, rate: S.depotOpen ? `📦 ${fmt(depotTotal())} · ⛽ ${fmt(S.oil.fuel)} L` : 'Fechado', btn: (S.depotOpen ? 'Melhorar<br>' : 'Abrir<br>') + money(b.cost)};
-    if(b.id === 'usina') return {name:'Usina de Energia', ic:'⚡', open:S.power.open, rate: `⚡ ${fmt(powerNow)}/${fmt(powerDemand())} kW`, btn: isFinite(b.cost) ? (S.power.open ? 'Melhorar<br>' : 'Comprar<br>') + money(b.cost) : 'Máximo'};
-    return {name:'Campo de Petróleo', ic:'🛢️', open:S.oil.open, rate: S.oil.open ? `⛽ ${fmt(fuelNow*60)} L/min` : 'À venda', btn: isFinite(b.cost) ? (S.oil.open ? 'Melhorar<br>' : 'Comprar<br>') + money(b.cost) : 'Máximo'};
+        btn: open ? (isFinite(b.cost) ? ['Melhorar', money(b.cost)] : ['Máximo','']) : ['🔒 Abrir', money(remaining(toolById(m.tool)))]}; }
+    if(b.id === 'galpao') return {name:'Galpão de Entregas', ic:'📦', open:S.depotOpen, rate: S.depotOpen ? `📦 ${fmt(depotTotal())} · ⛽ ${fmt(S.oil.fuel)} L` : 'Fechado', btn: [S.depotOpen ? 'Melhorar' : 'Abrir', money(b.cost)]};
+    if(b.id === 'usina') return {name:'Usina de Energia', ic:'⚡', open:S.power.open, rate: `⚡ ${fmt(powerNow)}/${fmt(powerDemand())} kW`, btn: isFinite(b.cost) ? [S.power.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
+    return {name:'Campo de Petróleo', ic:'🛢️', open:S.oil.open, rate: S.oil.open ? `⛽ ${fmt(fuelNow*60)} L/min` : 'À venda', btn: isFinite(b.cost) ? [S.oil.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
+  }
+  function drawSign(c, i, can, locked, pulse){
+    const g = c.c2.getContext('2d'), W = 384, H = 256;
+    g.clearRect(0,0,W,H);
+    rrPath(g,4,4,W-8,H-8,26); g.fillStyle = '#0c2a52'; g.fill();
+    g.save(); rrPath(g,10,10,W-20,H-20,22); g.clip();
+    g.fillStyle = '#2b2f3a'; g.fillRect(10,10,W-20,64);
+    const gr = g.createLinearGradient(0,74,0,H); gr.addColorStop(0,'#2f7fd8'); gr.addColorStop(1,'#1f5fae'); g.fillStyle = gr; g.fillRect(10,74,W-20,H-84);
+    g.restore();
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    let fs = 38; g.font = `${fs}px "Lilita One",system-ui,sans-serif`; while(g.measureText(i.name).width > W-48 && fs > 22){ fs -= 2; g.font = `${fs}px "Lilita One",system-ui,sans-serif`; }
+    g.fillStyle = '#fff'; g.fillText(i.name, W/2, 44);
+    // ícone redondo + nível
+    g.beginPath(); g.arc(74,152,50,0,7); g.fillStyle = '#fff3d6'; g.fill(); g.lineWidth = 6; g.strokeStyle = '#0c2a52'; g.stroke();
+    g.font = '54px system-ui,"Apple Color Emoji",sans-serif'; g.fillText(i.ic, 74, 150);
+    rrPath(g,48,192,52,36,10); g.fillStyle = '#e07a1f'; g.fill(); g.lineWidth = 4; g.strokeStyle = '#8a4206'; g.stroke();
+    g.font = '26px "Lilita One",system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText(String(c.b.lvl ?? 0), 74, 211);
+    // ganho
+    rrPath(g,140,88,228,46,12); g.fillStyle = 'rgba(0,0,0,.35)'; g.fill();
+    fs = 28; g.font = `800 ${fs}px Nunito,system-ui,sans-serif`; while(g.measureText(i.rate).width > 210 && fs > 16){ fs -= 2; g.font = `800 ${fs}px Nunito,system-ui,sans-serif`; }
+    g.fillStyle = '#cfe6ff'; g.fillText(i.rate, 254, 112);
+    // botão
+    const by = 146 - (pulse ? 2 : 0);
+    rrPath(g,140,by+6,228,86,14); g.fillStyle = can ? '#24862d' : locked ? '#33363b' : '#55657d'; g.fill();
+    rrPath(g,140,by,228,86,14); const bg = g.createLinearGradient(0,by,0,by+86);
+    if(can){ bg.addColorStop(0,'#56d660'); bg.addColorStop(1,'#33a83d'); } else if(locked){ bg.addColorStop(0,'#6b7078'); bg.addColorStop(1,'#4b5058'); } else { bg.addColorStop(0,'#8d9db5'); bg.addColorStop(1,'#6f7f98'); }
+    g.fillStyle = bg; g.fill();
+    g.fillStyle = '#fff'; g.font = '30px "Lilita One",system-ui,sans-serif';
+    if(i.btn[1]){ g.fillText(i.btn[0], 254, by+28); g.font = '32px "Lilita One",system-ui,sans-serif'; g.fillText(i.btn[1], 254, by+62); } else g.fillText(i.btn[0], 254, by+43);
+    c.tex.needsUpdate = true;
   }
   function updateCards(dt){
-    cardT += dt; const w = sceneEl.clientWidth, h = sceneEl.clientHeight, p = player.position, maxD = S.fp ? 24 : 40;
-    const refresh = cardT > 0.25; if(refresh) cardT = 0;
-    const topLim = document.getElementById('goalBox').getBoundingClientRect().bottom - sceneEl.getBoundingClientRect().top + 4;
+    cardT += dt; if(cardT < 0.25) return; cardT = 0;
+    const pulse = Math.floor(performance.now()/500) % 2 === 0;
     cards.forEach(c=>{
-      const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z);
-      cv3.copy(c.pos).project(camera);
-      const vis = d < maxD && cv3.z < 1 && Math.abs(cv3.x) < 1.15 && cv3.y > -1 && cv3.y < 1.1 && !(c.m && !isUnlocked(c.m) && d > 18);
-      const sy = (1-cv3.y)/2*h - 52;
-      const vis2 = vis && sy - 40 > topLim && sy < h - 90;
-      c.el.style.display = vis2 ? '' : 'none'; if(!vis2) return;
-      const sc = Math.max(0.62, Math.min(1, 1.15 - d/maxD*0.5));
-      c.el.style.transform = `translate(${((cv3.x+1)/2*w).toFixed(1)}px, ${sy.toFixed(1)}px) scale(${sc.toFixed(2)})`;
-      c.el.style.zIndex = String(1000 - Math.round(d*10));
-      if(refresh){ const i = cardInfo(c), key = JSON.stringify(i) + '|' + c.b.lvl + '|' + (S.money >= c.b.cost);
-        if(key !== c.key){ c.key = key; c.t.textContent = i.name; c.ic.textContent = i.ic; c.bl.textContent = c.b.lvl; c.br.textContent = i.rate; c.bu.innerHTML = i.btn;
-          const can = c.b.open && isFinite(c.b.cost) && S.money >= c.b.cost;
-          c.bu.className = 'bu' + (c.m && !isUnlocked(c.m) ? ' lock' : can ? '' : ' off'); c.el.classList.toggle('can', can); } }
+      const i = cardInfo(c), can = c.b.open && isFinite(c.b.cost) && S.money >= c.b.cost, locked = !!(c.m && !isUnlocked(c.m));
+      const key = JSON.stringify(i) + '|' + c.b.lvl + '|' + can + '|' + (can && pulse);
+      if(key !== c.key){ c.key = key; drawSign(c, i, can, locked, can && pulse); }
     });
   }
 
@@ -3288,6 +3306,7 @@ function createWorld(){
   cv.addEventListener('pointerdown', e=>{
     const r = sceneEl.getBoundingClientRect();
     ndc.set((e.clientX-r.left)/r.width*2-1, -((e.clientY-r.top)/r.height*2-1)); ray.setFromCamera(ndc, camera);
+    { const hit = ray.intersectObjects(signBoards)[0]; if(hit){ const c = cards.find(c=>c.board === hit.object); if(c){ openPanel(c.b.id); return; } } }
     if(S.fp && e.clientX - r.left > r.width/2){ look = {id:e.pointerId, x:e.clientX, y:e.clientY}; try{ cv.setPointerCapture(e.pointerId); }catch(_){} return; }
     joy = {id:e.pointerId, x:e.clientX, y:e.clientY, dx:0, dy:0};
     joyEl.style.left = (e.clientX-r.left)+'px'; joyEl.style.top = (e.clientY-r.top)+'px'; joyEl.hidden = false;

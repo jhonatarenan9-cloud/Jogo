@@ -14,7 +14,7 @@ Tela de abertura, câmera isométrica, cartões flutuando sobre cada mina e fáb
 - O jogo começa em **primeira pessoa**: lado esquerdo da tela anda, lado direito olha em volta (no computador: W/S andam, A/D ou setas giram). O botão **👁️** troca para a visão de cima (3ª pessoa).
 - Pare perto das pedras de uma mina aberta: o mineiro golpeia sozinho e o minério cai na pilha ao lado.
 - Pise no quadrado **💰 VENDER** do Mercado para vender tudo, ou no **🛠️ LOJA** para abrir a loja.
-- Cada mina e operação tem uma plaquinha com um cartão flutuante (nível, ganho e botão Melhorar): toque nele para abrir o painel com todas as melhorias daquele lugar (equipe, ferramenta, gerente, fundição, esteiras, coletador, caminhões, carregadores).
+- Cada mina e operação tem uma placa de madeira com o cartão pintado nela (nível, ganho e botão Melhorar): toque na placa para abrir o painel com todas as melhorias daquele lugar (equipe, ferramenta, gerente, fundição, esteiras, coletador, caminhões, carregadores).
 - O jogo ocupa a tela toda. Os botões Loja, Minério, Funcionários e Minas, embaixo, abrem janelas por cima do mapa.
 - Cada mina fechada tem um quadrado com o preço da ferramenta na frente do portão. Fique em cima dele para ir pagando; quando completar, o portão abre.
 - Cada mina nova é cara. Vale a pena completar a fundição da mina atual (fundição, esteira de minério e esteira de venda), que custa pouco e quadruplica o que você ganha, antes de comprar a próxima.
