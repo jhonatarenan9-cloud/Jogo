@@ -565,6 +565,17 @@ function createWorld(){
       if(x>r.x1-0.32 && x<r.x2+0.32 && z>r.z1-0.32 && z<r.z2+0.32) return true; }
     return false;
   }
+  // se algo for construído em cima do personagem, empurra ele para fora
+  function pushOut(p){
+    for(const c of circles){
+      if(c.when && !c.when()) continue;
+      const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), min = c.r + 0.34;
+      if(d < min){
+        const nx = d > 0.001 ? dx/d : 0, nz = d > 0.001 ? dz/d : 1;   // no centro exato: sai pela frente
+        p.x = c.x + nx*min; p.z = c.z + nz*min;
+      }
+    }
+  }
 
   // ---------- etiquetas ----------
   function labelSprite(w){
@@ -1209,6 +1220,7 @@ function createWorld(){
     if(joy && Math.hypot(joy.dx, joy.dy) > 6){ ix = joy.dx/45; iz = joy.dy/45; }
     let mag = Math.hypot(ix, iz); if(mag > 1){ ix/=mag; iz/=mag; mag = 1; }
     const moving = mag > 0.05, P = player.userData, p = player.position;
+    pushOut(p);
     if(moving){
       if(!hintGone){ hintGone = true; document.getElementById('mapHint').hidden = true; }
       const sp = 6.2*mag*dt;
