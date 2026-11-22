@@ -51,6 +51,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.
 - `DEAL_*`, `dealPool`: pedidos do mercado (quantidade fixa por +40%, 5 min para entregar).
 - `CAR_GAL_MULT`, `carBuy`, `updateCars`: carros da rodovia que param no posto e compram galões (um pouco acima do preço de venda do galão).
+- `PR_ITEMS`, `prGain`, `doPrestige`, `goal()`: prestígio (aba ⭐ Era, lado direito). Depois de virar Magnata, recomeça com estrelas (raiz dos milhões ganhos na era) para melhorias permanentes; a meta de esmeraldas dobra a cada era. Mantém estrelas, gemas, itens de gema e conquistas.
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Começo do jogo

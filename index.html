@@ -57,7 +57,13 @@
   #sellTab:active{transform:translateY(calc(-50% + 2px))}
   #sellTab i{position:absolute;top:-10px;left:-14px;background:#2fa84f;color:#fff;font-style:normal;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;
     min-width:22px;height:20px;line-height:20px;border-radius:10px;padding:0 6px;box-shadow:0 2px 4px rgba(0,0,0,.3);white-space:nowrap}
-  body.sheetOpen #sellTab{display:none}
+  body.sheetOpen #sellTab, body.sheetOpen #eraTab{display:none}
+  #eraTab{position:absolute;right:0;top:calc(46% + 62px);z-index:5;display:flex;flex-direction:column;align-items:center;gap:2px;
+    width:64px;padding:9px 4px 8px;border-radius:16px 0 0 16px;background:linear-gradient(#b48cff,#7a4fd6);color:#fff;border:3px solid #3d2378;border-right:0;
+    box-shadow:-2px 4px 0 #3d2378;font-family:'Lilita One','Nunito',sans-serif;font-size:13px;letter-spacing:.3px;cursor:pointer;text-shadow:0 1px 0 #3d2378}
+  #eraTab span{font-size:24px;line-height:1}
+  #eraTab i{position:absolute;top:-10px;left:-14px;background:#e5483b;color:#fff;font-style:normal;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;
+    min-width:22px;height:20px;line-height:20px;border-radius:10px;padding:0 6px;box-shadow:0 2px 4px rgba(0,0,0,.3);white-space:nowrap}
   #dock{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:10px}
   #dock button{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;width:76px;padding:8px 4px 7px;border-radius:16px;
     background:rgba(255,255,255,.92);color:#2a3a18;border:0;border-bottom:4px solid #b9cf9a;font-weight:700;font-size:12px;box-shadow:0 4px 10px rgba(0,0,0,.2)}
@@ -386,6 +392,7 @@
   <div id="joy" hidden><div id="knob"></div></div>
   <div id="crosshair" hidden></div>
   <button id="sellTab" aria-label="Vender produtos"><span>💰</span>Vender<i id="sellBadge" hidden></i></button>
+  <button id="eraTab" aria-label="Prestígio"><span>⭐</span>Era<i id="eraBadge" hidden></i></button>
   <button id="viewBtn" aria-label="Trocar câmera">👁️ <span id="viewLbl">1ª pessoa</span></button>
   <div class="mapHint" id="mapHint">Arraste o dedo para andar (ou WASD/setas). Pare perto das pedras para minerar.</div>
   <nav id="dock">
@@ -424,6 +431,7 @@
         <section data-panel="panel"><div id="panelBody"></div></section>
         <section data-panel="maint"><div id="maintBody"></div></section>
         <section data-panel="sell"><div id="sellBody"></div></section>
+        <section data-panel="era"><div id="eraBody"></div></section>
         <section data-panel="stats"><div id="statsBody"></div></section>
         <section data-panel="ach"><div id="achList"></div></section>
         <section data-panel="mines">
@@ -524,7 +532,7 @@ const truckRepairCost = k => Math.ceil(TRUCK_COSTS[k] * 0.2 * (1 - cond('truck_'
 function repair(key, cost){ if(S.money < cost || cost <= 0) return; S.money -= cost; S.cond[key] = 1; toast('🔧 Consertado! Rendimento 100%.'); if(sheetOpen === 'maint') buildMaint(); if(window.world3d) world3d.celebrate(); render(); save(); }
 // ===== gemas raras =====
 const GEM_CHANCE = 0.005, GEM_DELIVERY_CHANCE = 0.04;
-const gemChance = () => GEM_CHANCE * (S.gemItems.lupa ? 2 : 1);
+const gemChance = () => GEM_CHANCE * (S.gemItems.lupa ? 2 : 1) * (1 + 0.2*prLv('sorte'));
 const GEM_ITEMS = [
   {id:'capacete', ico:'⛑️', name:'Capacete Dourado',  desc:'+10% de minério por golpe', cost:5},
   {id:'botas',    ico:'👟', name:'Botas de Corrida',  desc:'O mineiro anda 20% mais rápido', cost:4},
@@ -547,7 +555,32 @@ function buyGemItem(it){
   if(window.world3d) world3d.onGemItem(it.id);
   buildShop(); render(); save();
 }
-const GOAL = 1000; // esmeraldas para vencer
+const GOAL = 1000; // esmeraldas para vencer (dobra a cada Nova Era)
+// ===================== PRESTÍGIO (NOVA ERA) =====================
+// ao virar Magnata, o jogador pode recomeçar ganhando Estrelas ⭐ para melhorias permanentes; a meta dobra a cada era
+const goal = () => GOAL * Math.pow(2, (S.pr && S.pr.eras) || 0);
+const PR_ITEMS = [
+  {id:'equipe',  ico:'👷', name:'Equipe Lendária',   desc:'Ajudantes de todas as minas +10% por nível.', max:10},
+  {id:'golpe',   ico:'⛏️', name:'Picareta Dourada',  desc:'Seu golpe +25% por nível.', max:10},
+  {id:'negocio', ico:'📈', name:'Negociante',        desc:'Tudo que você vende vale +5% por nível.', max:10},
+  {id:'usina',   ico:'⚙️', name:'Usinas Turbinadas', desc:'Usina e campo de petróleo +15% por nível.', max:8},
+  {id:'sorte',   ico:'💎', name:'Faro de Gemas',     desc:'Chance de achar gemas +20% por nível.', max:5},
+  {id:'heranca', ico:'💰', name:'Herança',           desc:'Começa as próximas eras com mais dinheiro: $5 mil, $25 mil, $125 mil.', max:3},
+];
+const prLv = id => (S.pr && S.pr.lv[id]) || 0;
+const prCost = it => prLv(it.id) + 1;                       // 1, 2, 3... estrelas
+const prSell = () => 1 + 0.05*prLv('negocio');
+const prStart = () => [START_MONEY, 5000, 25000, 125000][prLv('heranca')];
+const prGain = () => S.won ? Math.max(1, Math.floor(Math.sqrt(S.earned/1e6))) : 0;   // ~5 estrelas com $25 milhões ganhos na era
+function buyPr(it){ const c = prCost(it); if(prLv(it.id) >= it.max || S.pr.stars < c) return; S.pr.stars -= c; S.pr.lv[it.id] = prLv(it.id) + 1; toast(`⭐ ${it.name} nível ${prLv(it.id)}!`); render(); save(); }
+function doPrestige(){
+  const gain = prGain(); if(gain <= 0) return;
+  const keep = {pr:S.pr, ach:S.ach, gems:S.gems, gemsFound:S.gemsFound, gemItems:S.gemItems, fp:S.fp, viewV2:true};
+  keep.pr.stars += gain; keep.pr.total = (keep.pr.total||0) + gain; keep.pr.eras = (keep.pr.eras||0) + 1;
+  S = Object.assign(newState(), keep); S.money = prStart(); save();
+  try{ sessionStorage.setItem('mina-era', String(keep.pr.eras)); }catch(_){}
+  location.reload();
+}
 
 // ===================== ESTADO =====================
 const SAVE_KEY = 'mina-idle-v2';   // v2: economia reiniciada para testar do começo
@@ -563,7 +596,7 @@ function newState(){
     oil:{open:false, lvl:0, fuel:0, drums:0, refBuf:0, gal:0, sold:0, buf:{crude:0, clean:0, diesel:0}},
     power:{open:false, lvl:0, batteries:0, charge:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:false, viewV2:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
-    genLvl:0, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
+    pr:{stars:0, total:0, eras:0, lv:{}}, genLvl:0, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
@@ -575,6 +608,7 @@ try{
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
+    S.pr = Object.assign(newState().pr, d.pr); S.pr.lv = S.pr.lv || {};
     S.market = Object.assign(newState().market, d.market); S.market.m = S.market.m || {}; S.market.p = S.market.p || {};
     S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
     if(!d.viewV2){ S.fp = false; S.viewV2 = true; }   // novo visual: começa na câmera isométrica
@@ -626,12 +660,12 @@ const canBuy = t => toolIndex(t) === 0 || !!S.tools[TOOLS[toolIndex(t)-1].id];
 const remaining = t => Math.max(0, t.cost - (S.paid[t.id]||0));
 function bestTool(){ let b = TOOLS[0]; for(const t of TOOLS) if(S.tools[t.id]) b = t; return b; }
 const SHARPEN_BONUS = 0.18, BOOST_BONUS = 0.08, TURBO_BONUS = 0.25, DRILL_BONUS = 0.25;   // bônus por nível das melhorias
-function clickPower(){ return bestTool().power * (1 + SHARPEN_BONUS*S.sharpen) * (S.gemItems.capacete ? 1.1 : 1); }
+function clickPower(){ return bestTool().power * (1 + SHARPEN_BONUS*S.sharpen) * (S.gemItems.capacete ? 1.1 : 1) * (1 + 0.25*prLv('golpe')); }
 function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.2, S.staff[m.id].n)); }
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
 const boostMult = () => 1 + BOOST_BONUS*S.boost;
 // minério/s de uma mina vindo dos ajudantes
-function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) * (1 + (S.power.tb ? POWER_LIGHT_BONUS*gridRatio : 0)) : 0; }
+function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) * (1 + (S.power.tb ? POWER_LIGHT_BONUS*gridRatio : 0)) * (1 + 0.1*prLv('equipe')) : 0; }
 // minério/s das máquinas (vai para a mina ativa)
 function machineRate(){ let r = 0; for(const t of TOOLS) if(S.tools[t.id]) r += t.passive; return r * boostMult(); }
 function incomePerSec(){
@@ -673,7 +707,8 @@ const xf = v => String(Math.round(v*100)/100).replace('.', ',') + 'x';   // mult
 // ===== MERCADO VIVO: cada produto tem um preço que sobe e desce (média 1,0x) =====
 const MARKET_MIN = 0.7, MARKET_MAX = 1.4, MARKET_EVERY = 30;   // limites e segundos entre mudanças
 const mk = id => (S.market && S.market.m[id]) || 1;
-const mval = m => m.value * mk(m.id);
+const mkP = id => mk(id) * prSell();   // preço de venda: mercado × Negociante
+const mval = m => m.value * mkP(m.id);
 const MARKET_KEYS = () => [...MINES.filter(m=>!m.fuel).map(m=>m.id), 'moido','limpo','crude','clean','drums','diesel','bat','gal'];
 function marketTick(sec){
   const K = S.market; K.t = (K.t||0) + sec;
@@ -688,7 +723,7 @@ const mkTag = id => `${mkArrow(id)} ${Math.round(mk(id)*100)}%`;
 const barValue = m => mval(m) * BAR_MULT;
 const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 // valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
-const oreValue = (auto) => (auto || !S.power ? 0 : (S.power.batteries||0)*BATTERY_VALUE*mk('bat')) + MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*mval(m)) + (S.bars[m.id]||0)*barValue(m), 0);
+const oreValue = (auto) => (auto || !S.power ? 0 : (S.power.batteries||0)*BATTERY_VALUE*mkP('bat')) + MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*mval(m)) + (S.bars[m.id]||0)*barValue(m), 0);
 const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl) * beltPower();
 const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
 const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
@@ -754,7 +789,7 @@ const POWER_ITEMS = [
 ];
 const ENERGY_PER_COAL = 25, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POWER_BUF_MAX = 40, WASH_LOSS = 0.1;
 const BATTERY_KWS = 25, BATTERY_VALUE = 220, BATTERY_CAP = 100, BATTERY_VIS = 40;           // energia por bateria, preço e capacidade
-const powerStep = () => 0.3 * (1 + 0.5*S.power.lvl);                    // carvão/s por britador, ajudante...
+const powerStep = () => 0.3 * (1 + 0.5*S.power.lvl) * (1 + 0.15*prLv('usina'));                    // carvão/s por britador, ajudante...
 const boilerCost = () => Math.ceil(20000 * Math.pow(3, S.power.lvl));
 // ===== REDE ELÉTRICA (gerador a carvão + usina + baterias) =====
 // esteiras, postes e a refinaria consomem energia; caminhões e coletadores consomem combustível
@@ -798,7 +833,7 @@ const crushers = () => (S.power.brA && S.power.opA ? 1 : 0) + (S.power.brB && S.
 const boilerHands = () => (S.power.cd ? (S.power.aj1 ? 1 : 0) + (S.power.aj2 ? 1 : 0) : 0);
 const powerOn = () => !!(S.power.tb && crushers() && S.power.maq && boilerHands());
 const powerIntake = () => powerStep()*crushers();
-const batteryValue = () => (S.power.batteries||0) * BATTERY_VALUE * mk('bat');
+const batteryValue = () => (S.power.batteries||0) * BATTERY_VALUE * mkP('bat');
 function powerTick(sec){
   const P = S.power; if(!P.open || sec <= 0) return 0;
   const r = powerStep()*sec, b = P.buf; let gen = 0;
@@ -847,7 +882,7 @@ const OIL_ITEMS = [
 const CRUDE_MAX = 60, DRUM_UNITS = 5, DRUM_CAP = 48, REF_MAX = 12, GAL_L = 10, GAL_CAP = 100, GAL_VALUE = 200, GAL_VIS = 40;
 const SEP_LOSS = 0.2, DRUM_L = 4.5, TRUCK_FUEL = 3, COLLECTOR_FUEL = 1.5;
 const FUEL_BUY_L = 10, FUEL_BUY_PRICE = 150;   // comprar combustível no galpão é caro: o campo de petróleo compensa
-const oilStep = () => 0.25 * (1 + 0.5*S.oil.lvl);
+const oilStep = () => 0.25 * (1 + 0.5*S.oil.lvl) * (1 + 0.15*prLv('usina'));
 const fuelCap = () => 100 + 50*S.oil.lvl;
 const pumpCost = () => Math.ceil(25000 * Math.pow(3, S.oil.lvl));
 const oilItem = id => OIL_ITEMS.find(x=>x.id===id);
@@ -856,7 +891,7 @@ const oilOpenLeft = () => Math.max(0, OIL_OPEN_COST - (S.paid.oil_open||0));
 const oilCan = it => S.oil.open && !S.oil[it.id] && (!it.need || S.oil[it.need]);
 const pumpsOn = () => ['1','2','3','4'].filter(k=>S.oil['p'+k] && S.oil['w'+k]).length;
 const sepsOn = () => ['1','2'].filter(k=>S.oil['s'+k] && S.oil['m'+k]).length;
-const galValue = () => Math.floor(S.oil.gal||0) * GAL_VALUE * mk('gal');
+const galValue = () => Math.floor(S.oil.gal||0) * GAL_VALUE * mkP('gal');
 let fuelNow = 0;   // litros/s refinados agora
 function oilTick(sec){
   const O = S.oil; if(!O.open || sec <= 0){ fuelNow = 0; return; }
@@ -878,10 +913,10 @@ function autoFuelTick(){ if(S.autoFuel && S.depotOpen && S.oil.fuel < 20) buyFue
 // carros da rodovia param no posto e compram galões (paga um pouco mais que vender no mercado)
 const CAR_GAL_MULT = 1.25;
 function carBuy(want){ const O = S.oil; if(!O.ps) return 0; const n = Math.min(want, Math.floor(O.gal||0)); if(n <= 0) return 0;
-  const v = n*GAL_VALUE*CAR_GAL_MULT*mk('gal'); O.gal -= n; O.sold = (O.sold||0) + n; S.money += v; S.earned += v;
+  const v = n*GAL_VALUE*CAR_GAL_MULT*mkP('gal'); O.gal -= n; O.sold = (O.sold||0) + n; S.money += v; S.earned += v;
   S.market.cars = (S.market.cars||0) + 1; S.market.carEarn = (S.market.carEarn||0) + v; return v; }
 function sellGallons(){
-  const n = Math.floor(S.oil.gal||0), v = n*GAL_VALUE*mk('gal'); if(v <= 0) return 0;
+  const n = Math.floor(S.oil.gal||0), v = n*GAL_VALUE*mkP('gal'); if(v <= 0) return 0;
   S.oil.gal -= n; S.oil.sold = (S.oil.sold||0) + n; S.money += v; S.earned += v;
   toast(`⛽ ${n} galões vendidos por ${money(v)}!`); if(window.world3d) world3d.celebrate(); render(); save(); return v;
 }
@@ -937,7 +972,7 @@ const MISSIONS = [
   {t:'Ganhe $3.000.000 em vendas', p:()=>[S.earned, 3000000], r:300000},
   {t:'Compre a Escavadeira Gigante', p:()=>[+!!S.tools.escavadeira, 1], r:600000},
   {t:'Complete a fundição da Esmeralda (3 itens)', p:()=>[3-factoryMissing(MINES[4]).length, 3], r:1500000},
-  {t:'Minere 1.000 esmeraldas e vire Magnata', p:()=>[S.mined.esmeralda, GOAL], r:5000000},
+  {t:'Vire Magnata: minere as esmeraldas da meta', p:()=>[S.mined.esmeralda, goal()], r:5000000},
 ];
 // ===================== CONQUISTAS =====================
 // cada categoria tem 3 medalhas (bronze, prata, ouro); recompensas pequenas para não desequilibrar
@@ -1081,7 +1116,7 @@ function addOre(id, amt){
   else S.ore[id] += amt;
   S.mined[id] += amt;
   if(S.autoSell) sellAll(true, true);
-  if(id==='esmeralda' && !S.won && S.mined.esmeralda >= GOAL){ S.won = true; toast('🏆 Parabéns! Você se tornou um Magnata da Mineração!'); }
+  if(id==='esmeralda' && !S.won && S.mined.esmeralda >= goal()){ S.won = true; toast('🏆 Parabéns! Você é Magnata! Abra a aba ⭐ Era para começar uma Nova Era.'); }
 }
 function sellAll(silent, auto){
   const total = oreValue(auto);
@@ -1212,7 +1247,7 @@ const SELL_ITEMS = [
     take:()=>{ for(const m of MINES){ if(m.fuel) continue; S.ore[m.id] = 0; S.bars[m.id] = 0; } }, money:true},
 ];
 const sellQty = it => Math.max(0, it.q() || 0);
-const sellPrice = it => it.money ? 1 : it.v * mk(it.id);
+const sellPrice = it => it.money ? 1 : it.v * mkP(it.id);
 const sellVal = it => sellQty(it)*sellPrice(it);
 function sellItem(it, silent){ const n = sellQty(it), v = n*sellPrice(it); if(v < 0.01) return 0; it.take(n); S.money += v; S.earned += v;
   if(!silent){ toast(`💰 ${it.name} vendido por ${money(v)}`); if(window.world3d) world3d.celebrate(); render(); save(); } return v; }
@@ -1243,6 +1278,24 @@ function dealTick(){
 function deliverDeal(){ const K = S.market, d = K.deal; if(!d || dealQty(d.key) < d.n) return;
   dealTake(d.key, d.n); S.money += d.pay; S.earned += d.pay; K.deals = (K.deals||0) + 1; K.deal = null; K.dealT = Date.now() + DEAL_GAP*1000;
   toast(`📜 Pedido entregue! +${money(d.pay)}`); if(window.world3d) world3d.celebrate(); render(); save(); }
+let eraArmed = 0;
+function buildEra(){
+  const el = document.getElementById('eraBody'), P = S.pr, g = prGain();
+  el.innerHTML = `<div class="lvlCard"><div class="lvlNext" style="margin-top:0"><small>Era ${P.eras + 1} · Meta para virar Magnata</small>
+      <div>💎 ${fmt(Math.min(S.mined.esmeralda, goal()))} / ${fmt(goal())} esmeraldas</div><div class="progress"><div style="width:${Math.min(1, S.mined.esmeralda/goal())*100}%"></div></div></div>
+    <div class="lvlRows"><div><span>⭐ Estrelas para gastar</span><b>${P.stars}</b></div><div><span>🏛️ Eras completas · estrelas ganhas</span><b>${P.eras} · ${P.total||0}</b></div>
+      <div><span>⭐ Estrelas ao começar a próxima era</span><b>${S.won ? g : '— vire Magnata primeiro'}</b></div></div></div>
+    <p class="small">Ao começar uma <b>Nova Era</b>, minas, máquinas, usina, petróleo e dinheiro recomeçam do zero. Você mantém as <b>estrelas, melhorias de estrela, gemas, itens de gema e conquistas</b>. Quanto mais dinheiro você ganhar na era, mais estrelas (raiz quadrada dos milhões ganhos). A meta de esmeraldas dobra a cada era.</p>`;
+  const b = document.createElement('button'); b.className = 'primary'; b.style.width = '100%'; b.style.marginBottom = '10px';
+  b.textContent = !S.won ? '🔒 Vire Magnata para liberar' : eraArmed > Date.now() ? '⚠️ Toque de novo para confirmar' : `⭐ Começar Nova Era (+${g} estrelas)`; b.disabled = !S.won;
+  b.onclick = ()=>{ if(eraArmed > Date.now()) doPrestige(); else { eraArmed = Date.now() + 4000; buildEra(); setTimeout(()=>{ if(sheetOpen === 'era') buildEra(); }, 4100); } };
+  el.appendChild(b);
+  el.insertAdjacentHTML('beforeend', `<h3 class="subhead">⭐ Melhorias permanentes</h3>`);
+  PR_ITEMS.forEach(it=>{ const lv = prLv(it.id), c = prCost(it), d = document.createElement('div'); d.className = 'item';
+    d.innerHTML = `<div class="ico">${it.ico}</div><div class="info"><div class="name">${it.name} <span class="count">${lv}/${it.max}</span></div><div class="desc">${it.desc}</div></div>`;
+    const bt = document.createElement('button'); bt.textContent = lv >= it.max ? 'Máx.' : `⭐ ${c}`; bt.disabled = lv >= it.max || P.stars < c;
+    bt.onclick = ()=>{ buyPr(it); buildEra(); }; d.appendChild(bt); el.appendChild(d); });
+}
 function buildSell(){
   const el = document.getElementById('sellBody'); el.innerHTML = '';
   const all = document.createElement('button'); all.className = 'primary'; all.style.width = '100%'; all.id = 'sellAllBtn';
@@ -1769,6 +1822,7 @@ function render(){
   const total = oreValue();
   document.getElementById('sellBtn').disabled = total<=0;
   const badge = document.getElementById('invBadge'); badge.hidden = total<=0; badge.textContent = money(total);
+  const eB = document.getElementById('eraBadge'), eN = S.won ? prGain() : S.pr.stars; eB.hidden = !(S.won || S.pr.stars > 0); eB.textContent = S.won ? '+' + prGain() : '⭐' + S.pr.stars; eB.style.background = S.won ? '#2fa84f' : '#e5483b';
   const sv = sellAllVal(), sBadge = document.getElementById('sellBadge'); sBadge.hidden = sv < 1; sBadge.textContent = money(sv);
   const sb = MINES.filter(hasSellBelt).map(m=>m.name);
   if(sb.length && !S.autoSell){ document.getElementById('sellInfo').textContent = '💵 Esteira de Venda ativa em: ' + sb.join(', ') + (total>0 ? ' · Valor do resto: '+money(total) : ''); }
@@ -1788,7 +1842,7 @@ function render(){
       : `Próxima ferramenta: <b>${next.name}</b> — ` + (S.money >= r ? 'já dá para comprar! Siga a seta.' : `falta ${money(r - S.money)}`);
     if(needsFactory(next)){ const pm = prevMine(next); pct = (3 - factoryMissing(pm).length)/3; }
     if(factoryTip(next) && S.money < r) txt += `<br>💡 A fundição da mina de <b>${prevMine(next).name}</b> rende 4x: falta ${factoryMissing(prevMine(next)).join(', ')} <span style="opacity:.8">(botão ⬆️ NÍVEL da mina)</span>`; }
-  else { pct = Math.min(1, S.mined.esmeralda/GOAL); txt = S.won ? '🏆 Você venceu! Continue minerando e enriquecendo.' : `Minere <b>${fmt(GOAL)}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(GOAL)}`; }
+  else { pct = Math.min(1, S.mined.esmeralda/goal()); txt = S.won ? `🏆 Magnata! Abra ⭐ Era para começar uma Nova Era e ganhar <b>${prGain()} estrelas</b>.` : `Minere <b>${fmt(goal())}</b> esmeraldas para se tornar Magnata: ${fmt(S.mined.esmeralda)} / ${fmt(goal())}`; }
   // missão atual em destaque; a próxima mina fica numa linha menor
   const ms = MISSIONS[S.mission];
   if(ms){
@@ -3820,7 +3874,7 @@ function frame(now){
 })();
 
 // ---------- janelas dentro do jogo ----------
-const SHEETS = {sell:'💰 Vender Produtos', maint:'🔧 Oficina de Manutenção', stats:'📊 Estatísticas', panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
+const SHEETS = {era:'⭐ Prestígio · Nova Era', sell:'💰 Vender Produtos', maint:'🔧 Oficina de Manutenção', stats:'📊 Estatísticas', panel:'', ach:'🏆 Conquistas e Troféus', shop:'🛠️ Loja de Ferramentas', staff:'👷 Funcionários', inv:'🎒 Minério estocado', mines:'⛰️ Níveis da Mina'};
 let sheetOpen = null;
 function openSheet(name){
   sheetOpen = name;
@@ -3834,6 +3888,7 @@ function openSheet(name){
   if(name==='stats') buildStats();
   if(name==='maint') buildMaint();
   if(name==='sell') buildSell();
+  if(name==='era') buildEra();
   render();
   document.getElementById('sheet').hidden = false; document.body.classList.add('sheetOpen');
 }
@@ -3841,6 +3896,8 @@ function closeSheet(){ sheetOpen = null; document.getElementById('sheet').hidden
 document.querySelectorAll('#dock button').forEach(b=>b.onclick=()=>{ sheetOpen===b.dataset.open ? closeSheet() : openSheet(b.dataset.open); });
 document.getElementById('sheetClose').onclick = closeSheet;
 document.getElementById('sellTab').onclick = ()=>openSheet('sell');
+document.getElementById('eraTab').onclick = ()=>openSheet('era');
+try{ const e = sessionStorage.getItem('mina-era'); if(e){ sessionStorage.removeItem('mina-era'); setTimeout(()=>toast(`⭐ Era ${+e + 1} começou! Gaste suas estrelas na aba ⭐ Era. Meta: ${fmt(goal())} esmeraldas.`), 1800); } }catch(_){}
 setInterval(()=>{ if(sheetOpen === 'sell') updateSell(); }, 1000);
 document.getElementById('sheet').addEventListener('pointerdown', e=>{ if(e.target.id==='sheet') closeSheet(); });
 window.addEventListener('keydown', e=>{ if(e.key==='Escape' && sheetOpen) closeSheet(); });
