@@ -316,6 +316,10 @@
   #dock i{border:2px solid #fff;font-weight:800}
   .mapHint{bottom:calc(84px + env(safe-area-inset-bottom,0px))!important;background:var(--hudbg);border:2px solid var(--navyD);font-weight:700}
   #toast{bottom:calc(90px + env(safe-area-inset-bottom,0px))!important;background:var(--navy);border:3px solid var(--gold);font-weight:800;border-radius:14px;box-shadow:0 4px 0 var(--navyD)}
+  #zoomBox{position:absolute;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(180px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;z-index:4}
+  #zoomBox button{width:44px;height:44px;border-radius:14px;background:var(--hudbg);border:2px solid var(--navyD);box-shadow:0 3px 0 var(--navyD);color:#fff;font-size:24px;font-weight:900;line-height:1;padding:0}
+  #zoomBox button:active{transform:translateY(2px);box-shadow:0 1px 0 var(--navyD)}
+  body.sheetOpen #zoomBox, body.fpMode #zoomBox{display:none}
   #viewBtn{background:var(--hudbg)!important;border:2px solid var(--navyD)!important;box-shadow:0 3px 0 var(--navyD);bottom:calc(132px + env(safe-area-inset-bottom,0px))!important}
   /* janelas */
   .card{background:var(--panel);border:4px solid var(--navyD);box-shadow:0 6px 0 var(--navyD),0 10px 30px rgba(0,0,0,.35)}
@@ -393,6 +397,7 @@
   <div id="crosshair" hidden></div>
   <button id="sellTab" aria-label="Vender produtos"><span>💰</span>Vender<i id="sellBadge" hidden></i></button>
   <button id="eraTab" aria-label="Prestígio"><span>⭐</span>Era<i id="eraBadge" hidden></i></button>
+  <div id="zoomBox"><button id="zoomIn" aria-label="Aproximar">＋</button><button id="zoomOut" aria-label="Afastar">－</button></div>
   <button id="viewBtn" aria-label="Trocar câmera">👁️ <span id="viewLbl">1ª pessoa</span></button>
   <div class="mapHint" id="mapHint">Arraste o dedo para andar (ou WASD/setas). Pare perto das pedras para minerar.</div>
   <nav id="dock">
@@ -4020,7 +4025,7 @@ function createWorld(){
     arm.rotation.set(0.25, 0.15, 0.25);
     vm.traverse(o=>{ if(o.isMesh){ o.material = o.material.clone(); o.material.depthTest = false; o.renderOrder = 20; o.castShadow = false; } }); }
   function setView(fp){
-    S.fp = fp; save();
+    S.fp = fp; save(); document.body.classList.toggle('fpMode', !!fp);
     player.visible = ring.visible = !fp; vm.visible = fp;
     document.getElementById('crosshair').hidden = !fp;
     document.getElementById('viewLbl').textContent = fp ? '3ª pessoa' : '1ª pessoa';
@@ -4048,6 +4053,7 @@ function createWorld(){
     ndc.set((e.clientX-r.left)/r.width*2-1, -((e.clientY-r.top)/r.height*2-1)); ray.setFromCamera(ndc, camera);
     { const hit = ray.intersectObjects(signBoards)[0]; if(hit){ const c = cards.find(c=>c.board === hit.object); if(c){ openPanel(c.b.id); return; } } }
     if(S.fp && e.clientX - r.left > r.width/2){ look = {id:e.pointerId, x:e.clientX, y:e.clientY}; try{ cv.setPointerCapture(e.pointerId); }catch(_){} return; }
+    if(pinch || touches.size > 1) return;
     joy = {id:e.pointerId, x:e.clientX, y:e.clientY, dx:0, dy:0};
     joyEl.style.left = (e.clientX-r.left)+'px'; joyEl.style.top = (e.clientY-r.top)+'px'; joyEl.hidden = false;
     knob.style.transform = ''; try{ cv.setPointerCapture(e.pointerId); }catch(_){}
@@ -4070,8 +4076,28 @@ function createWorld(){
     const w = sceneEl.clientWidth, h = sceneEl.clientHeight; if(!w || !h) return;
     R.setSize(w, h, false); camera.aspect = w/h;
     camera.fov = S.fp ? (w/h < 0.9 ? 75 : 65) : (w/h < 0.9 ? 50 : 42); camera.updateProjectionMatrix();
-    CAM_OFF.copy(CAM_BASE).multiplyScalar(w/h < 0.9 ? 1.3 : 1);
+    applyZoom();
   }
+  // ---------- zoom: pinça com dois dedos, rodinha do mouse ou botões ＋/－ ----------
+  const ZOOM_MIN = 0.45, ZOOM_MAX = 3.4;
+  function applyZoom(){
+    const w = sceneEl.clientWidth, h = sceneEl.clientHeight || 1, z = S.zoom || 1, far = Math.max(1, z);
+    CAM_OFF.copy(CAM_BASE).multiplyScalar((w/h < 0.9 ? 1.3 : 1) * z);
+    world.fog.near = 58*far; world.fog.far = 120*far; camera.far = 200*far; camera.updateProjectionMatrix();
+    const sc = sun.shadow.camera, e = Math.min(2.6, far); Object.assign(sc, {left:-24*e, right:24*e, top:22*e, bottom:-22*e, far:70*e}); sc.updateProjectionMatrix();
+  }
+  function setZoom(z){ S.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z)); applyZoom(); }
+  document.getElementById('zoomIn').onclick = ()=>{ setZoom((S.zoom||1)/1.25); save(); };
+  document.getElementById('zoomOut').onclick = ()=>{ setZoom((S.zoom||1)*1.25); save(); };
+  cv.addEventListener('wheel', e=>{ if(S.fp) return; e.preventDefault(); setZoom((S.zoom||1)*Math.exp(e.deltaY*0.0012)); }, {passive:false});
+  const touches = new Map(); let pinch = null;
+  cv.addEventListener('pointerdown', e=>{ touches.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if(touches.size === 2 && !S.fp){ const [a,b] = [...touches.values()]; pinch = {d:Math.hypot(a.x-b.x, a.y-b.y), z:S.zoom||1};
+      if(joy){ joy = null; joyEl.hidden = true; } } }, true);
+  cv.addEventListener('pointermove', e=>{ if(!touches.has(e.pointerId)) return; touches.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if(pinch && touches.size >= 2){ const [a,b] = [...touches.values()], d = Math.hypot(a.x-b.x, a.y-b.y); if(d > 10) setZoom(pinch.z * pinch.d / d); e.stopImmediatePropagation(); } }, true);
+  const endTouch = e=>{ touches.delete(e.pointerId); if(touches.size < 2){ if(pinch) save(); pinch = null; } };
+  cv.addEventListener('pointerup', endTouch, true); cv.addEventListener('pointercancel', endTouch, true);
   new ResizeObserver(resize).observe(sceneEl); resize();
   setView(S.fp !== false);
 
@@ -4233,7 +4259,7 @@ function createWorld(){
       R.render(world, camera);
       return;
     }
-    camPos.lerp(new THREE.Vector3().copy(p).add(CAM_OFF).add(LOOK_SHIFT), Math.min(1, dt*6));
+    camPos.lerp(new THREE.Vector3().copy(p).add(CAM_OFF).addScaledVector(LOOK_SHIFT, Math.min(1.6, S.zoom||1)), Math.min(1, dt*6));
     camera.position.copy(camPos);
     camera.lookAt(camPos.x - CAM_OFF.x, 0.6, camPos.z - CAM_OFF.z);
     fadeOccluders(p);
