@@ -44,8 +44,11 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   caldeira com 2 ajudantes, turbina, banco de baterias). Bateria rende pouco por segundo de propósito.
 - `OIL_ITEMS`, `oilStep`, `fuelCap`, `pumpCost`, `GAL_*`, `DRUM_*`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo
   (4 bombas com funcionários, 2 separadores com maquinistas, carregadeira, refinaria, posto de galões). Galão rende pouco por segundo de propósito.
-- **Rede integrada:** `gridTick` (energia: `GEN_*` geradores a carvão + usina + baterias; `powerDemand` = esteiras + postes + refinaria;
-  `beltPower` para as esteiras), combustível obrigatório para caminhões e coletadores (`useFuel`, `FUEL_BUY_*` compra cara no galpão).
+- **Rede integrada (tudo depende de tudo):** não existe gerador nem compra de combustível. A energia só vem da ⚡ Usina
+  (`gridTick`, baterias); `powerDemand` = esteiras + postes + refinaria + papeleira; sem energia, fundições e esteiras param (`beltPower`).
+  Caminhões e coletadores só andam com combustível do ⛽ Posto (`useFuel`), e a refinaria precisa de energia.
+  Por isso a primeira etapa da usina é barata (~$1,4 mil, logo depois da fundição do Cobre) e o caminho até o posto custa ~$9,7 mil.
+  O Banco de Baterias ($10 mil) fica para depois. Saves antigos com gerador recebem de volta o que pagaram nele.
 - `FOREST_ITEMS`, `forStep`, `treeGrow`, `forestLvlCost`, `TORAS_PER_TREE`, `SACK_VALUE`, `PAPER_VALUE`: floresta a leste das minas (lenhadores, adubadores, trator florestal, serraria, carvoaria, fábrica de papel com energia). Terreno $12 mil, tudo ~$112 mil; rende ~$45/s no nível 0.
 - `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `SELL_ITEMS`: aba 💰 Vender (lado direito): preço de venda de cada produto das etapas e dos finais. Cada etapa vale mais que a anterior e menos que terminar a cadeia; carvão bruto bem barato (não pode render mais que um ajudante do Cobre).

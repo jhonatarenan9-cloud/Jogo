@@ -597,7 +597,7 @@ function newState(){
     power:{open:false, lvl:0, batteries:0, charge:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:false, viewV2:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     forest:{open:false, lvl:0, trees:40, sack:0, paper:0, buf:{tora:0, serr:0, lenha:0}},
-    pr:{stars:0, total:0, eras:0, lv:{}}, genLvl:0, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
+    pr:{stars:0, total:0, eras:0, lv:{}}, genLvl:0, noGen:true, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
     active:'cobre', won:false, last:Date.now()
@@ -614,9 +614,13 @@ try{
     S.market = Object.assign(newState().market, d.market); S.market.m = S.market.m || {}; S.market.p = S.market.p || {};
     S.bag = Object.assign(newState().bag, d.bag); S.depot = Object.assign(newState().depot, d.depot);
     if(!d.viewV2){ S.fp = false; S.viewV2 = true; }   // novo visual: começa na câmera isométrica
-    if(d.genLvl === undefined){   // rede integrada nova: quem já tinha esteiras ganha o gerador 1, e caminhões ganham um tanque inicial
+    if((d.genLvl||0) > 0 && !d.noGen){   // o gerador a carvão saiu do jogo: devolve o que foi pago nele
+      const back = [250, 2500, 12000].slice(0, d.genLvl).reduce((a,c)=>a+c, 0); S.money += back;
+      setTimeout(()=>toast(`⚡ O gerador a carvão saiu: agora a energia vem da Usina. Devolvemos ${money(back)}.`), 1500); }
+    S.genLvl = 0; S.noGen = true; S.autoFuel = false;
+    if(false){   // rede integrada nova: quem já tinha esteiras ganha o gerador 1, e caminhões ganham um tanque inicial
       const anyBelt = Object.values(d.belts||{}).some(Boolean) || Object.values(d.sellBelts||{}).some(Boolean) || Object.values(d.smelters||{}).some(Boolean);
-      S.genLvl = anyBelt ? 1 : 0;
+      void anyBelt;
       if((d.trucks||0) > 0 || Object.values(d.collectors||{}).some(Boolean)){ d.oil = d.oil || {}; d.oil.fuel = Math.max(d.oil.fuel||0, 50); }
     }
     if(d.oil && d.oil.pump !== undefined){   // campo antigo: mantém o que foi construído, com a equipe mínima
@@ -691,8 +695,7 @@ function produce(sec){
   shareCoal(sec);
   smelt(sec);
   gridTick(sec, powerTick(sec));
-  autoFuelTick();
-  oilTick(sec);
+    oilTick(sec);
   forestTick(sec);
   sellByBelts();
   stageTick(sec);
@@ -743,7 +746,7 @@ function sellByBelts(){
   return total;
 }
 // lucro por etapa: cada etapa do carvão e do petróleo já paga um pouco pelo que processa (bem menos que o produto final)
-const STAGE_PAY = {corte:1, serraria:2, carvao:0.05, britagem:4, lavagem:6, caldeira:8, extracao:3, separacao:5, refino:25};
+const STAGE_PAY = {corte:1, serraria:2, carvao:0.05, britagem:0.5, lavagem:0.8, caldeira:1, extracao:1, separacao:2, refino:10};
 const STAGE_RATE = {};   // $/s de cada etapa (média recente, para os painéis)
 let stageSec = 0, stageAcc = {};
 function stagePay(key, units){ if(units <= 0) return; const v = units*STAGE_PAY[key]; S.money += v; S.earned += v; stageAcc[key] = (stageAcc[key]||0) + v; }
@@ -776,40 +779,38 @@ function smelt(sec){
 // ===================== USINA DE ENERGIA =====================
 // à esquerda da mina de Carvão. Carvão → 2 britadores (com operadores) → lavadora (com maquinista)
 // → caldeira (2 ajudantes levam o carvão da lavadora) → turbina → rede elétrica + baterias para vender
-const POWER_OPEN_COST = 3000;
+const POWER_OPEN_COST = 150;
 const POWER_ITEMS = [
-  {id:'brA', kind:'m', name:'Britador 1', ico:'🪨', cost:2000, need:null,  desc:'Quebra o carvão. Só funciona com operador.'},
-  {id:'opA', kind:'w', name:'Operador do Britador 1', ico:'👷', cost:400, need:'brA', desc:'Opera o Britador 1.'},
-  {id:'brB', kind:'m', name:'Britador 2', ico:'🪨', cost:3000, need:'opA', desc:'Dobra o carvão quebrado. Precisa de operador.'},
-  {id:'opB', kind:'w', name:'Operador do Britador 2', ico:'👷', cost:600, need:'brB', desc:'Opera o Britador 2.'},
-  {id:'lv',  kind:'m', name:'Lavadora Industrial', ico:'💧', cost:5000, need:'opA', desc:'Lava o carvão quebrado (10% se perde). Precisa de maquinista.'},
-  {id:'maq', kind:'w', name:'Maquinista da Lavadora', ico:'🧑‍🔧', cost:900, need:'lv', desc:'Controla a lavadora.'},
-  {id:'cd',  kind:'m', name:'Caldeira', ico:'🔥', cost:7000, need:'maq', desc:'Queima o carvão limpo e gera vapor. Precisa de ajudantes.'},
-  {id:'aj1', kind:'w', name:'Ajudante da Caldeira 1', ico:'👷', cost:500, need:'cd', desc:'Leva o carvão da lavadora até a caldeira.'},
-  {id:'aj2', kind:'w', name:'Ajudante da Caldeira 2', ico:'👷', cost:700, need:'aj1', desc:'Mais um ajudante: a caldeira queima o dobro.'},
-  {id:'tb',  kind:'m', name:'Turbina', ico:'⚡', cost:12000, need:'aj1', desc:'O vapor gira a turbina e gera energia para a rede.'},
-  {id:'bat', kind:'m', name:'Banco de Baterias', ico:'🔋', cost:8000, need:'tb', desc:'Guarda a energia que sobra em baterias para vender.'},
+  {id:'brA', kind:'m', name:'Britador 1', ico:'🪨', cost:150, need:null,  desc:'Quebra o carvão. Só funciona com operador.'},
+  {id:'opA', kind:'w', name:'Operador do Britador 1', ico:'👷', cost:50, need:'brA', desc:'Opera o Britador 1.'},
+  {id:'brB', kind:'m', name:'Britador 2', ico:'🪨', cost:1500, need:'opA', desc:'Dobra o carvão quebrado. Precisa de operador.'},
+  {id:'opB', kind:'w', name:'Operador do Britador 2', ico:'👷', cost:300, need:'brB', desc:'Opera o Britador 2.'},
+  {id:'lv',  kind:'m', name:'Lavadora Industrial', ico:'💧', cost:250, need:'opA', desc:'Lava o carvão quebrado (10% se perde). Precisa de maquinista.'},
+  {id:'maq', kind:'w', name:'Maquinista da Lavadora', ico:'🧑‍🔧', cost:60, need:'lv', desc:'Controla a lavadora.'},
+  {id:'cd',  kind:'m', name:'Caldeira', ico:'🔥', cost:300, need:'maq', desc:'Queima o carvão limpo e gera vapor. Precisa de ajudantes.'},
+  {id:'aj1', kind:'w', name:'Ajudante da Caldeira 1', ico:'👷', cost:50, need:'cd', desc:'Leva o carvão da lavadora até a caldeira.'},
+  {id:'aj2', kind:'w', name:'Ajudante da Caldeira 2', ico:'👷', cost:400, need:'aj1', desc:'Mais um ajudante: a caldeira queima o dobro.'},
+  {id:'tb',  kind:'m', name:'Turbina', ico:'⚡', cost:400, need:'aj1', desc:'O vapor gira a turbina e gera energia para a rede.'},
+  {id:'bat', kind:'m', name:'Banco de Baterias', ico:'🔋', cost:10000, need:'tb', desc:'Guarda a energia que sobra em baterias para vender.'},
 ];
 const ENERGY_PER_COAL = 25, POWER_BELT_BONUS = 0.4, POWER_LIGHT_BONUS = 0.2, POWER_BUF_MAX = 40, WASH_LOSS = 0.1;
 const BATTERY_KWS = 25, BATTERY_VALUE = 220, BATTERY_CAP = 100, BATTERY_VIS = 40;           // energia por bateria, preço e capacidade
 const powerStep = () => 0.3 * (1 + 0.5*S.power.lvl) * (1 + 0.15*prLv('usina'));                    // carvão/s por britador, ajudante...
 const boilerCost = () => Math.ceil(20000 * Math.pow(3, S.power.lvl));
-// ===== REDE ELÉTRICA (gerador a carvão + usina + baterias) =====
+// ===== REDE ELÉTRICA (usina + baterias; não existe mais gerador) =====
 // esteiras, postes e a refinaria consomem energia; caminhões e coletadores consomem combustível
 const GEN_KW = 4, GEN_COSTS = [250, 2500, 12000], GEN_COAL = 0.04;   // kW por gerador, preços, carvão por kW·s
 let powerNow = 0, gridRatio = 0, usinaKW = 0, genKW = 0, battKW = 0;
 const genCap = () => GEN_KW * S.genLvl;
 const powerDemand = () => {
   const belts = MINES.filter(m=>hasBelt(m)).length + MINES.filter(m=>hasSellBelt(m)).length + (MINES.some(m=>!m.fuel && S.smelters[m.id]) ? 1 : 0);
-  return belts + ((belts || S.genLvl || S.power.tb) ? 1 : 0) + (S.oil && S.oil.rf ? 2 : 0) + (S.forest && S.forest.pp ? 2 : 0);   // + postes + refinaria + papeleira
+  return belts + ((belts || S.power.tb) ? 1 : 0) + (S.oil && S.oil.rf ? 2 : 0) + (S.forest && S.forest.pp ? 2 : 0);   // + postes + refinaria + papeleira
 };
 const powerRatio = () => gridRatio;
 const beltPower = () => gridRatio * (S.power.tb && gridRatio >= 0.999 ? 1 + POWER_BELT_BONUS : 1);   // esteiras: param sem energia
 function gridTick(sec, usinaGen){
   const dem = powerDemand(), D = dem*sec; let supply = usinaGen;
-  // gerador queima carvão só no que falta
-  let g = Math.max(0, Math.min(genCap()*sec, D - supply));
-  if(g > 0){ const coal = g*GEN_COAL; if(S.ore.carvao < coal){ g = S.ore.carvao/GEN_COAL; } S.ore.carvao = Math.max(0, S.ore.carvao - g*GEN_COAL); supply += g; }
+  const g = 0;   // sem gerador: toda a energia vem da usina (e das baterias)
   const P = S.power; let fromBatt = 0;
   if(supply >= D){
     if(P.bat){ P.charge = (P.charge||0) + (supply - D);
@@ -864,27 +865,27 @@ function upgradeBoiler(){ const c = boilerCost(); if(!S.power.tb || S.money < c)
 // ===================== CAMPO DE PETRÓLEO =====================
 // 4 bombas (cada uma com funcionário) → 2 separadores (com maquinistas) → tambores nos paletes
 // → carregadeira leva à refinaria → posto enche galões → galões abastecem os veículos ou são vendidos
-const OIL_OPEN_COST = 6000;
+const OIL_OPEN_COST = 1500;
 const OIL_ITEMS = [
-  {id:'p1', kind:'m', name:'Bomba 1', ico:'🛢️', cost:3000, need:null, desc:'Cavalinho que puxa o petróleo. Precisa de funcionário.'},
-  {id:'w1', kind:'w', name:'Funcionário da Bomba 1', ico:'👷', cost:500, need:'p1', desc:'Opera o cavalinho da Bomba 1.'},
+  {id:'p1', kind:'m', name:'Bomba 1', ico:'🛢️', cost:800, need:null, desc:'Cavalinho que puxa o petróleo. Precisa de funcionário.'},
+  {id:'w1', kind:'w', name:'Funcionário da Bomba 1', ico:'👷', cost:150, need:'p1', desc:'Opera o cavalinho da Bomba 1.'},
   {id:'p2', kind:'m', name:'Bomba 2', ico:'🛢️', cost:4000, need:'w1', desc:'Mais petróleo. Precisa de funcionário.'},
   {id:'w2', kind:'w', name:'Funcionário da Bomba 2', ico:'👷', cost:700, need:'p2', desc:'Opera a Bomba 2.'},
   {id:'p3', kind:'m', name:'Bomba 3', ico:'🛢️', cost:5500, need:'w2', desc:'Mais petróleo. Precisa de funcionário.'},
   {id:'w3', kind:'w', name:'Funcionário da Bomba 3', ico:'👷', cost:900, need:'p3', desc:'Opera a Bomba 3.'},
   {id:'p4', kind:'m', name:'Bomba 4', ico:'🛢️', cost:7500, need:'w3', desc:'Mais petróleo. Precisa de funcionário.'},
   {id:'w4', kind:'w', name:'Funcionário da Bomba 4', ico:'👷', cost:1100, need:'p4', desc:'Opera a Bomba 4.'},
-  {id:'s1', kind:'m', name:'Separador 1', ico:'🧪', cost:7000, need:'w1', desc:'Tira água e areia (20% se perde) e enche tambores. Precisa de maquinista.'},
-  {id:'m1', kind:'w', name:'Maquinista do Separador 1', ico:'🧑‍🔧', cost:1000, need:'s1', desc:'Controla o Separador 1.'},
+  {id:'s1', kind:'m', name:'Separador 1', ico:'🧪', cost:1500, need:'w1', desc:'Tira água e areia (20% se perde) e enche tambores. Precisa de maquinista.'},
+  {id:'m1', kind:'w', name:'Maquinista do Separador 1', ico:'🧑‍🔧', cost:250, need:'s1', desc:'Controla o Separador 1.'},
   {id:'s2', kind:'m', name:'Separador 2', ico:'🧪', cost:9000, need:'m1', desc:'Dobra a separação. Precisa de maquinista.'},
   {id:'m2', kind:'w', name:'Maquinista do Separador 2', ico:'🧑‍🔧', cost:1300, need:'s2', desc:'Controla o Separador 2.'},
-  {id:'ld', kind:'m', name:'Carregadeira', ico:'🚜', cost:8000, need:'m1', desc:'Leva os tambores dos paletes até a refinaria.'},
-  {id:'rf', kind:'m', name:'Refinaria', ico:'🏭', cost:12000, need:'ld', desc:'Transforma os tambores em combustível.'},
-  {id:'ps', kind:'m', name:'Posto de Combustível', ico:'⛽', cost:9000, need:'rf', desc:'Enche galões, que vão ao galpão para abastecer os veículos.'},
+  {id:'ld', kind:'m', name:'Carregadeira', ico:'🚜', cost:1500, need:'m1', desc:'Leva os tambores dos paletes até a refinaria.'},
+  {id:'rf', kind:'m', name:'Refinaria', ico:'🏭', cost:2500, need:'ld', desc:'Transforma os tambores em combustível.'},
+  {id:'ps', kind:'m', name:'Posto de Combustível', ico:'⛽', cost:1500, need:'rf', desc:'Enche galões, que vão ao galpão para abastecer os veículos.'},
 ];
 const CRUDE_MAX = 60, DRUM_UNITS = 5, DRUM_CAP = 48, REF_MAX = 12, GAL_L = 10, GAL_CAP = 100, GAL_VALUE = 200, GAL_VIS = 40;
 const SEP_LOSS = 0.2, DRUM_L = 4.5, TRUCK_FUEL = 3, COLLECTOR_FUEL = 1.5;
-const FUEL_BUY_L = 10, FUEL_BUY_PRICE = 150;   // comprar combustível no galpão é caro: o campo de petróleo compensa
+
 const oilStep = () => 0.25 * (1 + 0.5*S.oil.lvl) * (1 + 0.15*prLv('usina'));
 const fuelCap = () => 100 + 50*S.oil.lvl;
 const pumpCost = () => Math.ceil(25000 * Math.pow(3, S.oil.lvl));
@@ -910,9 +911,7 @@ function oilTick(sec){
 }
 const hasFuel = l => (S.oil.fuel||0) >= l;
 function useFuel(liters){ if(!hasFuel(liters)) return false; S.oil.fuel -= liters; return true; }
-function buyFuel(silent){ if(S.money < FUEL_BUY_PRICE || S.oil.fuel > fuelCap() - FUEL_BUY_L) return false;
-  S.money -= FUEL_BUY_PRICE; S.oil.fuel += FUEL_BUY_L; if(!silent){ toast(`⛽ Comprou ${FUEL_BUY_L} L por ${money(FUEL_BUY_PRICE)}`); render(); save(); } return true; }
-function autoFuelTick(){ if(S.autoFuel && S.depotOpen && S.oil.fuel < 20) buyFuel(true); }
+// combustível só vem do ⛽ Posto do Campo de Petróleo (não dá mais para comprar)
 // carros da rodovia param no posto e compram galões (paga um pouco mais que vender no mercado)
 const CAR_GAL_MULT = 1.25;
 function carBuy(want){ const O = S.oil; if(!O.ps) return 0; const n = Math.min(want, Math.floor(O.gal||0)); if(n <= 0) return 0;
@@ -996,7 +995,8 @@ const MISSIONS = [
   {t:'Contrate 1 ajudante na mina de Carvão', p:()=>[S.staff.carvao.n, 1], r:60},
   {t:'Afie a ferramenta (Loja → Melhorias)', p:()=>[S.sharpen, 1], r:80},
   {t:'Construa a fundição do Cobre', p:()=>[+!!S.smelters.cobre, 1], r:120},
-  {t:'Compre o ⚡ Gerador a carvão (painel ⬆️ da mina de Carvão): as esteiras precisam de energia', p:()=>[S.genLvl, 1], r:100},
+  {t:'Abra o terreno da ⚡ Usina (à esquerda da mina de Carvão): fundições e esteiras precisam de energia', p:()=>[+!!S.power.open, 1], r:60, go:()=>S.money >= powerOpenLeft() ? {x:-80, z:-4} : null},
+  {t:'Ligue a Usina: britador, lavadora, caldeira e turbina com equipe', p:()=>[(crushers()>0)+(S.power.lv&&S.power.maq?1:0)+(boilerHands()>0)+(S.power.tb?1:0), 4], r:400},
   {t:'Instale a esteira de minério do Cobre', p:()=>[+!!S.belts.cobre, 1], r:150},
   {t:'Instale a esteira de venda do Cobre', p:()=>[+!!S.sellBelts.cobre, 1], r:200},
   {t:'Contrate 3 ajudantes na mina de Cobre', p:()=>[S.staff.cobre.n, 3], r:250},
@@ -1005,21 +1005,20 @@ const MISSIONS = [
   {t:'Contrate o gerente da mina de Cobre', p:()=>[+!!S.staff.cobre.mgr, 1], r:600},
   {t:'Abra a 📦 Área de Entregas (sul do vilarejo)', p:()=>[+!!S.depotOpen, 1], r:300, go:()=>S.money >= DEPOT_COST - (S.paid.depot||0) ? {x:0, z:12} : null},
   {t:'Compre o primeiro 🚚 caminhão (botão ⬆️ do galpão)', p:()=>[S.trucks, 1], r:250},
-  {t:'Abasteça o tanque: compre combustível no painel ⬆️ do galpão', p:()=>[+((S.oil.fuel||0) >= 10 || !!S.oil.ps), 1], r:150},
   {t:'Contrate o primeiro 🧑‍🏭 carregador (botão ⬆️ do galpão)', p:()=>[S.loaders, 1], r:200},
+  {t:'Abra o 🛢️ Campo de Petróleo: caminhões e coletadores só andam com combustível do posto', p:()=>[+!!S.oil.open, 1], r:300, go:()=>S.money >= oilOpenLeft() ? {x:-32, z:12} : null},
+  {t:'Monte o Campo de Petróleo até o Posto (bomba, separador, carregadeira, refinaria, posto)', p:()=>[(pumpsOn()>0)+(sepsOn()>0)+(S.oil.ld?1:0)+(S.oil.rf?1:0)+(S.oil.ps?1:0), 5], r:1500},
   {t:'Faça 3 entregas na Metalúrgica Aurora', p:()=>[S.deliveries||0, 3], r:500, go:()=>bagTotal() >= 1 ? {x:-3.4, z:19} : null},
   {t:'Dê o 🔩 Martelete aos ajudantes do Cobre', p:()=>[S.staff.cobre.tool||0, 1], r:800},
   {t:'Compre o 🛺 coletador da mina de Cobre', p:()=>[+!!S.collectors.cobre, 1], r:400},
-  {t:'Abra o terreno da ⚡ Usina (à esquerda da mina de Carvão)', p:()=>[+!!S.power.open, 1], r:800, go:()=>S.money >= powerOpenLeft() ? {x:-80, z:-4} : null},
-  {t:'Ligue a Usina: britador, lavadora, caldeira e turbina com equipe', p:()=>[(crushers()>0)+(S.power.lv&&S.power.maq?1:0)+(boilerHands()>0)+(S.power.tb?1:0), 4], r:5000},
-  {t:'Venda 10 baterias da Usina', p:()=>[S.power.sold||0, 10], r:3000},
-  {t:'Abra o 🛢️ Campo de Petróleo', p:()=>[+!!S.oil.open, 1], r:1200, go:()=>S.money >= oilOpenLeft() ? {x:-32, z:12} : null},
-  {t:'Monte o Campo de Petróleo até o Posto (bomba, separador, carregadeira, refinaria, posto)', p:()=>[(pumpsOn()>0)+(sepsOn()>0)+(S.oil.ld?1:0)+(S.oil.rf?1:0)+(S.oil.ps?1:0), 5], r:6000},
-  {t:'Venda 20 galões de combustível', p:()=>[S.oil.sold||0, 20], r:3000},
+  {t:'Ligue o Britador 2 na Usina (com operador)', p:()=>[crushers(), 2], r:500},
   {t:'Contrate 3 ajudantes na mina de Ferro', p:()=>[S.staff.ferro.n, 3], r:2000},
   {t:'Complete a fundição do Ferro (3 itens)', p:()=>[3-factoryMissing(MINES[1]).length, 3], r:2000},
+  {t:'Venda 20 galões de combustível', p:()=>[S.oil.sold||0, 20], r:2500},
   {t:'Ganhe $30.000 em vendas', p:()=>[S.earned, 30000], r:3000},
+  {t:'Abra a 🌲 Floresta (fim da estrada, à direita)', p:()=>[+!!S.forest.open, 1], r:3000, go:()=>S.money >= forestOpenLeft() ? {x:38.4, z:-4} : null},
   {t:'Compre a Britadeira', p:()=>[+!!S.tools.britadeira, 1], r:6000},
+  {t:'Monte o Banco de Baterias e venda 10 baterias', p:()=>[S.power.sold||0, 10], r:4000},
   {t:'Dê o 💥 Rompedor aos ajudantes de alguma mina', p:()=>[Math.max(...MINES.map(m=>S.staff[m.id].tool||0)), 2], r:5000},
   {t:'Complete a fundição do Ouro (3 itens)', p:()=>[3-factoryMissing(MINES[2]).length, 3], r:15000},
   {t:'Ganhe $300.000 em vendas', p:()=>[S.earned, 300000], r:30000},
@@ -1291,12 +1290,12 @@ function cheapestDepot(){
 // valores sobem a cada etapa, mas sempre abaixo de terminar a cadeia (bateria, galão, barra)
 const SELL_ITEMS = [
   {g:'etapa', id:'carvao', ico:'⚫', name:'Carvão bruto', v:0.1, q:()=>S.ore.carvao, take:n=>{ S.ore.carvao -= n; }, warn:()=>coalLineOn() ? 'As fundições e a usina usam este carvão' : ''},
-  {g:'etapa', id:'moido', ico:'🪨', name:'Carvão quebrado', v:6, q:()=>S.power.buf.moido, take:n=>{ S.power.buf.moido -= n; }},
-  {g:'etapa', id:'limpo', ico:'💧', name:'Carvão lavado', v:12, q:()=>S.power.buf.limpo, take:n=>{ S.power.buf.limpo -= n; }},
-  {g:'etapa', id:'crude', ico:'🛢️', name:'Petróleo cru', v:4, q:()=>S.oil.buf.crude, take:n=>{ S.oil.buf.crude -= n; }},
-  {g:'etapa', id:'clean', ico:'🧪', name:'Petróleo separado', v:8, q:()=>S.oil.buf.clean, take:n=>{ S.oil.buf.clean -= n; }},
-  {g:'etapa', id:'drums', ico:'🛢️', name:'Tambores (paletes e refinaria)', v:50, q:()=>Math.floor(S.oil.drums) + S.oil.refBuf, take:n=>{ const a = Math.min(n, Math.floor(S.oil.drums)); S.oil.drums -= a; S.oil.refBuf = Math.max(0, S.oil.refBuf - (n - a)); }},
-  {g:'etapa', id:'diesel', ico:'⛽', name:'Combustível na refinaria (L)', v:15, q:()=>S.oil.buf.diesel, take:n=>{ S.oil.buf.diesel -= n; }},
+  {g:'etapa', id:'moido', ico:'🪨', name:'Carvão quebrado', v:1.5, q:()=>S.power.buf.moido, take:n=>{ S.power.buf.moido -= n; }},
+  {g:'etapa', id:'limpo', ico:'💧', name:'Carvão lavado', v:3, q:()=>S.power.buf.limpo, take:n=>{ S.power.buf.limpo -= n; }},
+  {g:'etapa', id:'crude', ico:'🛢️', name:'Petróleo cru', v:1.5, q:()=>S.oil.buf.crude, take:n=>{ S.oil.buf.crude -= n; }},
+  {g:'etapa', id:'clean', ico:'🧪', name:'Petróleo separado', v:3, q:()=>S.oil.buf.clean, take:n=>{ S.oil.buf.clean -= n; }},
+  {g:'etapa', id:'drums', ico:'🛢️', name:'Tambores (paletes e refinaria)', v:20, q:()=>Math.floor(S.oil.drums) + S.oil.refBuf, take:n=>{ const a = Math.min(n, Math.floor(S.oil.drums)); S.oil.drums -= a; S.oil.refBuf = Math.max(0, S.oil.refBuf - (n - a)); }},
+  {g:'etapa', id:'diesel', ico:'⛽', name:'Combustível na refinaria (L)', v:6, q:()=>S.oil.buf.diesel, take:n=>{ S.oil.buf.diesel -= n; }},
   {g:'etapa', id:'tora', ico:'🪵', name:'Toras', v:3, q:()=>S.forest.buf.tora + S.forest.buf.serr, take:n=>{ const a = Math.min(n, S.forest.buf.tora); S.forest.buf.tora -= a; S.forest.buf.serr = Math.max(0, S.forest.buf.serr - (n - a)); }},
   {g:'etapa', id:'lenha', ico:'🪚', name:'Lenha cortada', v:8, q:()=>S.forest.buf.lenha, take:n=>{ S.forest.buf.lenha -= n; }},
   {g:'final', id:'sack', ico:'🔥', name:'Sacos de carvão vegetal', v:SACK_VALUE, q:()=>Math.floor(S.forest.sack||0), take:n=>{ S.forest.sack -= n; S.forest.soldSack = (S.forest.soldSack||0) + n; }},
@@ -1320,10 +1319,10 @@ function dealPool(){
     n:Math.max(10, Math.round(BELT_RATE[m.id]/ORES_PER_BAR*90/5)*5)}));
   if(P.bat) out.push({key:'bat', ico:'🔋', name:'Baterias', unit:BATTERY_VALUE, n:25});
   if(O.ps) out.push({key:'gal', ico:'⛽', name:'Galões', unit:GAL_VALUE, n:15});
-  if(O.s1 && O.m1) out.push({key:'drums', ico:'🛢️', name:'Tambores de petróleo', unit:50, n:20});
+  if(O.s1 && O.m1) out.push({key:'drums', ico:'🛢️', name:'Tambores de petróleo', unit:20, n:20});
   if(S.forest.cv && S.forest.cw) out.push({key:'sack', ico:'🔥', name:'Sacos de carvão vegetal', unit:SACK_VALUE, n:20});
   if(S.forest.pp && S.forest.pw) out.push({key:'paper', ico:'📜', name:'Resmas de papel', unit:PAPER_VALUE, n:40});
-  if(P.lv && P.maq) out.push({key:'limpo', ico:'💧', name:'Carvão lavado', unit:12, n:30});
+  if(P.lv && P.maq) out.push({key:'limpo', ico:'💧', name:'Carvão lavado', unit:3, n:30});
   return out;
 }
 const dealQty = k => k.startsWith('bar_') ? S.bars[k.slice(4)]||0 : k === 'bat' ? S.power.batteries||0 : k === 'gal' ? Math.floor(S.oil.gal||0) : k === 'drums' ? Math.floor(S.oil.drums) : k === 'limpo' ? S.power.buf.limpo : k === 'sack' ? Math.floor(S.forest.sack) : k === 'paper' ? Math.floor(S.forest.paper) : 0;
@@ -1499,7 +1498,7 @@ function buildPanel(){
     const P = S.power, ratio = powerRatio(), dem = powerDemand(), on = powerOn();
     document.getElementById('sheetTitle').textContent = '⚡ Usina de Energia';
     el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">⚡</span>
-        <div><small>Usina + geradores + baterias / rede</small><b>${fmt(usinaKW)} + ${fmt(genKW)} + ${fmt(battKW)} / ${fmt(dem)} kW</b></div><span class="lvlBadge">${Math.round(ratio*100)}%</span></div>
+        <div><small>Usina + baterias / rede</small><b>${fmt(usinaKW)} + ${fmt(battKW)} / ${fmt(dem)} kW</b></div><span class="lvlBadge">${Math.round(ratio*100)}%</span></div>
       <div class="lvlNext"><small>Situação</small><div>${!P.open ? 'Compre o terreno ao lado da mina de Carvão' : !on ? 'Falta: ' + [!crushers() && 'britador com operador', !(P.lv && P.maq) && 'lavadora com maquinista', !boilerHands() && 'caldeira com ajudante', !P.tb && 'turbina'].filter(Boolean).join(', ') : ratio >= 1 ? '✔ Rede com energia total' : '⚠️ Energia fraca: precisa de mais carvão ou usina maior'}</div>
         <div class="progress"><div style="width:${ratio*100}%"></div></div></div>
       <div class="flow">${step(crushers()>0,'🪨','Britadores')}${arrow(P.lv&&P.maq)}${step(P.lv&&P.maq,'💧','Lavadora')}${arrow(boilerHands()>0)}${step(boilerHands()>0,'🔥','Caldeira')}${arrow(P.tb)}${step(P.tb,'⚡','Turbina')}${arrow(P.bat)}${step(P.bat,'🔋','Baterias')}</div>
@@ -1546,10 +1545,7 @@ function buildPanel(){
     if(S.trucks) el.insertAdjacentHTML('beforeend', `<p class="small">🔧 O estado dos caminhões fica no botão <b>Manutenção</b> da barra de baixo.</p>`);
     sec('⛽ Combustível dos veículos');
     el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Caminhões (${TRUCK_FUEL} L por viagem) e coletadores (${COLLECTOR_FUEL} L) só saem com combustível no tanque. Os galões do 🛢️ Campo de Petróleo enchem o tanque sozinhos; comprar aqui é caro.</p>`);
-    add('⛽', `Tanque <span class="count">${fmt(S.oil.fuel)}/${fmt(fuelCap())} L</span>`, `Comprar ${FUEL_BUY_L} L de combustível`, btn(money(FUEL_BUY_PRICE), ()=>buyFuel(), FUEL_BUY_PRICE));
-    { const tg = document.createElement('button'); tg.textContent = S.autoFuel ? '✔ Ligada' : 'Ligar'; if(S.autoFuel) tg.className = 'primary';
-      tg.onclick = ()=>{ S.autoFuel = !S.autoFuel; save(); buildPanel(); };
-      add('🔁', 'Compra automática', `Compra ${FUEL_BUY_L} L sozinho quando o tanque fica abaixo de 20 L (custa ${money(FUEL_BUY_PRICE)} cada vez).`, tg); }
+    add('⛽', `Tanque <span class="count">${fmt(S.oil.fuel)}/${fmt(fuelCap())} L</span>`, S.oil.ps ? 'Abastecido pelos galões do ⛽ Posto do Campo de Petróleo.' : 'Caminhões e coletadores só andam com combustível do ⛽ Posto: monte o Campo de Petróleo.', btn(S.oil.ps ? 'Ver posto' : 'Montar', ()=>openPanel('oil'), 0));
     sec('🛺 Coletadores');
     el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">Cada mina tem o seu coletador: compre no painel da mina (botão <b>⬆️ NÍVEL</b> ao lado do portão). Trabalhando: <b>${MINES.filter(m=>S.collectors[m.id]).map(m=>m.name).join(', ') || 'nenhum'}</b>.</p>`);
     return;
@@ -1578,9 +1574,9 @@ function buildPanel(){
   add('👔', 'Gerente', `Ajudantes ${xf(MANAGER_MULT)} mais rápidos`, st.mgr ? tag('✔ Contratado') : btn(money(managerCost(m)), ()=>hireManager(m), managerCost(m)));
 
   if(m.fuel){
-    sec('⚡ Gerador a carvão');
-    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">As esteiras e os postes precisam de energia. Cada gerador dá ${GEN_KW} kW queimando carvão (${GEN_COAL*GEN_KW} carvão/s no máximo). Rede agora: <b>${fmt(powerNow)}/${fmt(powerDemand())} kW</b>.</p>`);
-    { const gc = GEN_COSTS[S.genLvl]; add('⚡', `Geradores <span class="count">${S.genLvl}/${GEN_COSTS.length}</span>`, `+${GEN_KW} kW cada (hoje ${fmt(genCap())} kW). Para mais energia, construa a ⚡ Usina.`, gc === undefined ? tag('✔ Todos') : btn(money(gc), buyGenerator, gc)); }
+    sec('⚡ Energia');
+    el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">As fundições, as esteiras e os postes precisam de energia, e ela só vem da <b>⚡ Usina</b> (à esquerda desta mina), que queima este carvão. Rede agora: <b>${fmt(powerNow + battKW)}/${fmt(powerDemand())} kW</b>.</p>`);
+    add('⚡', 'Usina de Energia', S.power.tb ? 'Gerando energia para a rede.' : 'Monte britador, lavadora, caldeira e turbina com equipe.', btn(S.power.tb ? 'Abrir' : 'Montar', ()=>openPanel('usina'), 0));
     sec('⚫ Carvão');
     const dc = coalDrillCost();
     add('🔩', `Brocas de Carvão <span class="count">nv ${S.coalLvl}</span>`, `+${Math.round(DRILL_BONUS*100)}% de carvão (você e os ajudantes)`, btn(money(dc), buyCoalDrill, dc));
@@ -1700,7 +1696,7 @@ function buildMines(){
 // ===== painel da rede: carvão, energia e combustível juntos =====
 function resourceLine(){
   const dem = powerDemand(), parts = [];
-  if(dem > 0 || S.genLvl) parts.push(`⚡ <b style="color:${gridRatio >= 0.99 ? '#9cff7a' : gridRatio > 0.3 ? '#ffd27a' : '#ff9b7a'}">${fmt(powerNow + battKW)}/${fmt(dem)} kW</b>`);
+  if(dem > 0 || S.power.open) parts.push(`⚡ <b style="color:${gridRatio >= 0.99 ? '#9cff7a' : gridRatio > 0.3 ? '#ffd27a' : '#ff9b7a'}">${fmt(powerNow + battKW)}/${fmt(dem)} kW</b>`);
   if(S.depotOpen || S.oil.open) parts.push(`⛽ <b style="color:${hasFuel(TRUCK_FUEL) ? '#9cff7a' : '#ff9b7a'}">${fmt(S.oil.fuel)} L</b>`);
   return parts.length ? '<br>' + parts.join(' · ') : '';
 }
@@ -1708,11 +1704,11 @@ function gridWarnings(){
   const w = [];
   if(MINES.some(x=>hasBelt(x) && S.ore[x.id] > 0.5 && !FUEL[x.id])) w.push('Fundições sem carvão!');
   const dem = powerDemand();
-  if(dem > 0 && gridRatio < 0.05) w.push(S.genLvl ? 'Sem energia: geradores sem carvão!' : 'Sem energia: compre o Gerador (mina de Carvão)');
+  if(dem > 0 && gridRatio < 0.05) w.push(S.power.tb ? 'Sem energia: a Usina está sem carvão ou sem equipe!' : 'Sem energia: monte a ⚡ Usina (ao lado da mina de Carvão)');
   else if(dem > 0 && gridRatio < 0.95) w.push(`Energia fraca (${Math.round(gridRatio*100)}%): esteiras lentas`);
   const trucksWait = S.trucks > 0 && depotTotal() >= 1 && !hasFuel(TRUCK_FUEL);
   const colWait = MINES.some(m=>S.collectors[m.id] && haulAvail(m) >= 1) && !hasFuel(COLLECTOR_FUEL);
-  if(trucksWait || colWait) w.push('Veículos parados sem combustível!');
+  if(trucksWait || colWait) w.push(S.oil.ps ? 'Veículos parados: o posto está sem combustível!' : 'Veículos parados: monte o ⛽ Posto no Campo de Petróleo!');
   return w;
 }
 function buildStaff(){
