@@ -58,6 +58,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - **Lago (sul da pedreira):** `LAKE_OPEN_COST` ($15 mil, libera com a fábrica de blocos), `L_BUY` (bomba, draga, escavadeira, operadores, caçambas), `L_UP`.
   Água (reservatório → adutora → caixa d'água), areia (draga) e argila (escavadeira) vão ao pátio do lago; caçambas levam areia/argila ao pátio de insumos da fábrica.
   `lakeUse(LAKE_USE.x, q)` consome de verdade; a parte feita com insumos próprios rende +`LAKE_BONUS` (80%). Cada estação paga `STAGE_PAY` (bombeamento, dragagem, escavação).
+- **Estradas:** `asphalt()` registra cada avenida em `ROADS` (árvores/flores não nascem em cima; o personagem anda +30% no asfalto via `onRoad`). Avenidas em x=`AVE_A` (24) e `AVE_B` (-64,5), Rua do Galpão (x=0) e rodovia até `HWY_E` (74). Carros fazem circuitos rodovia → avenida → estrada principal → outra avenida em `spawnCar`.
 - `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `SELL_ITEMS`: aba 💰 Vender (lado direito): preço de venda de cada produto das etapas e dos finais. Cada etapa vale mais que a anterior e menos que terminar a cadeia; carvão bruto bem barato (não pode render mais que um ajudante do Cobre).
 - `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.
