@@ -50,6 +50,11 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   Por isso a primeira etapa da usina é barata (~$1,4 mil, logo depois da fundição do Cobre) e o caminho até o posto custa ~$9,7 mil.
   O Banco de Baterias ($10 mil) fica para depois. Saves antigos com gerador recebem de volta o que pagaram nele.
 - `FOREST_ITEMS`, `forStep`, `treeGrow`, `forestLvlCost`, `TORAS_PER_TREE`, `SACK_VALUE`, `PAPER_VALUE`: floresta a leste das minas (lenhadores, adubadores, trator florestal, serraria, carvoaria, fábrica de papel com energia). Terreno $12 mil, tudo ~$112 mil; rende ~$45/s no nível 0.
+- **Pedreira (leste da floresta, x 78–114):** `QUARRY_OPEN_COST`, `Q_BUY` (compras únicas/em sequência), `Q_UP` (melhorias, custo base × 2,6^nível, até 10),
+  `BRITA_VALUE` ($10/t), `BLOCKS_PER_T`/`BLOCK_VALUE` (blocos rendem ~$18 por t de brita), `CONC_VALUE` ($45/m³, 1 t de brita por m³).
+  `quarryStep` roda tudo em passos de 0,5 s (funciona offline). As três fases dividem o estoque central `S.quarry.brita`; os caminhões de brita deixam 25% de reserva quando há fábricas.
+  Fase 2 libera com a pedreira no nível 6 (`blocksUnlocked`), fase 3 com a fábrica de blocos no nível 4 (`concUnlocked`).
+  Insumos externos (cimento, areia, água, argamassa, aditivos) estão em `QUARRY_SUPPLIES` como automáticos; futuras indústrias entram ali (`supplyOk`).
 - `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `SELL_ITEMS`: aba 💰 Vender (lado direito): preço de venda de cada produto das etapas e dos finais. Cada etapa vale mais que a anterior e menos que terminar a cadeia; carvão bruto bem barato (não pode render mais que um ajudante do Cobre).
 - `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.

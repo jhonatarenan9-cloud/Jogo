@@ -602,6 +602,8 @@ function newState(){
     power:{open:false, lvl:0, batteries:0, charge:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:false, viewV2:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     forest:{open:false, lvl:0, trees:40, sack:0, paper:0, buf:{tora:0, serr:0, lenha:0}},
+    quarry:{open:false, crusher:false, belt:false, helpers:0, loaders:0, trucks:[], lv:{}, blastT:0, blasts:0, rocks:0, hopper:0, brita:0, earned:0, sold:{brita:0, pallets:0, m3:0},
+      blocks:{open:false, helpers:0, belt:false, trucks:[], mix:0, cure:0, loose:0, pallets:0}, conc:{open:false, belt:false, bts:[], bin:0}},
     pr:{stars:0, total:0, eras:0, lv:{}}, genLvl:0, noGen:true, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
@@ -614,6 +616,8 @@ try{
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
+    { const n = newState().quarry, q = d.quarry || {}; S.quarry = Object.assign(n, q, {lv:Object.assign({}, q.lv), sold:Object.assign(n.sold, q.sold),
+        blocks:Object.assign(n.blocks, q.blocks), conc:Object.assign(n.conc, q.conc)}); }
     S.forest = Object.assign(newState().forest, d.forest, {buf:Object.assign(newState().forest.buf, d.forest && d.forest.buf)});
     S.pr = Object.assign(newState().pr, d.pr); S.pr.lv = S.pr.lv || {};
     S.market = Object.assign(newState().market, d.market); S.market.m = S.market.m || {}; S.market.p = S.market.p || {};
@@ -702,6 +706,7 @@ function produce(sec){
   gridTick(sec, powerTick(sec));
     oilTick(sec);
   forestTick(sec);
+  quarryTick(sec);
   sellByBelts();
   stageTick(sec);
   marketTick(sec);
@@ -720,7 +725,7 @@ const MARKET_MIN = 0.7, MARKET_MAX = 1.4, MARKET_EVERY = 30;   // limites e segu
 const mk = id => (S.market && S.market.m[id]) || 1;
 const mkP = id => mk(id) * prSell();   // preço de venda: mercado × Negociante
 const mval = m => m.value * mkP(m.id);
-const MARKET_KEYS = () => [...MINES.filter(m=>!m.fuel).map(m=>m.id), 'moido','limpo','crude','clean','drums','diesel','bat','gal','tora','lenha','sack','paper'];
+const MARKET_KEYS = () => [...MINES.filter(m=>!m.fuel).map(m=>m.id), 'moido','limpo','crude','clean','drums','diesel','bat','gal','tora','lenha','sack','paper','brita','bloco','concreto'];
 function marketTick(sec){
   const K = S.market; K.t = (K.t||0) + sec;
   if(K.t < MARKET_EVERY) return; const steps = Math.min(20, Math.floor(K.t/MARKET_EVERY)); K.t -= Math.floor(K.t/MARKET_EVERY)*MARKET_EVERY;
@@ -989,6 +994,137 @@ function completeForestItem(it){
   if(window.world3d) world3d.onForestChanged(); render(); save();
 }
 function upgradeForest(){ const c = forestLvlCost(); if(!S.forest.sr || S.money < c) return; S.money -= c; S.forest.lvl++; toast('🌲 Floresta maior! Todos os setores +50%.'); render(); save(); }
+
+// ===================== PEDREIRA, BLOCOS E CONCRETO USINADO =====================
+// Fase 1: explosões → pedras → ajudantes/carregadeiras → britador → esteira → monte de brita (estoque central) → caminhões vendem
+// Fase 2: brita do estoque → misturador → máquina de blocos → cura → paletes → caminhões
+// Fase 3: brita do estoque → usina (cimento, areia, água, aditivos automáticos) → caminhões-betoneira carregam e entregam
+// As três fases usam o MESMO estoque de brita (Q.brita): cada uma consome de verdade o que usa.
+const QUARRY_OPEN_COST = 8000, BRITA_PER_ROCK = 4, BRITA_VALUE = 10, BLOCKS_PER_T = 20, BLOCK_VALUE = 0.9, PALLET_BLOCKS = 100, CONC_VALUE = 45;
+// insumos externos: hoje automáticos (custo já descontado do preço). Futuras indústrias (areia, cimento, água, argamassa,
+// aditivos) podem abastecer aqui: basta trocar auto:true por uma função que consome o estoque delas.
+const QUARRY_SUPPLIES = {cimento:{auto:true}, areia:{auto:true}, agua:{auto:true}, argamassa:{auto:true}, aditivos:{auto:true}};
+const supplyOk = (...names) => names.every(n => QUARRY_SUPPLIES[n].auto || (QUARRY_SUPPLIES[n].has && QUARRY_SUPPLIES[n].has()));
+const Q_BUY = {   // compras únicas e em sequência (preço de cada unidade)
+  crusher:[4000], belt:[2500], helpers:[600, 1500, 3500], loaders:[12000, 30000], trucks:[3000, 9000, 25000],
+  bOpen:[20000], bHelpers:[1500, 3500, 8000], bBelt:[8000], bTrucks:[5000, 15000, 40000],
+  cOpen:[50000], cBelt:[15000], cTrucks:[10000, 25000, 60000, 150000],
+};
+const Q_UP = {   // melhorias por nível (custo base × 2,6^nível, até 10 níveis)
+  blast:{ico:'💥', name:'Explosões mais frequentes', base:2000, ph:1}, rocks:{ico:'🪨', name:'Mais pedras por explosão', base:2000, ph:1},
+  crush:{ico:'⚙️', name:'Britador mais rápido', base:3000, ph:1, need:'crusher'}, belt:{ico:'🛤️', name:'Esteira mais rápida', base:2500, ph:1, need:'belt'},
+  stock:{ico:'⛰️', name:'Estoque maior', base:1500, ph:1, need:'belt'}, sell:{ico:'🚚', name:'Caminhões de brita maiores', base:2500, ph:1, need:'trucks'},
+  bfill:{ico:'🧺', name:'Abastecimento mais rápido', base:3000, ph:2}, bmix:{ico:'🌀', name:'Misturador maior', base:3500, ph:2},
+  bmach:{ico:'🧱', name:'Máquina de blocos mais rápida', base:4000, ph:2}, bstore:{ico:'📦', name:'Pátio de paletes maior', base:2500, ph:2},
+  bsell:{ico:'🚛', name:'Caminhões de blocos maiores', base:3500, ph:2},
+  cfill:{ico:'🧺', name:'Abastecimento de brita mais rápido', base:6000, ph:3}, ccap:{ico:'🏗️', name:'Usina com mais capacidade', base:6000, ph:3},
+  cmix:{ico:'🌀', name:'Mistura mais rápida', base:7000, ph:3}, cload:{ico:'⬇️', name:'Carregamento mais rápido', base:6000, ph:3},
+  ctrans:{ico:'🚛', name:'Betoneiras maiores', base:8000, ph:3}, cspeed:{ico:'⏱️', name:'Entregas mais rápidas', base:8000, ph:3},
+};
+const Q_UP_MAX = 10;
+const qLv = k => (S.quarry.lv[k] || 0);
+const qUpCost = k => Math.ceil(Q_UP[k].base * Math.pow(2.6, qLv(k)));
+const qBuyCost = k => { const Q = S.quarry, n = {crusher:+Q.crusher, belt:+Q.belt, helpers:Q.helpers, loaders:Q.loaders, trucks:Q.trucks.length,
+  bOpen:+Q.blocks.open, bHelpers:Q.blocks.helpers, bBelt:+Q.blocks.belt, bTrucks:Q.blocks.trucks.length, cOpen:+Q.conc.open, cBelt:+Q.conc.belt, cTrucks:Q.conc.bts.length}[k];
+  return Q_BUY[k][n]; };   // undefined = já comprou tudo
+const qOpenLeft = () => Math.max(0, QUARRY_OPEN_COST - (S.paid.q_open||0));
+const qLevel1 = () => { const Q = S.quarry; return Q.helpers + Q.loaders + Q.trucks.length + ['blast','rocks','crush','belt','stock','sell'].reduce((a,k)=>a+qLv(k), 0); };
+const qLevel2 = () => { const B = S.quarry.blocks; return B.helpers + B.trucks.length + (B.belt?1:0) + ['bfill','bmix','bmach','bstore','bsell'].reduce((a,k)=>a+qLv(k), 0); };
+const blocksUnlocked = () => { const Q = S.quarry; return Q.crusher && Q.belt && Q.trucks.length >= 1 && qLevel1() >= 6; };
+const concUnlocked = () => { const B = S.quarry.blocks; return B.open && B.trucks.length >= 1 && qLevel2() >= 4; };
+// números da produção
+const blastEvery = () => Math.max(4, 16 * Math.pow(0.86, qLv('blast')));
+const rocksPerBlast = () => 5 + 3*qLv('rocks');
+const rockCap = () => 40 + 12*qLv('rocks');
+const carryRate = () => S.quarry.helpers*0.25 + S.quarry.loaders*0.8;                 // pedras/s até o britador
+const crushRate = () => 0.35 * (1 + 0.4*qLv('crush'));                               // pedras/s
+const qBeltRate = () => 1.5 * (1 + 0.4*qLv('belt'));                                  // t/s de brita
+const stockCap = () => Math.round(120 * (1 + 0.6*qLv('stock')));
+const britaTruckLoad = () => Math.round(15 * (1 + 0.5*qLv('sell')));
+const bFillRate = () => (S.quarry.blocks.helpers*0.25 + (S.quarry.blocks.belt ? 1.0 : 0)) * (1 + 0.4*qLv('bfill'));
+const bMixCap = () => 6 * (1 + 0.5*qLv('bmix'));
+const bMachRate = () => 0.35 * (1 + 0.4*qLv('bmach'));                               // t de massa/s
+const bPalletCap = () => Math.round(12 * (1 + 0.5*qLv('bstore')));
+const blockTruckLoad = () => Math.round(4 * (1 + 0.5*qLv('bsell')));
+const cFillRate = () => (0.6 + (S.quarry.conc.belt ? 1.2 : 0)) * (1 + 0.4*qLv('cfill'));
+const cBinCap = () => 10 * (1 + 0.5*qLv('ccap'));
+const btLoad = () => Math.round(5 * (1 + 0.4*qLv('ctrans')) * 10) / 10;              // m³ (1 t de brita por m³)
+const cMixTime = () => 8 * Math.pow(0.85, qLv('cmix')), cLoadTime = () => 6 * Math.pow(0.85, qLv('cload')), cTripTime = () => 30 * Math.pow(0.85, qLv('cspeed'));
+const britaReserve = () => (S.quarry.blocks.open || S.quarry.conc.open) ? stockCap()*0.25 : 0;   // os caminhões de brita deixam uma reserva para as fábricas
+const T_IN = 6, T_OUT = 14;
+function qPay(v, kind){ v *= mkP(kind); S.money += v; S.earned += v; S.quarry.earned = (S.quarry.earned||0) + v; QSOLD.v += v; return v; }
+const QSOLD = {v:0};   // dinheiro recente (para o mapa mostrar)
+function quarryStep(d){
+  const Q = S.quarry, B = Q.blocks, C = Q.conc;
+  // 1) explosões
+  Q.blastT += d; if(Q.blastT >= blastEvery()){ Q.blastT = 0; Q.rocks = Math.min(rockCap(), Q.rocks + rocksPerBlast()); Q.blasts = (Q.blasts||0) + 1; }
+  // 2) ajudantes/carregadeiras levam as pedras ao britador
+  if(Q.crusher){ const t = Math.max(0, Math.min(Q.rocks, carryRate()*d, 8 - Q.hopper)); Q.rocks -= t; Q.hopper += t; }
+  // 3) britador → esteira → estoque (sem esteira não tem para onde ir)
+  if(Q.crusher && Q.belt){ const t = Math.max(0, Math.min(Q.hopper, crushRate()*d, qBeltRate()*d/BRITA_PER_ROCK, (stockCap() - Q.brita)/BRITA_PER_ROCK)); Q.hopper -= t; Q.brita += t*BRITA_PER_ROCK; Q.crushing = t > 0; }
+  else Q.crushing = false;
+  // 4) caminhões de brita
+  let dock1 = Q.trucks.find(t=>t.ph === 'load');   // um caminhão carrega por vez; os outros esperam na fila
+  Q.trucks.forEach(tk=>{ tk.t += d;
+    if(tk.ph === 'in' && tk.t >= T_IN){ tk.ph = 'load'; tk.t = 0; if(!dock1) dock1 = tk; }
+    else if(tk.ph === 'load' && tk === dock1){ const room = britaTruckLoad() - tk.load, av = Math.max(0, Q.brita - britaReserve()), m = Math.min(room, av, 3*(1 + 0.5*qLv('sell'))*d);
+      if(m > 0){ Q.brita -= m; tk.load += m; } if(tk.load >= britaTruckLoad() - 0.01){ tk.ph = 'out'; tk.t = 0; } }
+    if(tk.ph === 'out' && tk.t >= T_OUT){ const v = qPay(tk.load*BRITA_VALUE, 'brita'); Q.sold.brita += tk.load; tk.load = 0; tk.ph = 'in'; tk.t = 0; tk.paid = v; tk.payN = (tk.payN||0) + 1; } });
+  // FASE 2: blocos
+  if(B.open){
+    if(supplyOk('agua','argamassa')){ const f = Math.max(0, Math.min(Q.brita, bFillRate()*d, bMixCap() - B.mix)); Q.brita -= f; B.mix += f; }
+    const m = Math.max(0, Math.min(B.mix, bMachRate()*d, bMixCap()/12*d, (400 - B.cure)/BLOCKS_PER_T)); B.mix -= m; B.cure += m*BLOCKS_PER_T; B.pressing = m > 0;
+    if(B.helpers){ const p = Math.max(0, Math.min(B.cure, B.helpers*8*d, (bPalletCap() - B.pallets)*PALLET_BLOCKS - B.loose)); B.cure -= p; B.loose += p;
+      while(B.loose >= PALLET_BLOCKS){ B.loose -= PALLET_BLOCKS; B.pallets++; } }
+    let dock2 = B.trucks.find(t=>t.ph === 'load');
+    B.trucks.forEach(tk=>{ tk.t += d;
+      if(tk.ph === 'in' && tk.t >= T_IN + 1){ tk.ph = 'load'; tk.t = 0; if(!dock2) dock2 = tk; }
+      else if(tk.ph === 'load' && tk === dock2){ if(tk.t >= 1.5 && B.pallets >= 1 && tk.load < blockTruckLoad()){ B.pallets--; tk.load++; tk.t = 0; }
+        if(tk.load >= blockTruckLoad()){ tk.ph = 'out'; tk.t = 0; } }
+      if(tk.ph === 'out' && tk.t >= T_OUT + 4){ const v = qPay(tk.load*PALLET_BLOCKS*BLOCK_VALUE, 'bloco'); Q.sold.pallets += tk.load; tk.load = 0; tk.ph = 'in'; tk.t = 0; tk.paid = v; tk.payN = (tk.payN||0) + 1; } });
+  }
+  // FASE 3: concreto usinado (sem estoque: só produz quando tem betoneira embaixo)
+  if(C.open){
+    const f = Math.max(0, Math.min(Q.brita, cFillRate()*d, cBinCap() - C.bin)); Q.brita -= f; C.bin += f;
+    let dockBusy = C.bts.some(b=>b.ph === 'mix' || b.ph === 'load');
+    C.bts.forEach(b=>{ b.t += d;
+      if(b.ph === 'in' && b.t >= T_IN){ b.ph = 'wait'; b.t = 0; }
+      else if(b.ph === 'wait' && !dockBusy && C.bin >= btLoad() - 0.01 && supplyOk('cimento','areia','agua','aditivos')){ C.bin -= btLoad(); b.load = btLoad(); b.ph = 'mix'; b.t = 0; dockBusy = true; }
+      else if(b.ph === 'mix' && b.t >= cMixTime()){ b.ph = 'load'; b.t = 0; }
+      else if(b.ph === 'load' && b.t >= cLoadTime()){ b.ph = 'out'; b.t = 0; dockBusy = C.bts.some(x=>x !== b && (x.ph === 'mix' || x.ph === 'load')); }
+      else if(b.ph === 'out' && b.t >= cTripTime()){ const v = qPay(b.load*CONC_VALUE, 'concreto'); Q.sold.m3 += b.load; b.load = 0; b.ph = 'in'; b.t = 0; b.paid = v; b.payN = (b.payN||0) + 1; } });
+  }
+}
+function quarryTick(sec){ if(!S.quarry.open || sec <= 0) return; let left = Math.min(sec, 8*3600); while(left > 0){ const d = Math.min(left, 0.5); quarryStep(d); left -= d; } }
+function qCanBuy(k){ const Q = S.quarry; if(!Q.open || qBuyCost(k) === undefined) return false;
+  if(k === 'belt' || k === 'loaders') return Q.crusher; if(k === 'trucks') return Q.belt;
+  if(k === 'bOpen') return blocksUnlocked(); if(/^b[HBT]/.test(k)) return Q.blocks.open;
+  if(k === 'cOpen') return concUnlocked(); if(/^c[BT]/.test(k)) return Q.conc.open; return true; }
+function qCanUp(k){ const Q = S.quarry, u = Q_UP[k]; if(!Q.open || qLv(k) >= Q_UP_MAX) return false;
+  if(u.ph === 2) return Q.blocks.open; if(u.ph === 3) return Q.conc.open;
+  if(u.need === 'trucks') return Q.trucks.length > 0; if(u.need) return !!Q[u.need]; return true; }
+function quarryBuy(k){
+  const c = qBuyCost(k); if(c === undefined || S.money < c) return; const Q = S.quarry;
+  if(k === 'crusher' && !Q.open) return; if(k === 'belt' && !Q.crusher) return; if(k === 'loaders' && !Q.crusher) return; if(k === 'trucks' && !Q.belt) return;
+  if(k === 'bOpen' && !blocksUnlocked()) return; if(/^b[HBT]/.test(k) && !Q.blocks.open) return;
+  if(k === 'cOpen' && !concUnlocked()) return; if(/^c[BT]/.test(k) && !Q.conc.open) return;
+  S.money -= c;
+  const msg = {
+    crusher:()=>{ Q.crusher = true; return '⚙️ Britador instalado!'; }, belt:()=>{ Q.belt = true; return '🛤️ Esteira até o monte de brita pronta!'; },
+    helpers:()=>{ Q.helpers++; return `👷 Ajudante ${Q.helpers} contratado!`; }, loaders:()=>{ Q.loaders++; return `🚜 Carregadeira ${Q.loaders} comprada!`; },
+    trucks:()=>{ Q.trucks.push({ph:'in', t:0, load:0}); return `🚚 Caminhão de brita ${Q.trucks.length} comprado!`; },
+    bOpen:()=>{ Q.blocks.open = true; return '🧱 Fábrica de Blocos construída! Contrate ajudantes para abastecer e paletizar.'; },
+    bHelpers:()=>{ Q.blocks.helpers++; return `👷 Ajudante ${Q.blocks.helpers} da fábrica de blocos contratado!`; }, bBelt:()=>{ Q.blocks.belt = true; return '🛤️ Esteira de abastecimento do misturador pronta!'; },
+    bTrucks:()=>{ Q.blocks.trucks.push({ph:'in', t:0, load:0}); return `🚛 Caminhão de blocos ${Q.blocks.trucks.length} comprado!`; },
+    cOpen:()=>{ Q.conc.open = true; Q.conc.bts.push({ph:'in', t:0, load:0}); return '🏗️ Usina de Concreto pronta, com a primeira betoneira!'; },
+    cBelt:()=>{ Q.conc.belt = true; return '🛤️ Esteira de brita até a usina pronta!'; },
+    cTrucks:()=>{ Q.conc.bts.push({ph:'in', t:0, load:0}); return `🚛 Betoneira ${Q.conc.bts.length} comprada!`; },
+  }[k]();
+  toast(msg); if(window.world3d) world3d.onQuarryChanged(); render(); save();
+}
+function quarryUp(k){ const u = Q_UP[k]; if(qLv(k) >= Q_UP_MAX) return; const c = qUpCost(k); if(S.money < c) return; S.money -= c; S.quarry.lv[k] = qLv(k) + 1; toast(`${u.ico} ${u.name}: nível ${qLv(k)}!`); render(); save(); }
+function openQuarry(){ S.quarry.open = true; delete S.paid.q_open; toast('⛰️ Pedreira liberada! As explosões começaram: contrate ajudantes e instale o britador.'); if(window.world3d) world3d.onQuarryChanged(); render(); save(); }
+function sellBritaNow(){ const Q = S.quarry, t = Math.floor(Q.brita); if(t <= 0) return 0; Q.brita -= t; Q.sold.brita += t; const v = qPay(t*BRITA_VALUE, 'brita'); toast(`⛰️ ${t} t de brita vendidas por ${money(v)}`); render(); save(); return v; }
 
 // ===================== MISSÕES =====================
 // uma de cada vez; recompensa ~20-30% do próximo passo, para ajudar sem estragar o desafio
@@ -1305,6 +1441,8 @@ const SELL_ITEMS = [
   {g:'etapa', id:'lenha', ico:'🪚', name:'Lenha cortada', v:8, q:()=>S.forest.buf.lenha, take:n=>{ S.forest.buf.lenha -= n; }},
   {g:'final', id:'sack', ico:'🔥', name:'Sacos de carvão vegetal', v:SACK_VALUE, q:()=>Math.floor(S.forest.sack||0), take:n=>{ S.forest.sack -= n; S.forest.soldSack = (S.forest.soldSack||0) + n; }},
   {g:'final', id:'paper', ico:'📜', name:'Resmas de papel', v:PAPER_VALUE, q:()=>Math.floor(S.forest.paper||0), take:n=>{ S.forest.paper -= n; S.forest.soldPaper = (S.forest.soldPaper||0) + n; }},
+  {g:'final', id:'brita', ico:'⛰️', name:'Brita (t)', v:BRITA_VALUE, q:()=>Math.floor(S.quarry.brita||0), take:n=>{ S.quarry.brita -= n; S.quarry.sold.brita += n; }},
+  {g:'final', id:'bloco', ico:'🧱', name:'Paletes de blocos', v:PALLET_BLOCKS*BLOCK_VALUE, q:()=>S.quarry.blocks.pallets||0, take:n=>{ S.quarry.blocks.pallets -= n; S.quarry.sold.pallets += n; }},
   {g:'final', id:'bat', ico:'🔋', name:'Baterias', v:BATTERY_VALUE, q:()=>S.power.batteries||0, take:n=>{ S.power.batteries -= n; S.power.sold = (S.power.sold||0) + n; }},
   {g:'final', id:'gal', ico:'⛽', name:'Galões', v:GAL_VALUE, q:()=>Math.floor(S.oil.gal||0), take:n=>{ S.oil.gal -= n; S.oil.sold = (S.oil.sold||0) + n; }},
   {g:'final', id:'ore', ico:'⛏️', name:'Minérios e barras', v:1, q:()=>MINES.reduce((a,m)=>m.fuel ? a : a + S.ore[m.id]*mval(m) + (S.bars[m.id]||0)*barValue(m), 0),
@@ -1468,6 +1606,57 @@ function buildPanel(){
     const pc = pumpCost();
     add('🛢️', `Campo Maior <span class="count">nv ${O.lvl}</span>`, `+50% em todos os setores e +50 L de tanque (hoje ${fmt(oilStep())} petróleo/s por bomba)`, O.ps ? btn(money(pc), upgradePump, pc) : tag('🔒 Posto','var(--muted)'));
     el.insertAdjacentHTML('beforeend', `<p class="small">Cada galão tem ${GAL_L} L. Os galões vão primeiro para o tanque do galpão (caminhão gasta ${TRUCK_FUEL} L por viagem, coletador ${COLLECTOR_FUEL} L); os que sobram ficam guardados e podem ser vendidos por ${money(GAL_VALUE)} cada.</p>`);
+    return;
+  }
+  if(panelTarget === 'pedreira'){
+    const Q = S.quarry, B = Q.blocks, C = Q.conc;
+    document.getElementById('sheetTitle').textContent = '⛰️ Pedreira, Blocos e Concreto';
+    el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">⛰️</span>
+        <div><small>Estoque central de brita</small><b>${Math.floor(Q.brita)} / ${stockCap()} t</b></div><span class="lvlBadge">${money(Q.earned||0)}</span></div>
+      <div class="lvlNext"><small>Situação</small><div>${!Q.open ? 'Compre o terreno no fim da estrada, depois da floresta' : !Q.helpers && !Q.loaders ? 'Contrate um ajudante para levar as pedras' : !Q.crusher ? 'Instale o britador' : !Q.belt ? 'Instale a esteira até o monte de brita' : !Q.trucks.length ? 'Compre um caminhão para vender a brita' : '✔ Pedreira produzindo'}</div>
+        <div class="progress"><div style="width:${Math.min(1, Q.brita/stockCap())*100}%"></div></div></div>
+      <div class="flow">${step(Q.open,'💥','Explosão')}${arrow(Q.helpers+Q.loaders>0)}${step(Q.helpers+Q.loaders>0,'👷','Carga')}${arrow(Q.crusher)}${step(Q.crusher,'⚙️','Britador')}${arrow(Q.belt)}${step(Q.belt,'⛰️','Estoque')}${arrow(Q.trucks.length>0)}${step(Q.trucks.length>0,'🚚','Venda')}</div>
+      <div class="lvlRows">
+        <div><span>💥 Explosão a cada · pedras</span><b>${fmt(blastEvery())} s · ${rocksPerBlast()} pedras</b></div>
+        <div><span>🪨 Pedras no pátio · no britador</span><b>${Math.floor(Q.rocks)}/${rockCap()} · ${fmt(Q.hopper)}</b></div>
+        <div><span>⚙️ Britador · 🛤️ esteira</span><b>${fmt(crushRate()*BRITA_PER_ROCK)} · ${fmt(qBeltRate())} t/s</b></div>
+        <div><span>🚚 Caminhões · carga</span><b>${Q.trucks.length} · ${britaTruckLoad()} t × ${money(BRITA_VALUE)}</b></div>
+        <div><span>📦 Vendido</span><b>${fmt(Q.sold.brita)} t brita · ${fmt(Q.sold.pallets)} paletes · ${fmt(Q.sold.m3)} m³</b></div>
+      </div></div>`);
+    if(!Q.open){ const r = qOpenLeft(); add('🏗️', 'Terreno da Pedreira', 'Paredões de rocha a leste da floresta. As explosões começam sozinhas. Também dá para pagar pisando no quadrado.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openQuarry(); } }, r)); return; }
+    const buyRow = (k, ico, name, desc, n, max) => { const c = qBuyCost(k), can = qCanBuy(k);
+      add(ico, `${name}${max > 1 ? ` <span class="count">${n}/${max}</span>` : ''}`, desc, c === undefined ? tag('✔ Completo') : can ? btn(money(c), ()=>quarryBuy(k), c) : tag('🔒 Bloqueado','var(--muted)')); };
+    const upRows = ph => Object.keys(Q_UP).filter(k=>Q_UP[k].ph === ph).forEach(k=>{ const u = Q_UP[k], c = qUpCost(k), lv = qLv(k);
+      add(u.ico, `${u.name} <span class="count">nv ${lv}</span>`, '', lv >= Q_UP_MAX ? tag('✔ Máximo') : qCanUp(k) ? btn(money(c), ()=>quarryUp(k), c) : tag('🔒','var(--muted)')); });
+    { const t = Math.floor(Q.brita), b2 = document.createElement('button'); b2.className = 'primary'; b2.style.width = '100%'; b2.style.marginBottom = '10px';
+      b2.textContent = t ? `⛰️ Vender ${t} t de brita agora por ${money(t*BRITA_VALUE*mkP('brita'))}` : '⛰️ Sem brita no estoque'; b2.disabled = !t; b2.onclick = ()=>{ sellBritaNow(); buildPanel(); }; el.appendChild(b2); }
+    sec('💥 Fase 1 · Pedreira e brita');
+    buyRow('helpers', '👷', 'Ajudantes', 'Levam as pedras do pátio até o britador (0,25 pedra/s cada).', Q.helpers, 3);
+    buyRow('crusher', '⚙️', 'Britador', 'Quebra cada pedra grande em 4 t de brita.', +Q.crusher, 1);
+    buyRow('belt', '🛤️', 'Esteira até o estoque', 'Leva a brita do britador ao monte de brita.', +Q.belt, 1);
+    buyRow('loaders', '🚜', 'Carregadeiras', 'Levam muito mais pedras por viagem (0,8 pedra/s cada).', Q.loaders, 2);
+    buyRow('trucks', '🚚', 'Caminhões de brita', `Chegam, carregam e vendem a brita (${money(BRITA_VALUE)}/t).`, Q.trucks.length, 3);
+    upRows(1);
+    sec('🧱 Fase 2 · Fábrica de blocos');
+    if(!B.open) el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">${blocksUnlocked() ? 'Liberada!' : `Para liberar: britador, esteira, 1 caminhão e a pedreira no nível 6 (hoje ${qLevel1()}).`} Cada t de brita vira ${BLOCKS_PER_T} blocos (${money(BLOCKS_PER_T*BLOCK_VALUE)}), mais que vender a brita (${money(BRITA_VALUE)}). Água e argamassa vêm sozinhas.</p>`);
+    buyRow('bOpen', '🏭', 'Fábrica de Blocos', 'Misturador, prensa de blocos, prateleiras de cura e pátio de paletes.', +B.open, 1);
+    if(B.open){
+      el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlRows">
+        <div><span>🌀 Misturador</span><b>${fmt(B.mix)} / ${fmt(bMixCap())} t</b></div><div><span>🧱 Blocos na cura</span><b>${Math.floor(B.cure)}</b></div>
+        <div><span>📦 Paletes prontos</span><b>${B.pallets} / ${bPalletCap()} (${PALLET_BLOCKS} blocos)</b></div></div></div>`);
+      buyRow('bHelpers', '👷', 'Ajudantes da fábrica', 'Abastecem o misturador com brita e montam os paletes.', B.helpers, 3);
+      buyRow('bBelt', '🛤️', 'Esteira de abastecimento', 'Leva a brita do estoque direto ao misturador.', +B.belt, 1);
+      buyRow('bTrucks', '🚛', 'Caminhões de paletes', `Carregam os paletes e vendem (${money(PALLET_BLOCKS*BLOCK_VALUE)} cada).`, B.trucks.length, 3);
+      upRows(2); }
+    sec('🏗️ Fase 3 · Usina de concreto usinado');
+    if(!C.open) el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">${concUnlocked() ? 'Liberada!' : `Para liberar: fábrica de blocos com 1 caminhão e nível 4 (hoje ${qLevel2()}).`} A usina mistura brita com cimento, areia, água e aditivos (automáticos) e enche as betoneiras: ${money(CONC_VALUE)} por m³ (1 t de brita).</p>`);
+    buyRow('cOpen', '🏗️', 'Usina de Concreto', 'Silos, misturador central e a primeira betoneira. Uma carregadeira traz a brita.', +C.open, 1);
+    if(C.open){
+      el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlRows">
+        <div><span>⛰️ Brita na usina</span><b>${fmt(C.bin)} / ${fmt(cBinCap())} t</b></div><div><span>🚛 Betoneira</span><b>${btLoad()} m³ · mistura ${fmt(cMixTime())} s · entrega ${fmt(cTripTime())} s</b></div></div></div>`);
+      buyRow('cBelt', '🛤️', 'Esteira de brita até a usina', 'Abastece a usina bem mais rápido que a carregadeira.', +C.belt, 1);
+      buyRow('cTrucks', '🚛', 'Caminhões-betoneira', 'Cada betoneira carrega, entrega e volta sozinha.', C.bts.length, Q_BUY.cTrucks.length);
+      upRows(3); }
     return;
   }
   if(panelTarget === 'floresta'){
@@ -2039,7 +2228,7 @@ function createWorld(){
   // ---------- colisões ----------
   const circles = [], rects = [];
   function blocked(x,z){
-    if(x<-95.5 || x>74 || z<BACK_Z+0.2 || z>26.6) return true;
+    if(x<-95.5 || x>114 || z<BACK_Z+0.2 || z>26.6) return true;
     if(x > 33.5 && x < 41.6 && (z < -5.6 || z > -2.4)) return true;   // só a estrada leva à floresta
     for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
     for(const r of rects){ if(r.when && !r.when()) continue;
@@ -3332,6 +3521,273 @@ function createWorld(){
     if(fLeft(it) <= 0.0001) completeForestItem(it);
   }
 
+  // ---------- PEDREIRA (leste da floresta): paredões, explosões, britador, monte de brita, blocos e concreto ----------
+  const QX = {pile:[88,-5.2], crusher:[96,-4], stock:[96,7.2], mixer:[88.6,7], press:[85.2,7], rack:[85.2,14.2], pallets:[81.6,15.2], plant:[107,2.6]};
+  const quarryEntry = makeTile(77.2, 2.0);
+  const qGroup = new THREE.Group(); world.add(qGroup);
+  const rockM = M('#a69c8e'), rockD = M('#8b8275'), gravelM = M('#9a958d');
+  pathRect(74, 24.4, 122, 26.8);                                                       // estrada dos caminhões até o fim do mapa
+  { // chão da pedreira e paredões em degraus
+    const f = new THREE.Mesh(new THREE.BoxGeometry(38, 0.04, 34), M('#c2b49c')); f.position.set(96, 0.021, 7.5); f.receiveShadow = true; qGroup.add(f);
+    for(const [x,z1,z2] of [[101,9,25.6],[78.6,15,25.6],[110.5,8,25.6]]) pathRect(x-1.2, z1, x+1.2, z2, M('#a59a87'), 0.026, M('#8d8372'));
+    const tiers = [[-15.4,6.5,4.0],[-12.4,4.2,2.6],[-10.2,2.4,2.0]];
+    for(const [z,h,d] of tiers){ for(let x=79;x<113;x+=3.4){ const w = 3.4 + rnd()*0.6, hh = h*(0.85 + rnd()*0.3);
+      const b = mesh(new THREE.BoxGeometry(w, hh, d), rnd() < 0.5 ? rockM : rockD, x + 1.7, hh/2, z, qGroup); b.rotation.y = (rnd()-.5)*0.08; } }
+    for(let k=0;k<34;k++){ const r = 0.4 + rnd()*0.9, x = 79 + rnd()*34, z = -15 + rnd()*5; mesh(new THREE.DodecahedronGeometry(r,0), rnd()<0.5 ? rockM : rockD, x, 2 + rnd()*4.5, z, qGroup).rotation.set(rnd()*3, rnd()*3, rnd()*3); }
+    for(const x of [80.5, 111.5]){ mesh(new THREE.BoxGeometry(0.15,3.2,0.15), M('#3b3f45'), x, 1.6, -7.6, qGroup); }
+    rects.push({x1:78, x2:114, z1:-16, z2:-9.0, when:()=>true});
+  }
+  const sirenMat = new THREE.MeshBasicMaterial({color:'#5a1a14'});
+  const siren = mesh(new THREE.SphereGeometry(0.22,10,8), sirenMat, 80.5, 3.35, -7.6, qGroup); siren.castShadow = false;
+  const qSign = labelSprite(5); qSign.position.set(96, 5.2, -7.2);
+  // pedras grandes no pátio (resultado das explosões)
+  const QROCK_MAX = 48, bigRockGeo = new THREE.DodecahedronGeometry(0.42, 0);
+  const rockPile = new THREE.InstancedMesh(bigRockGeo, rockM, QROCK_MAX); { const d = new THREE.Object3D();
+    for(let k=0;k<QROCK_MAX;k++){ const a = rnd()*6.28, r = 2.6*Math.sqrt(rnd())*(1 - k/QROCK_MAX*0.5); d.position.set(QX.pile[0] + Math.cos(a)*r*1.4, 0.35 + (k/QROCK_MAX)*1.1, QX.pile[1] + Math.sin(a)*r*0.8);
+      d.rotation.set(rnd()*3, rnd()*3, rnd()*3); d.scale.setScalar(0.8 + rnd()*0.7); d.updateMatrix(); rockPile.setMatrixAt(k, d.matrix); } }
+  rockPile.count = 0; rockPile.castShadow = true; world.add(rockPile);
+  // britador de mandíbulas
+  const qObj = {};
+  function buildQCrusher(){ const [x,z] = QX.crusher, g = new THREE.Group(); g.position.set(x, 0, z); world.add(g); const P = {};
+    mesh(new THREE.BoxGeometry(3.4,0.5,3.0), M('#8f8b84'), 0, 0.25, 0, g);
+    mesh(new THREE.BoxGeometry(2.4,1.6,2.0), M('#f2b632'), 0, 1.3, 0, g);
+    mesh(new THREE.BoxGeometry(2.5,0.16,2.1), M('#3b3f45'), 0, 2.15, 0, g);
+    const hop = mesh(new THREE.CylinderGeometry(1.55, 0.8, 1.1, 4, 1, true), new THREE.MeshPhongMaterial({color:'#6f747c', side:THREE.DoubleSide, map:grainTex}), 0, 2.75, 0, g); hop.rotation.y = Math.PI/4;
+    P.jaw = mesh(new THREE.BoxGeometry(0.3,1.0,1.4), M('#4a4f57'), 0.5, 2.0, 0, g);
+    P.wheels = [-1.1, 1.1].map(s=>{ const w = mesh(new THREE.CylinderGeometry(0.75,0.75,0.16,18), M('#3b3f45'), -0.3, 1.5, s, g); w.rotation.x = Math.PI/2;
+      for(let k=0;k<4;k++){ const sp = mesh(new THREE.BoxGeometry(1.3,0.08,0.06), M('#f2b632'), 0, 0, 0, w); sp.rotation.y = k*Math.PI/4; } return w; });
+    mesh(new THREE.BoxGeometry(0.9,0.7,0.8), M('#2f80ed'), -1.6, 0.85, 0.9, g);                                 // motor
+    mesh(new THREE.BoxGeometry(0.9,0.12,0.7), M('#2f3236'), 0, 0.65, 1.15, g).rotation.x = 0.35;                 // bica de saída
+    rects.push({x1:x-1.8, x2:x+1.8, z1:z-1.6, z2:z+1.6, when:()=>!!S.quarry.crusher});
+    qObj.crusher = {g, P}; }
+  // monte de brita (estoque central)
+  const stockPile = mesh(new THREE.ConeGeometry(1, 1, 28), gravelM, QX.stock[0], 0, QX.stock[1], qGroup); stockPile.geometry.translate(0, 0.5, 0); stockPile.visible = false;
+  const stockLab = labelSprite(3.2); stockLab.position.set(QX.stock[0], 4.6, QX.stock[1]); stockLab.visible = false;
+  // caminhão basculante (brita), caminhão de paletes (blocos) e betoneira
+  function makeDump(color){ const g = new THREE.Group();
+    mesh(new THREE.BoxGeometry(1.1,1.1,1.4), M(color), 1.35, 1.0, 0, g); mesh(new THREE.BoxGeometry(0.08,0.5,1.1), M('#bfe6f7'), 1.92, 1.2, 0, g);
+    mesh(new THREE.BoxGeometry(2.7,0.25,1.45), M('#3b3f45'), -0.45, 0.55, 0, g);
+    const bed = new THREE.Group(); bed.position.set(-0.55, 0.7, 0); g.add(bed);
+    mesh(new THREE.BoxGeometry(2.4,0.1,1.45), M('#d9822b'), 0, 0, 0, bed); for(const s of [-0.7,0.7]) mesh(new THREE.BoxGeometry(2.4,0.6,0.08), M('#d9822b'), 0, 0.3, s, bed);
+    mesh(new THREE.BoxGeometry(0.08,0.6,1.45), M('#d9822b'), -1.2, 0.3, 0, bed); mesh(new THREE.BoxGeometry(0.08,0.75,1.45), M('#d9822b'), 1.2, 0.38, 0, bed);
+    const fill = mesh(new THREE.BoxGeometry(2.25,1,1.3), gravelM, 0, 0.05, 0, bed); fill.geometry.translate(0, 0.5, 0); fill.scale.y = 0.01;
+    for(const [x,z] of [[1.3,0.72],[1.3,-0.72],[-0.2,0.72],[-0.2,-0.72],[-1.1,0.72],[-1.1,-0.72]]){ const w = mesh(new THREE.CylinderGeometry(0.32,0.32,0.24,12), M('#1b1b1b'), x, 0.32, z, g); w.rotation.x = Math.PI/2; }
+    g.userData.fill = fill; return g; }
+  function makeFlatbed(color){ const g = new THREE.Group();
+    mesh(new THREE.BoxGeometry(1.1,1.1,1.4), M(color), 1.6, 1.0, 0, g); mesh(new THREE.BoxGeometry(0.08,0.5,1.1), M('#bfe6f7'), 2.17, 1.2, 0, g);
+    mesh(new THREE.BoxGeometry(3.4,0.2,1.5), M('#5b5f66'), -0.6, 0.62, 0, g);
+    const pal = []; for(let k=0;k<6;k++){ const p = new THREE.Group(); p.position.set(-1.8 + (k%3)*1.1, 0.72, k<3 ? -0.36 : 0.36); g.add(p);
+      mesh(new THREE.BoxGeometry(0.95,0.1,0.66), M('#b7844d'), 0, 0.05, 0, p); mesh(new THREE.BoxGeometry(0.88,0.5,0.6), M('#a7a39b'), 0, 0.36, 0, p); p.visible = false; pal.push(p); }
+    for(const [x,z] of [[1.6,0.72],[1.6,-0.72],[-0.4,0.72],[-0.4,-0.72],[-1.6,0.72],[-1.6,-0.72]]){ const w = mesh(new THREE.CylinderGeometry(0.32,0.32,0.24,12), M('#1b1b1b'), x, 0.32, z, g); w.rotation.x = Math.PI/2; }
+    g.userData.pal = pal; return g; }
+  function makeMixerTruck(){ const g = new THREE.Group();
+    mesh(new THREE.BoxGeometry(1.0,1.1,1.4), M('#f4f1ec'), 1.45, 1.0, 0, g); mesh(new THREE.BoxGeometry(0.08,0.5,1.1), M('#bfe6f7'), 1.97, 1.2, 0, g);
+    mesh(new THREE.BoxGeometry(3.0,0.25,1.3), M('#3b3f45'), -0.35, 0.55, 0, g);
+    const drum = new THREE.Group(); drum.position.set(-0.45, 1.45, 0); drum.rotation.z = 0.22; g.add(drum);
+    const body = mesh(new THREE.CylinderGeometry(0.62, 0.42, 2.2, 18), M('#ff8a2a'), 0, 0, 0, drum); body.rotation.z = Math.PI/2;
+    for(let k=0;k<3;k++){ const st = mesh(new THREE.TorusGeometry(0.58 - k*0.06, 0.04, 6, 18), M('#f4f1ec'), -0.6 + k*0.6, 0, 0, drum); st.rotation.y = Math.PI/2; }
+    mesh(new THREE.CylinderGeometry(0.3,0.3,0.15,14), M('#3b3f45'), -1.15, 0, 0, drum).rotation.z = Math.PI/2;
+    for(const [x,z] of [[1.4,0.68],[1.4,-0.68],[-0.4,0.68],[-0.4,-0.68],[-1.3,0.68],[-1.3,-0.68]]){ const w = mesh(new THREE.CylinderGeometry(0.32,0.32,0.24,12), M('#1b1b1b'), x, 0.32, z, g); w.rotation.x = Math.PI/2; }
+    g.userData.drum = drum; return g; }
+  // fábrica de blocos
+  function buildQBlocks(){ const g = new THREE.Group(); world.add(g); const P = {};
+    const [mx,mz] = QX.mixer, [px,pz] = QX.press;
+    mesh(new THREE.BoxGeometry(10,0.06,11), M('#9a968f'), 84.5, 0.03, 11, g).castShadow = false;                          // piso
+    for(const s of [-0.7,0.7]) mesh(new THREE.BoxGeometry(0.2,1.4,0.2), M('#3b3f45'), mx + s, 0.7, mz + 0.8, g);
+    P.drum = new THREE.Group(); P.drum.position.set(mx, 1.75, mz); g.add(P.drum);
+    const db = mesh(new THREE.CylinderGeometry(0.85,0.85,1.6,18), M('#2f80ed'), 0, 0, 0, P.drum); db.rotation.x = Math.PI/2;
+    for(let k=0;k<3;k++){ const bl = mesh(new THREE.BoxGeometry(1.62,0.08,0.14), M('#f2b632'), 0, 0, 0, P.drum); bl.rotation.x = Math.PI/2; bl.rotation.y = k*Math.PI/3; }
+    const hop = mesh(new THREE.CylinderGeometry(0.6,0.3,0.6,4,1,true), new THREE.MeshPhongMaterial({color:'#6f747c', side:THREE.DoubleSide, map:grainTex}), mx + 0.9, 2.5, mz - 0.3, g); hop.rotation.y = Math.PI/4;
+    mesh(new THREE.CylinderGeometry(0.45,0.45,1.3,14), M('#4fb6e8'), mx + 0.2, 0.65, mz + 2.4, g);                         // água
+    for(let k=0;k<6;k++) mesh(new THREE.BoxGeometry(0.42,0.18,0.3), M('#efe9dc'), mx - 1.3 + (k%3)*0.44, 0.1 + Math.floor(k/3)*0.19, mz + 2.4, g);   // sacos de argamassa
+    mesh(new THREE.BoxGeometry(1.6,0.12,0.5), M('#2f3236'), (mx+px)/2, 1.1, mz, g).rotation.z = 0.25;                      // bica para a prensa
+    mesh(new THREE.BoxGeometry(2.0,1.2,1.8), M('#8e5bd6'), px, 0.6, pz, g); mesh(new THREE.BoxGeometry(2.1,0.2,1.9), M('#3b3f45'), px, 2.3, pz, g);
+    for(const [cx,cz] of [[-0.9,-0.8],[0.9,-0.8],[-0.9,0.8],[0.9,0.8]]) mesh(new THREE.BoxGeometry(0.14,1.2,0.14), M('#3b3f45'), px+cx, 1.7, pz+cz, g);
+    P.piston = mesh(new THREE.BoxGeometry(1.2,0.3,1.0), M('#c9d1d9'), px, 1.9, pz, g);
+    mesh(new THREE.BoxGeometry(0.12,0.5,0.12), M('#c9d1d9'), px, 2.15, pz, g);
+    // prateleiras de cura
+    const [rx,rz] = QX.rack; for(const y of [0.05, 0.7, 1.35]) mesh(new THREE.BoxGeometry(2.6,0.06,1.4), M('#7a5230'), rx, y, rz, g);
+    for(const [cx,cz] of [[-1.25,-0.65],[1.25,-0.65],[-1.25,0.65],[1.25,0.65]]) mesh(new THREE.BoxGeometry(0.08,1.4,0.08), M('#7a5230'), rx+cx, 0.7, rz+cz, g);
+    P.cure = new THREE.InstancedMesh(new THREE.BoxGeometry(0.36,0.2,0.24), M('#a7a39b'), 36); { const d = new THREE.Object3D();
+      for(let k=0;k<36;k++){ const lay = Math.floor(k/12), r = k%12; d.position.set(rx - 1.0 + (r%6)*0.4, 0.2 + lay*0.65, rz - 0.3 + Math.floor(r/6)*0.6); d.updateMatrix(); P.cure.setMatrixAt(k, d.matrix); } }
+    P.cure.count = 0; g.add(P.cure);
+    // paletes prontos
+    P.pals = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9,0.62,0.9), M('#a7a39b'), 16); P.palBase = new THREE.InstancedMesh(new THREE.BoxGeometry(1.0,0.12,1.0), M('#b7844d'), 16);
+    { const d = new THREE.Object3D(); const [ax,az] = QX.pallets;
+      for(let k=0;k<16;k++){ d.position.set(ax - 1.6 + (k%4)*1.1, 0.06, az - 1.6 + Math.floor(k/4)*1.1); d.updateMatrix(); P.palBase.setMatrixAt(k, d.matrix);
+        d.position.y = 0.43; d.updateMatrix(); P.pals.setMatrixAt(k, d.matrix); } }
+    P.pals.count = P.palBase.count = 0; P.pals.castShadow = true; g.add(P.pals, P.palBase);
+    const lb = labelSprite(3); lb.position.set(px, 3.4, pz); g.add(lb); lb.userData.draw('🧱 Fábrica de Blocos', '#ffffff');
+    rects.push({x1:px-1.1, x2:px+1.1, z1:pz-1, z2:pz+1, when:()=>!!S.quarry.blocks.open}, {x1:mx-1, x2:mx+1.3, z1:mz-1, z2:mz+1, when:()=>!!S.quarry.blocks.open},
+      {x1:rx-1.4, x2:rx+1.4, z1:rz-0.8, z2:rz+0.8, when:()=>!!S.quarry.blocks.open});
+    qObj.blocks = {g, P}; }
+  // usina de concreto
+  function buildQPlant(){ const g = new THREE.Group(); world.add(g); const P = {}, [x,z] = QX.plant;
+    mesh(new THREE.BoxGeometry(9,0.06,8), M('#9a968f'), x+1.5, 0.03, z, g).castShadow = false;
+    const silo = (sx, sz, col, h) => { mesh(new THREE.CylinderGeometry(0.85,0.85,h,18), M(col), sx, 2.1 + h/2, sz, g); mesh(new THREE.ConeGeometry(0.85,0.9,18), M(col), sx, 1.65, sz, g).rotation.x = Math.PI;
+      for(const [lx,lz] of [[-0.6,-0.6],[0.6,-0.6],[-0.6,0.6],[0.6,0.6]]) mesh(new THREE.BoxGeometry(0.1,2.1,0.1), M('#3b3f45'), sx+lx, 1.05, sz+lz, g); };
+    silo(x - 1.2, z - 4.2, '#d0d4da', 3.6); silo(x + 1.0, z - 4.2, '#e0c28a', 2.8);                                 // cimento e areia
+    mesh(new THREE.CylinderGeometry(0.75,0.75,1.6,16), M('#4fb6e8'), x + 3.4, 0.8, z - 3.6, g);                     // água
+    mesh(new THREE.CylinderGeometry(0.35,0.35,0.9,12), M('#3aa35a'), x + 3.4, 0.45, z - 1.9, g); mesh(new THREE.CylinderGeometry(0.35,0.35,0.9,12), M('#f2b632'), x + 4.2, 0.45, z - 1.9, g);   // aditivos
+    for(const [lx,lz] of [[-1.3,-1.1],[1.3,-1.1],[-1.3,1.1],[1.3,1.1]]) mesh(new THREE.BoxGeometry(0.16,3.4,0.16), M('#2f80ed'), x+lx, 1.7, z+lz, g);
+    mesh(new THREE.BoxGeometry(3.0,1.3,2.6), M('#2f80ed'), x, 4.0, z, g); mesh(new THREE.BoxGeometry(3.2,0.18,2.8), M('#3b3f45'), x, 4.75, z, g);
+    P.mix = mesh(new THREE.CylinderGeometry(0.55,0.55,1.6,14), M('#c9d1d9'), x, 4.0, z + 1.35, g); P.mix.rotation.z = Math.PI/2;
+    mesh(new THREE.CylinderGeometry(0.35,0.12,0.9,12,1,true), new THREE.MeshPhongMaterial({color:'#6f747c', side:THREE.DoubleSide}), x, 2.9, z, g);   // bica de carga
+    const pipe = (x1,y1,z1,x2,y2,z2,col) => { const a = new THREE.Vector3(x1,y1,z1), b = new THREE.Vector3(x2,y2,z2), L = a.distanceTo(b);
+      const m = mesh(new THREE.CylinderGeometry(0.09,0.09,L,8), M(col), (x1+x2)/2, (y1+y2)/2, (z1+z2)/2, g); m.lookAt(b); m.rotateX(Math.PI/2); };
+    pipe(x-1.2, 1.4, z-4.2, x-0.6, 3.6, z-1.2, '#9aa0a8'); pipe(x+1.0, 1.4, z-4.2, x+0.5, 3.6, z-1.2, '#c9a96a'); pipe(x+3.4, 1.5, z-3.6, x+1.4, 3.8, z-0.5, '#2f80ed'); pipe(x+3.8, 0.9, z-1.9, x+1.4, 3.6, z+0.3, '#3aa35a');
+    P.feeds = [[x-1.2,1.4,z-4.2, x-0.6,3.6,z-1.2,'#9aa0a8'], [x+1.0,1.4,z-4.2, x+0.5,3.6,z-1.2,'#e0c28a'], [x+3.4,1.5,z-3.6, x+1.4,3.8,z-0.5,'#4fb6e8'], [x+3.8,0.9,z-1.9, x+1.4,3.6,z+0.3,'#3aa35a']];
+    // moega de brita (recebe da carregadeira ou da esteira)
+    mesh(new THREE.CylinderGeometry(0.9,0.45,1.0,4,1,true), new THREE.MeshPhongMaterial({color:'#6f747c', side:THREE.DoubleSide}), x - 2.7, 2.2, z + 0.4, g).rotation.y = Math.PI/4;
+    for(const [lx,lz] of [[-0.4,-0.4],[0.4,-0.4],[-0.4,0.4],[0.4,0.4]]) mesh(new THREE.BoxGeometry(0.1,1.8,0.1), M('#3b3f45'), x-2.7+lx, 0.9, z+0.4+lz, g);
+    pipe(x-2.7, 1.8, z+0.4, x-1.2, 3.6, z, '#6f747c');
+    P.bin = mesh(new THREE.BoxGeometry(0.9,0.5,0.9), gravelM, x - 2.7, 2.0, z + 0.4, g);
+    const lb = labelSprite(3.2); lb.position.set(x, 5.8, z); g.add(lb); lb.userData.draw('🏗️ Usina de Concreto', '#ffffff');
+    for(const [lx,lz] of [[-1.3,-1.1],[1.3,-1.1],[-1.3,1.1],[1.3,1.1]]) circles.push({x:x+lx, z:z+lz, r:0.3, when:()=>!!S.quarry.conc.open});
+    circles.push({x:x-1.2, z:z-4.2, r:1.0, when:()=>!!S.quarry.conc.open}, {x:x+1.0, z:z-4.2, r:1.0, when:()=>!!S.quarry.conc.open}, {x:x+3.4, z:z-3.6, r:0.8, when:()=>!!S.quarry.conc.open});
+    qObj.plant = {g, P}; }
+  // esteiras da pedreira
+  const qLinks = new THREE.Group(); world.add(qLinks); const qPaths = {};
+  function buildQLinks(){
+    while(qLinks.children.length) qLinks.remove(qLinks.children[0]);
+    for(const t of qLinks.userData.texs || []){ const k = beltTexs.indexOf(t); if(k >= 0) beltTexs.splice(k, 1); }
+    const Q = S.quarry, before = beltTexs.length, [sx, sz] = QX.stock, V = (x,y,z) => new THREE.Vector3(x,y,z);
+    if(Q.belt){ beltRamp(qLinks, 96, -2.3, 0.6, 96, 3.6, 3.4); beltSeg(qLinks, 96, 3.6, 96, 5.4, 3.4, [false, true]);
+      qPaths.brita = [V(96,0.75,-2.3), V(96,3.58,3.6), V(96,3.58,5.4), V(96,1.2,6.6)]; }
+    if(Q.trucks.length){ beltRamp(qLinks, 98.6, 10.1, 0.55, 100.0, 10.1, 1.95); qPaths.truck = [V(98.2,0.6,10.1), V(98.6,0.73,10.1), V(100.0,2.13,10.1), V(101,1.3,10.1)]; }
+    if(Q.blocks.open && Q.blocks.belt){ beltRamp(qLinks, 92.8, 5.4, 0.55, 89.9, 5.4, 2.4); qPaths.mixer = [V(93.2,0.6,5.4), V(92.8,0.73,5.4), V(89.9,2.58,5.4), V(89.5,2.3,6.6)]; }
+    if(Q.conc.open && Q.conc.belt){ beltRamp(qLinks, 99.4, 3.0, 0.55, 103.6, 3.0, 2.7); qPaths.plant = [V(99.2,0.6,3.0), V(99.4,0.73,3.0), V(103.6,2.88,3.0), V(104.3,2.4,3.0)]; }
+    if(Q.blocks.open){ beltSeg(qLinks, 85.2, 8.2, 85.2, 13.0, 0.75); qPaths.blocks = [V(85.2,0.95,8.2), V(85.2,0.95,13.0)]; }
+    qLinks.userData.texs = beltTexs.slice(before);
+  }
+  // pessoas e máquinas da pedreira
+  const qHelpers = [], qLoaders = [], bHelpers = [], qTrucks = [], bTrucks = [], qBTs = [];
+  let plantLoader = null;
+  function syncQuarry(){
+    const Q = S.quarry;
+    while(qHelpers.length < Q.helpers){ const k = qHelpers.length, w = oilWorker('#f08a24', '#ffffff', QX.pile[0] + 2.4, QX.pile[1] - 1 + k*0.9, 0);
+      w.userData.rock = mesh(new THREE.DodecahedronGeometry(0.26,0), rockM, 0, 1.05, 0.4, w); w.userData.rock.visible = false; qHelpers.push({w, ph:k*0.33}); }
+    while(qLoaders.length < Q.loaders){ const g = makeLoader(); g.position.set(QX.pile[0] + 3, 0, QX.pile[1] + 1.8 + qLoaders.length*1.6); world.add(g);
+      const load = mesh(new THREE.DodecahedronGeometry(0.35,0), rockM, 1.55, 0.75, 0, g); g.userData.load = load; qLoaders.push({g, ph:qLoaders.length*0.5}); }
+    while(bHelpers.length < Q.blocks.helpers){ const k = bHelpers.length, w = oilWorker('#3aa35a', '#f2b632', 86, 11, 0);
+      w.userData.item = mesh(new THREE.BoxGeometry(0.34,0.22,0.28), M('#a7a39b'), 0, 1.0, 0.38, w); w.userData.item.visible = false; bHelpers.push({w, ph:k*0.37}); }
+    while(qTrucks.length < Q.trucks.length){ const g = makeDump(['#d94a4a','#2f80ed','#3aa35a'][qTrucks.length % 3]); g.visible = false; world.add(g); qTrucks.push({g}); }
+    while(bTrucks.length < Q.blocks.trucks.length){ const g = makeFlatbed(['#8e5bd6','#d94a4a','#2f80ed'][bTrucks.length % 3]); g.visible = false; world.add(g); bTrucks.push({g}); }
+    while(qBTs.length < Q.conc.bts.length){ const g = makeMixerTruck(); g.visible = false; world.add(g); qBTs.push({g}); }
+    if(Q.conc.open && !plantLoader){ const g = makeLoader(); g.position.set(100, 0, 1.2); world.add(g); g.userData.load = mesh(new THREE.BoxGeometry(0.5,0.3,1.2), gravelM, 1.5, 0.55, 0, g); plantLoader = {g}; }
+  }
+  function refreshQuarry(){
+    const Q = S.quarry;
+    quarryEntry.mesh.visible = !Q.open; qSign.userData.draw(Q.open ? '⛰️ Pedreira' : '⛰️ Pedreira (à venda)', '#ffd27a');
+    if(Q.crusher && !qObj.crusher) buildQCrusher();
+    if(Q.blocks.open && !qObj.blocks) buildQBlocks();
+    if(Q.conc.open && !qObj.plant) buildQPlant();
+    stockPile.visible = stockLab.visible = !!Q.belt;
+    syncQuarry(); buildQLinks();
+  }
+  refreshQuarry();
+  // caminho dos caminhões: chegam pelo leste da estrada e estacionam
+  const pathLen = pts => pts.slice(1).reduce((a,v,i)=>a + v.distanceTo(pts[i]), 0);
+  function placeOn(g, pts, f){ const L = pathLen(pts); let d = Math.max(0, Math.min(1, f))*L, s = 0, segs = pts.slice(1).map((v,i)=>v.distanceTo(pts[i]));
+    while(s < segs.length - 1 && d > segs[s]){ d -= segs[s]; s++; } const a = pts[s], b = pts[s+1]; g.position.lerpVectors(a, b, segs[s] ? d/segs[s] : 0);
+    const want = Math.atan2(-(b.z - a.z), b.x - a.x); let df = want - g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df)); g.rotation.y += df*0.25; }
+  const V3 = (x,z) => new THREE.Vector3(x, 0, z);
+  function truckDrive(g, st, inPath, tIn, tOut, queue){
+    const parkPath = queue ? [...inPath.slice(0, -1), V3(inPath[inPath.length-1].x, inPath[inPath.length-1].z + queue*3.6)] : inPath;
+    if(st.ph === 'in'){ g.visible = st.t > tIn*0.15; placeOn(g, parkPath, (st.t - tIn*0.15)/(tIn*0.85)); }
+    else if(st.ph === 'out'){ const f = st.t/Math.min(tOut, 7); g.visible = f < 1; if(f < 1) placeOn(g, [...parkPath].reverse(), f); }
+    else { g.visible = true; placeOn(g, parkPath, 1); }
+  }
+  const qRiders = [], qT = {}, gravelGeo = new THREE.BoxGeometry(0.2,0.16,0.2), qBlockGeo = new THREE.BoxGeometry(0.34,0.2,0.24);
+  let lastBlasts = null, shake = 0, blastFx = [];
+  function updateQuarry(dt, t){
+    const Q = S.quarry, B = Q.blocks, C = Q.conc;
+    if(quarryEntry.mesh.visible){ const r = qOpenLeft(); quarryEntry.draw('⛰️', money(r), 1 - r/QUARRY_OPEN_COST, false); }
+    if(!Q.open){ rockPile.count = 0; return; }
+    // sirene antes da explosão e a explosão
+    const left = blastEvery() - Q.blastT; sirenMat.color.set(left < 2.5 && Math.sin(t*16) > 0 ? '#ff3b2a' : '#5a1a14');
+    if(lastBlasts === null) lastBlasts = Q.blasts||0;
+    if((Q.blasts||0) !== lastBlasts){ lastBlasts = Q.blasts||0; const bx = 82 + Math.random()*12, bp = new THREE.Vector3(bx, 1.6, -8.9);
+      const flash = mesh(new THREE.SphereGeometry(0.9, 14, 10), new THREE.MeshBasicMaterial({color:'#ffd27a', transparent:true, opacity:1, depthWrite:false, depthTest:false}), bp.x, bp.y + 0.6, bp.z + 0.6); flash.castShadow = false; flash.renderOrder = 5;
+      blastFx.push({m:flash, t:0});
+      dustPuff(bp, 18, '#b9ab93'); dustPuff(bp.clone().setY(2.6), 12, '#cfc3ad');
+      for(let k=0;k<10;k++){ const m = mesh(new THREE.DodecahedronGeometry(0.2 + Math.random()*0.25, 0), rockM, bp.x, bp.y, bp.z);
+        blastFx.push({m, t:0, v:new THREE.Vector3((Math.random()-.5)*4 + (QX.pile[0]-bx)*0.5, 4 + Math.random()*3, 2.5 + Math.random()*2.5)}); }
+      if(player.position.distanceTo(bp) < 30){ shake = 0.45; floatText('💥 FOGO!', bp.clone().setY(3.5), '#ffb347'); } }
+    for(let k=blastFx.length-1;k>=0;k--){ const f = blastFx[k]; f.t += dt;
+      if(f.v){ f.v.y -= 14*dt; f.m.position.addScaledVector(f.v, dt); f.m.rotation.x += dt*6; if(f.m.position.y < 0.3){ world.remove(f.m); blastFx.splice(k,1); } }
+      else { f.m.scale.setScalar(1 + f.t*9); f.m.material.opacity = Math.max(0, 0.95 - f.t*2.6); if(f.t > 0.4){ world.remove(f.m); blastFx.splice(k,1); } } }
+    if(shake > 0) shake -= dt;
+    rockPile.count = Math.min(QROCK_MAX, Math.ceil(Q.rocks));
+    // ajudantes: pegam uma pedra no pátio e jogam no britador
+    const [hx, hz] = QX.crusher;
+    qHelpers.forEach((h,k)=>{ const U = h.w.userData, has = Q.rocks >= 0.5 && Q.crusher; h.ph = (h.ph + dt*0.16) % 1;
+      const go = h.ph < 0.5, f = go ? h.ph*2 : (h.ph - 0.5)*2, e = f*f*(3-2*f);
+      const ax = QX.pile[0] + 2.2, az = QX.pile[1] - 0.8 + k*0.8, bx = hx - 1.9, bz = hz - 0.6 + k*0.5;
+      if(!has){ h.w.position.set(ax, 0, az); U.rock.visible = false; U.legL.rotation.x = U.legR.rotation.x = 0; U.armL.rotation.x = U.armR.rotation.x = -0.2; return; }
+      h.w.position.set(go ? ax + (bx-ax)*e : bx + (ax-bx)*e, 0, go ? az + (bz-az)*e : bz + (az-bz)*e); h.w.rotation.y = go ? Math.PI/2 : -Math.PI/2;
+      const sw = Math.sin(t*10 + k); U.legL.rotation.x = sw*0.6; U.legR.rotation.x = -sw*0.6; U.rock.visible = go; U.armL.rotation.x = U.armR.rotation.x = go ? -1.25 : -sw*0.4; });
+    // carregadeiras: concha cheia até o britador, despeja e volta
+    qLoaders.forEach((l,k)=>{ const has = Q.rocks >= 1 && Q.crusher; l.ph = (l.ph + dt*0.11) % 1; const go = l.ph < 0.5, f = go ? l.ph*2 : (l.ph-0.5)*2, e = f*f*(3-2*f);
+      const ax = QX.pile[0] + 2.6, bx = hx - 2.6, z = hz + 1.7 + k*1.7;
+      if(!has){ l.g.position.set(ax, 0, z); l.g.userData.load.visible = false; return; }
+      l.g.position.set(go ? ax + (bx-ax)*e : bx + (ax-bx)*e, 0, z); l.g.rotation.y = go ? 0 : Math.PI; l.g.userData.load.visible = go; });
+    // britador: mandíbula e volantes; pedra grande entra, brita pequena sai na esteira
+    const cr = qObj.crusher; if(cr){ const on = Q.crushing; if(on){ cr.P.wheels.forEach(w=>w.rotation.y += dt*8); cr.P.jaw.position.x = 0.5 + Math.sin(t*14)*0.08; cr.g.position.y = Math.abs(Math.sin(t*28))*0.02; } }
+    const spawn = (key, ok, geo, mat, every) => { qT[key] = (qT[key]||0) + dt; if(ok && qPaths[key] && qT[key] > every){ qT[key] = 0; const r = new THREE.Mesh(geo, mat); r.castShadow = true; world.add(r); qRiders.push({r, path:qPaths[key], d:0}); } };
+    spawn('brita', Q.crushing && Q.belt, gravelGeo, gravelM, 0.35);
+    const loadingTruck = Q.trucks.find(x=>x.ph === 'load');
+    spawn('truck', !!loadingTruck && Q.brita > britaReserve() + 0.5, gravelGeo, gravelM, 0.25);
+    spawn('mixer', B.open && B.belt && B.mix < bMixCap() - 0.2 && Q.brita > 0.5, gravelGeo, gravelM, 0.35);
+    spawn('plant', C.open && C.belt && C.bin < cBinCap() - 0.2 && Q.brita > 0.5, gravelGeo, gravelM, 0.35);
+    spawn('blocks', B.open && B.pressing, qBlockGeo, M('#a7a39b'), 0.6);
+    for(let k=qRiders.length-1;k>=0;k--){ const it = qRiders[k]; it.d += dt*2.4; const lens = it.path.slice(1).map((v,i)=>v.distanceTo(it.path[i])), tot = lens.reduce((a,c)=>a+c,0);
+      if(it.d >= tot){ world.remove(it.r); qRiders.splice(k,1); continue; } let d = it.d, s2 = 0; while(d > lens[s2]){ d -= lens[s2]; s2++; }
+      it.r.position.lerpVectors(it.path[s2], it.path[s2+1], d/lens[s2]); it.r.scale.setScalar(riderScale(it.d, tot)); }
+    // monte de brita cresce e diminui
+    if(Q.belt){ const f = Math.min(1, Q.brita/stockCap()); stockPile.scale.set(0.6 + 3.0*Math.sqrt(f), 0.15 + 3.0*f, 0.6 + 3.0*Math.sqrt(f));
+      const key = Math.floor(Q.brita) + '|' + stockCap(); if(stockLab.userData.key !== key){ stockLab.userData.key = key; stockLab.userData.draw(`⛰️ Brita ${Math.floor(Q.brita)}/${stockCap()} t`, '#e8e0d0'); } }
+    // caminhões de brita
+    const brPath = [V3(124, 25.6), V3(101, 25.6), V3(101, 10.1)];
+    let qi = 0; Q.trucks.forEach((st,k)=>{ const v = qTrucks[k]; if(!v) return; const queue = st.ph === 'load' && st !== loadingTruck ? ++qi : 0;
+      truckDrive(v.g, st, brPath, T_IN, T_OUT, queue); v.g.userData.fill.scale.y = Math.max(0.01, st.load/britaTruckLoad()*0.8);
+      if(st.payN && st.payN !== v.payN){ v.payN = st.payN; if(player.position.distanceTo(V3(101,20)) < 40) floatText('+' + money(st.paid), new THREE.Vector3(104, 2.5, 22), '#9cff7a'); } });
+    // fábrica de blocos
+    const bl = qObj.blocks; if(bl){ const P = bl.P; if(B.mix > 0.05) P.drum.rotation.z += dt*3;
+      P.piston.position.y = B.pressing ? 1.55 + Math.abs(Math.sin(t*3))*0.4 : 1.9;
+      P.cure.count = Math.min(36, Math.ceil(B.cure/10)); P.pals.count = P.palBase.count = Math.min(16, B.pallets); }
+    bHelpers.forEach((h,k)=>{ const U = h.w.userData, feed = !B.belt && k === 0, busy = feed ? Q.brita > 0.5 && B.mix < bMixCap() - 0.2 : B.cure >= 1;
+      h.ph = (h.ph + dt*0.2) % 1; const go = h.ph < 0.5, f = go ? h.ph*2 : (h.ph-0.5)*2, e = f*f*(3-2*f);
+      const [ax,az,bx,bz] = feed ? [92.4, 7.6, 90.0, 7.6] : [84.0, 14.2 + (k%2)*0.6, 82.6, 15.4 - (k%2)*1.2];
+      if(!busy){ h.w.position.set(ax, 0, az); U.item.visible = false; U.legL.rotation.x = U.legR.rotation.x = 0; return; }
+      U.item.material = feed ? gravelM : M('#a7a39b');
+      h.w.position.set(go ? ax + (bx-ax)*e : bx + (ax-bx)*e, 0, go ? az + (bz-az)*e : bz + (az-bz)*e); h.w.rotation.y = Math.atan2(go ? bx-ax : ax-bx, go ? bz-az : az-bz);
+      const sw = Math.sin(t*10 + k); U.legL.rotation.x = sw*0.6; U.legR.rotation.x = -sw*0.6; U.item.visible = go; U.armL.rotation.x = U.armR.rotation.x = go ? -1.2 : -sw*0.4; });
+    const bkPath = [V3(124, 25.6), V3(78.6, 25.6), V3(78.6, 15.2)], loadingB = B.trucks.find(x=>x.ph === 'load');
+    let qb = 0; B.trucks.forEach((st,k)=>{ const v = bTrucks[k]; if(!v) return; const queue = st.ph === 'load' && st !== loadingB ? ++qb : 0;
+      truckDrive(v.g, st, bkPath, T_IN + 1, T_OUT + 4, queue); v.g.userData.pal.forEach((p,i)=>p.visible = i < Math.round(st.load/Math.max(1, blockTruckLoad())*6));
+      if(st.payN && st.payN !== v.payN){ v.payN = st.payN; if(player.position.distanceTo(V3(80,20)) < 40) floatText('+' + money(st.paid), new THREE.Vector3(80, 2.5, 22), '#9cff7a'); } });
+    // usina de concreto
+    const pl = qObj.plant; if(pl){ const P = pl.P, mixing = C.bts.some(b=>b.ph === 'mix'), loading = C.bts.some(b=>b.ph === 'load');
+      if(mixing || loading) P.mix.rotation.x += dt*6; P.bin.scale.y = Math.max(0.05, C.bin/cBinCap()); P.bin.position.y = 1.75 + 0.25*P.bin.scale.y;
+      if(mixing){ qT.feed = (qT.feed||0) + dt; if(qT.feed > 0.25){ qT.feed = 0; const fd = P.feeds[Math.floor(Math.random()*P.feeds.length)];
+        const r = new THREE.Mesh(new THREE.SphereGeometry(0.1,6,4), M(fd[6])); world.add(r); qRiders.push({r, path:[new THREE.Vector3(fd[0],fd[1],fd[2]), new THREE.Vector3(fd[3],fd[4],fd[5])], d:0}); } }
+      if(loading){ qT.pour = (qT.pour||0) + dt; if(qT.pour > 0.12){ qT.pour = 0; const r = new THREE.Mesh(gravelGeo, M('#8e8a84')); world.add(r);
+        qRiders.push({r, path:[new THREE.Vector3(QX.plant[0], 2.5, QX.plant[1]), new THREE.Vector3(QX.plant[0], 1.6, QX.plant[1] + 0.2)], d:0}); } } }
+    if(plantLoader){ const g = plantLoader.g, need = !C.belt && C.bin < cBinCap() - 0.2 && Q.brita > 0.5; plantLoader.ph = ((plantLoader.ph||0) + dt*0.12) % 1;
+      const go = plantLoader.ph < 0.5, f = go ? plantLoader.ph*2 : (plantLoader.ph-0.5)*2, e = f*f*(3-2*f), ax = 99.3, bx = 102.6;
+      if(!need){ g.position.set(ax, 0, 1.2); g.userData.load.visible = false; } else { g.position.set(go ? ax + (bx-ax)*e : bx + (ax-bx)*e, 0, 1.2); g.rotation.y = go ? 0 : Math.PI; g.userData.load.visible = go; } }
+    const btPath = [V3(124, 25.6), V3(110.5, 25.6), V3(110.5, 8.6), V3(QX.plant[0], 8.6), V3(QX.plant[0], QX.plant[1] - 1.4)];
+    const atDock = C.bts.find(b=>b.ph === 'mix' || b.ph === 'load'); let qc = 0;
+    C.bts.forEach((st,k)=>{ const v = qBTs[k]; if(!v) return; v.g.userData.drum.rotation.x += dt*(st.ph === 'load' ? 8 : 2.5);
+      if(st.ph === 'wait'){ qc++; v.g.visible = true; placeOn(v.g, [V3(124,25.6), V3(110.5,25.6), V3(110.5, 8.6 + qc*3.6)], 1); }
+      else if(st.ph === 'mix' || st.ph === 'load'){ v.g.visible = true; placeOn(v.g, btPath, 1); }
+      else truckDrive(v.g, st, btPath, T_IN, cTripTime(), 0);
+      if(st.payN && st.payN !== v.payN){ v.payN = st.payN; if(player.position.distanceTo(V3(108,15)) < 40) floatText('🏗️ +' + money(st.paid), new THREE.Vector3(110, 2.5, 22), '#9cff7a'); } });
+  }
+  function payQuarry(dt){ if(S.quarry.open || S.money <= 0) return; const r = qOpenLeft(), pay = Math.min(S.money, r, Math.max(QUARRY_OPEN_COST*dt/1.6, 1));
+    S.money -= pay; S.paid.q_open = (S.paid.q_open||0) + pay; if(Math.random() < dt*8) burstBills(77.2, 2, 1); if(qOpenLeft() <= 0.0001) openQuarry(); }
+
   // ---------- personagem ----------
   function makeMiner(shirt, helmet, pants, skinCol){
     const g = new THREE.Group(), P = {};
@@ -3854,9 +4310,10 @@ function createWorld(){
   lvlBtns.push({id:'usina', tile:makeTile(-70.5, -4.0), x:-70.5, z:-4.0});
   lvlBtns.push({id:'oil', tile:makeTile(-28.6, 12.2), x:-28.6, z:12.2});
   lvlBtns.push({id:'floresta', tile:makeTile(41, -1.0), x:41, z:-1.0});
+  lvlBtns.push({id:'pedreira', tile:makeTile(78, -1.0), x:78, z:-1.0});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
   // ---------- placas fixas na frente de cada construção (cartão pintado na placa) ----------
-  const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4], floresta:[40.0,0.4,-1.0]};
+  const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4], floresta:[40.0,0.4,-1.0], pedreira:[77.6,0.4,-2.6]};
   const signBoards = [];
   const cards = lvlBtns.map(b=>{
     const m = mineById(b.id);
@@ -3879,6 +4336,7 @@ function createWorld(){
         btn: open ? (isFinite(b.cost) ? ['Melhorar', money(b.cost)] : ['Máximo','']) : ['🔒 Abrir', money(remaining(toolById(m.tool)))]}; }
     if(b.id === 'galpao') return {name:'Galpão de Entregas', ic:'📦', open:S.depotOpen, rate: S.depotOpen ? `📦 ${fmt(depotTotal())} · ⛽ ${fmt(S.oil.fuel)} L` : 'Fechado', btn: [S.depotOpen ? 'Melhorar' : 'Abrir', money(b.cost)]};
     if(b.id === 'usina') return {name:'Usina de Energia', ic:'⚡', open:S.power.open, rate: `⚡ ${fmt(powerNow)}/${fmt(powerDemand())} kW`, btn: isFinite(b.cost) ? [S.power.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
+    if(b.id === 'pedreira') return {name:'Pedreira', ic:'⛰️', open:S.quarry.open, rate: S.quarry.open ? `⛰️ ${Math.floor(S.quarry.brita)} t de brita` : 'À venda', btn: isFinite(b.cost) ? [S.quarry.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
     if(b.id === 'floresta') return {name:'Floresta', ic:'🌲', open:S.forest.open, rate: S.forest.open ? `🌲 ${Math.floor(S.forest.trees)} árvores` : 'À venda', btn: isFinite(b.cost) ? [S.forest.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
     return {name:'Campo de Petróleo', ic:'🛢️', open:S.oil.open, rate: S.oil.open ? `⛽ ${fmt(fuelNow*60)} L/min` : 'À venda', btn: isFinite(b.cost) ? [S.oil.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
   }
@@ -3925,7 +4383,9 @@ function createWorld(){
   function updateLvlBtns(t){
     lvlBtns.forEach((b,k)=>{
       let lvl, cost, open = true;
-      if(b.id === 'floresta'){ const F2 = S.forest; lvl = (F2.open?1:0) + FOREST_ITEMS.filter(it=>F2[it.id]).length + F2.lvl;
+      if(b.id === 'pedreira'){ const Q2 = S.quarry; lvl = (Q2.open?1:0) + qLevel1() + (Q2.crusher?1:0) + (Q2.belt?1:0) + qLevel2() + (Q2.blocks.open?1:0) + (Q2.conc.open?1:0) + Q2.conc.bts.length;
+        cost = !Q2.open ? qOpenLeft() : Math.min(...Object.keys(Q_BUY).map(k=>qCanBuy(k) ? qBuyCost(k) : Infinity), ...Object.keys(Q_UP).map(k=>qCanUp(k) ? qUpCost(k) : Infinity)); }
+      else if(b.id === 'floresta'){ const F2 = S.forest; lvl = (F2.open?1:0) + FOREST_ITEMS.filter(it=>F2[it.id]).length + F2.lvl;
         const av = FOREST_ITEMS.filter(fCan).map(fLeft); cost = !F2.open ? forestOpenLeft() : av.length ? Math.min(...av) : F2.sr ? forestLvlCost() : Infinity; }
       else if(b.id === 'oil'){ const O2 = S.oil; lvl = (O2.open?1:0) + OIL_ITEMS.filter(it=>O2[it.id]).length + O2.lvl;
         const av = OIL_ITEMS.filter(oilCan).map(oilLeft); cost = !O2.open ? oilOpenLeft() : av.length ? Math.min(...av) : O2.ps ? pumpCost() : Infinity; }
@@ -4173,7 +4633,8 @@ function createWorld(){
 
     // zonas: quadrados de compra, mercado, loja
     let z = null;
-    if((forestEntry.mesh.visible && forestEntry.inside(p)) || FOREST_ITEMS.some(it=>forestTiles[it.id] && forestTiles[it.id].mesh.visible && forestTiles[it.id].inside(p))) z = 'forest';
+    if(quarryEntry.mesh.visible && quarryEntry.inside(p)) z = 'quarry';
+    else if((forestEntry.mesh.visible && forestEntry.inside(p)) || FOREST_ITEMS.some(it=>forestTiles[it.id] && forestTiles[it.id].mesh.visible && forestTiles[it.id].inside(p))) z = 'forest';
     else if((oilEntry.mesh.visible && oilEntry.inside(p)) || OIL_ITEMS.some(it=>oilTiles[it.id] && oilTiles[it.id].mesh.visible && oilTiles[it.id].inside(p))) z = 'oil';
     else if((powerEntry.mesh.visible && powerEntry.inside(p)) || POWER_ITEMS.some(it=>pwTiles[it.id] && pwTiles[it.id].mesh.visible && pwTiles[it.id].inside(p))) z = 'pw';
     else if(depotTile.mesh.visible && depotTile.inside(p)) z = 'depot';
@@ -4194,9 +4655,11 @@ function createWorld(){
     if(z === 'pw') payPower(dt);
     if(z === 'oil') payOil(dt);
     if(z === 'forest') payForest(dt);
+    if(z === 'quarry') payQuarry(dt);
     updateOil(dt, npcT);
     updateCars(dt);
     updateForest(dt, npcT);
+    updateQuarry(dt, npcT);
     updatePower(dt, npcT);
     updateDelivery(dt, p);
     updateTrophies(npcT);
@@ -4262,6 +4725,7 @@ function createWorld(){
     camPos.lerp(new THREE.Vector3().copy(p).add(CAM_OFF).addScaledVector(LOOK_SHIFT, Math.min(1.6, S.zoom||1)), Math.min(1, dt*6));
     camera.position.copy(camPos);
     camera.lookAt(camPos.x - CAM_OFF.x, 0.6, camPos.z - CAM_OFF.z);
+    if(shake > 0){ camera.position.x += (Math.random()-.5)*shake*0.7; camera.position.y += (Math.random()-.5)*shake*0.7; }   // tremor das explosões
     fadeOccluders(p);
     R.render(world, camera);
   }
@@ -4327,6 +4791,7 @@ function createWorld(){
     onGemItem(id){ if(id === 'capacete') refreshHelmet(); burstBills(player.position.x, player.position.z, 10); },
     onOilChanged(){ refreshOil(); burstBills(player.position.x, player.position.z, 10); },
     onForestChanged(){ refreshForest(); burstBills(player.position.x, player.position.z, 10); },
+    onQuarryChanged(){ if(typeof refreshQuarry === 'function') refreshQuarry(); burstBills(player.position.x, player.position.z, 10); },
     onPowerChanged(){ refreshPower(); refreshGenerators(); burstBills(player.position.x, player.position.z, 10); },
     celebrate(){ burstBills(player.position.x, player.position.z, 18); },
     onFactoryChanged(m){ refreshFactory(); const o = MINES3.find(o=>o.m===m); if(o) burstBills(o.smX ?? o.x, o.smZ ?? -9, 12); },

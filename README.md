@@ -42,3 +42,4 @@ Tela de abertura, câmera isométrica, cartões flutuando sobre cada mina e fáb
 - **🏆 Conquistas e Troféus:** 52 medalhas (bronze, prata e ouro) em 18 categorias, com pequenas recompensas, título de minerador e um pódio de troféus na praça.
 - **🎯 Missões:** uma sequência de 32 objetivos com recompensa em dinheiro, sempre mostrando a próxima conquista no topo da tela.
 - Objetivo final: minerar 1.000 esmeraldas e virar Magnata da Mineração.
+- **⛰️ Pedreira, Blocos e Concreto:** explosões no paredão, ajudantes e carregadeiras levam as pedras ao britador, a esteira forma o monte de brita (estoque central) e caminhões vendem. Depois: fábrica de blocos (misturador, prensa, cura, paletes) e usina de concreto usinado com caminhões-betoneira.
