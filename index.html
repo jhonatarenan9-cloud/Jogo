@@ -602,6 +602,7 @@ function newState(){
     power:{open:false, lvl:0, batteries:0, charge:0, buf:{moido:0, limpo:0, vapor:0}},
     fp:false, viewV2:true, ach:{}, achNew:0, swings:0, gems:0, gemsFound:0, gemItems:{}, cond:{},
     forest:{open:false, lvl:0, trees:40, sack:0, paper:0, buf:{tora:0, serr:0, lenha:0}},
+    lake:{open:false, pump:false, pumpOp:false, dredge:false, dredgeOp:false, exc:false, excOp:false, trucks:[], lv:{}, water:0, sand:0, clay:0, sandF:0, clayF:0, level:1},
     quarry:{open:false, crusher:false, belt:false, helpers:0, loaders:0, trucks:[], lv:{}, blastT:0, blasts:0, rocks:0, hopper:0, brita:0, earned:0, sold:{brita:0, pallets:0, m3:0},
       blocks:{open:false, helpers:0, belt:false, trucks:[], mix:0, cure:0, loose:0, pallets:0}, conc:{open:false, belt:false, bts:[], bin:0}},
     pr:{stars:0, total:0, eras:0, lv:{}}, genLvl:0, noGen:true, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
@@ -616,6 +617,7 @@ try{
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
+    S.lake = Object.assign(newState().lake, d.lake, {lv:Object.assign({}, d.lake && d.lake.lv)});
     { const n = newState().quarry, q = d.quarry || {}; S.quarry = Object.assign(n, q, {lv:Object.assign({}, q.lv), sold:Object.assign(n.sold, q.sold),
         blocks:Object.assign(n.blocks, q.blocks), conc:Object.assign(n.conc, q.conc)}); }
     S.forest = Object.assign(newState().forest, d.forest, {buf:Object.assign(newState().forest.buf, d.forest && d.forest.buf)});
@@ -707,6 +709,7 @@ function produce(sec){
     oilTick(sec);
   forestTick(sec);
   quarryTick(sec);
+  lakeTick(sec);
   sellByBelts();
   stageTick(sec);
   marketTick(sec);
@@ -725,7 +728,7 @@ const MARKET_MIN = 0.7, MARKET_MAX = 1.4, MARKET_EVERY = 30;   // limites e segu
 const mk = id => (S.market && S.market.m[id]) || 1;
 const mkP = id => mk(id) * prSell();   // preço de venda: mercado × Negociante
 const mval = m => m.value * mkP(m.id);
-const MARKET_KEYS = () => [...MINES.filter(m=>!m.fuel).map(m=>m.id), 'moido','limpo','crude','clean','drums','diesel','bat','gal','tora','lenha','sack','paper','brita','bloco','concreto'];
+const MARKET_KEYS = () => [...MINES.filter(m=>!m.fuel).map(m=>m.id), 'moido','limpo','crude','clean','drums','diesel','bat','gal','tora','lenha','sack','paper','brita','bloco','concreto','areia','argila'];
 function marketTick(sec){
   const K = S.market; K.t = (K.t||0) + sec;
   if(K.t < MARKET_EVERY) return; const steps = Math.min(20, Math.floor(K.t/MARKET_EVERY)); K.t -= Math.floor(K.t/MARKET_EVERY)*MARKET_EVERY;
@@ -756,7 +759,7 @@ function sellByBelts(){
   return total;
 }
 // lucro por etapa: cada etapa do carvão e do petróleo já paga um pouco pelo que processa (bem menos que o produto final)
-const STAGE_PAY = {corte:1, serraria:2, carvao:0.05, britagem:0.5, lavagem:0.8, caldeira:1, extracao:1, separacao:2, refino:10};
+const STAGE_PAY = {bombeamento:0.5, dragagem:1.2, escavacao:1.2, corte:1, serraria:2, carvao:0.05, britagem:0.5, lavagem:0.8, caldeira:1, extracao:1, separacao:2, refino:10};
 const STAGE_RATE = {};   // $/s de cada etapa (média recente, para os painéis)
 let stageSec = 0, stageAcc = {};
 function stagePay(key, units){ if(units <= 0) return; const v = units*STAGE_PAY[key]; S.money += v; S.earned += v; stageAcc[key] = (stageAcc[key]||0) + v; }
@@ -1074,6 +1077,7 @@ function quarryStep(d){
   if(B.open){
     if(supplyOk('agua','argamassa')){ const f = Math.max(0, Math.min(Q.brita, bFillRate()*d, bMixCap() - B.mix)); Q.brita -= f; B.mix += f; }
     const m = Math.max(0, Math.min(B.mix, bMachRate()*d, bMixCap()/12*d, (400 - B.cure)/BLOCKS_PER_T)); B.mix -= m; B.cure += m*BLOCKS_PER_T; B.pressing = m > 0;
+    if(m > 0) B.ownBlocks = (B.ownBlocks||0) + m*BLOCKS_PER_T*lakeUse(LAKE_USE.bloco, m);   // parte feita com água, areia e argila do lago
     if(B.helpers){ const p = Math.max(0, Math.min(B.cure, B.helpers*8*d, (bPalletCap() - B.pallets)*PALLET_BLOCKS - B.loose)); B.cure -= p; B.loose += p;
       while(B.loose >= PALLET_BLOCKS){ B.loose -= PALLET_BLOCKS; B.pallets++; } }
     let dock2 = B.trucks.find(t=>t.ph === 'load');
@@ -1081,7 +1085,7 @@ function quarryStep(d){
       if(tk.ph === 'in' && tk.t >= T_IN + 1){ tk.ph = 'load'; tk.t = 0; if(!dock2) dock2 = tk; }
       else if(tk.ph === 'load' && tk === dock2){ if(tk.t >= 1.5 && B.pallets >= 1 && tk.load < blockTruckLoad()){ B.pallets--; tk.load++; tk.t = 0; }
         if(tk.load >= blockTruckLoad()){ tk.ph = 'out'; tk.t = 0; } }
-      if(tk.ph === 'out' && tk.t >= T_OUT + 4){ const v = qPay(tk.load*PALLET_BLOCKS*BLOCK_VALUE, 'bloco'); Q.sold.pallets += tk.load; tk.load = 0; tk.ph = 'in'; tk.t = 0; tk.paid = v; tk.payN = (tk.payN||0) + 1; } });
+      if(tk.ph === 'out' && tk.t >= T_OUT + 4){ const nb = tk.load*PALLET_BLOCKS, own = Math.min(nb, B.ownBlocks||0); B.ownBlocks = (B.ownBlocks||0) - own; const v = qPay((nb + own*LAKE_BONUS)*BLOCK_VALUE, 'bloco'); Q.sold.pallets += tk.load; tk.load = 0; tk.ph = 'in'; tk.t = 0; tk.paid = v; tk.payN = (tk.payN||0) + 1; } });
   }
   // FASE 3: concreto usinado (sem estoque: só produz quando tem betoneira embaixo)
   if(C.open){
@@ -1089,10 +1093,10 @@ function quarryStep(d){
     let dockBusy = C.bts.some(b=>b.ph === 'mix' || b.ph === 'load');
     C.bts.forEach(b=>{ b.t += d;
       if(b.ph === 'in' && b.t >= T_IN){ b.ph = 'wait'; b.t = 0; }
-      else if(b.ph === 'wait' && !dockBusy && C.bin >= btLoad() - 0.01 && supplyOk('cimento','areia','agua','aditivos')){ C.bin -= btLoad(); b.load = btLoad(); b.ph = 'mix'; b.t = 0; dockBusy = true; }
+      else if(b.ph === 'wait' && !dockBusy && C.bin >= btLoad() - 0.01 && supplyOk('cimento','areia','agua','aditivos')){ C.bin -= btLoad(); b.load = btLoad(); b.own = lakeUse(LAKE_USE.concreto, b.load); b.ph = 'mix'; b.t = 0; dockBusy = true; }
       else if(b.ph === 'mix' && b.t >= cMixTime()){ b.ph = 'load'; b.t = 0; }
       else if(b.ph === 'load' && b.t >= cLoadTime()){ b.ph = 'out'; b.t = 0; dockBusy = C.bts.some(x=>x !== b && (x.ph === 'mix' || x.ph === 'load')); }
-      else if(b.ph === 'out' && b.t >= cTripTime()){ const v = qPay(b.load*CONC_VALUE, 'concreto'); Q.sold.m3 += b.load; b.load = 0; b.ph = 'in'; b.t = 0; b.paid = v; b.payN = (b.payN||0) + 1; } });
+      else if(b.ph === 'out' && b.t >= cTripTime()){ const v = qPay(b.load*CONC_VALUE*(1 + LAKE_BONUS*(b.own||0)), 'concreto'); Q.sold.m3 += b.load; b.load = 0; b.ph = 'in'; b.t = 0; b.paid = v; b.payN = (b.payN||0) + 1; } });
   }
 }
 function quarryTick(sec){ if(!S.quarry.open || sec <= 0) return; let left = Math.min(sec, 8*3600); while(left > 0){ const d = Math.min(left, 0.5); quarryStep(d); left -= d; } }
@@ -1125,6 +1129,56 @@ function quarryBuy(k){
 function quarryUp(k){ const u = Q_UP[k]; if(qLv(k) >= Q_UP_MAX) return; const c = qUpCost(k); if(S.money < c) return; S.money -= c; S.quarry.lv[k] = qLv(k) + 1; toast(`${u.ico} ${u.name}: nível ${qLv(k)}!`); render(); save(); }
 function openQuarry(){ S.quarry.open = true; delete S.paid.q_open; toast('⛰️ Pedreira liberada! As explosões começaram: contrate ajudantes e instale o britador.'); if(window.world3d) world3d.onQuarryChanged(); render(); save(); }
 function sellBritaNow(){ const Q = S.quarry, t = Math.floor(Q.brita); if(t <= 0) return 0; Q.brita -= t; Q.sold.brita += t; const v = qPay(t*BRITA_VALUE, 'brita'); toast(`⛰️ ${t} t de brita vendidas por ${money(v)}`); render(); save(); return v; }
+
+// ===================== LAGO: ÁGUA, AREIA E ARGILA =====================
+// a estação de bombeamento drena a água para a caixa d'água; a draga tira areia do fundo; a escavadeira tira argila da margem;
+// caminhões levam areia e argila ao pátio de insumos. Blocos e concreto feitos com insumos do lago rendem +80%; cada estação também paga um pouco pelo que produz
+// (sem o lago, as fábricas continuam comprando os insumos sozinhas, como antes).
+const LAKE_OPEN_COST = 15000, LAKE_BONUS = 0.8;
+const LAKE_USE = {bloco:{agua:0.4, areia:0.3, argila:0.3}, concreto:{agua:0.3, areia:0.5}};   // por t de brita (bloco) ou m³ (concreto)
+const L_BUY = {pump:[6000], pumpOp:[800], dredge:[12000], dredgeOp:[1200], exc:[10000], excOp:[1000], trucks:[5000, 15000]};
+const L_UP = {lpump:{ico:'💧', name:'Bombas mais fortes', base:3000}, ldredge:{ico:'🚤', name:'Draga mais rápida', base:4000}, lexc:{ico:'⛏️', name:'Escavadeira mais rápida', base:3500},
+  lhaul:{ico:'🚚', name:'Caçambas maiores', base:4000}, ltank:{ico:'🛢️', name:'Caixa d\'água e pátio maiores', base:2500}};
+const lLv = k => (S.lake.lv[k]||0), lUpCost = k => Math.ceil(L_UP[k].base * Math.pow(2.6, lLv(k)));
+const lakeOpenLeft = () => Math.max(0, LAKE_OPEN_COST - (S.paid.lake_open||0));
+const lakeUnlocked = () => !!S.quarry.blocks.open;
+const lBuyCost = k => { const L = S.lake, n = k === 'trucks' ? L.trucks.length : +!!L[k]; return L_BUY[k][n]; };
+const lCanBuy = k => { const L = S.lake; if(!L.open || lBuyCost(k) === undefined) return false; if(k.endsWith('Op')) return !!L[k.slice(0,-2)]; if(k === 'trucks') return !!(L.dredge || L.exc); return true; };
+const pumpRate = () => (S.lake.pump && S.lake.pumpOp ? 0.8 : 0) * (1 + 0.4*lLv('lpump'));       // m³/s
+const dredgeRate = () => (S.lake.dredge && S.lake.dredgeOp ? 0.4 : 0) * (1 + 0.4*lLv('ldredge')); // t/s
+const excRate = () => (S.lake.exc && S.lake.excOp ? 0.3 : 0) * (1 + 0.4*lLv('lexc'));
+const tankCap = () => Math.round(60 * (1 + 0.5*lLv('ltank'))), shoreCap = () => Math.round(80 * (1 + 0.5*lLv('ltank')));
+const lakeTruckLoad = () => Math.round(6 * (1 + 0.5*lLv('lhaul'))), L_TRIP = 9;
+// usa os insumos do lago para uma quantidade q; devolve a fração coberta (0 a 1) e consome de verdade
+function lakeUse(recipe, q){
+  if(!S.lake || !S.lake.open || q <= 0) return 0; const L = S.lake, have = {agua:L.water, areia:L.sandF, argila:L.clayF};
+  let f = 1; for(const k in recipe) f = Math.min(f, (have[k]||0)/(recipe[k]*q)); f = Math.max(0, Math.min(1, f)); if(f <= 0) return 0;
+  L.water -= (recipe.agua||0)*q*f; L.sandF -= (recipe.areia||0)*q*f; L.clayF -= (recipe.argila||0)*q*f; return f;
+}
+function lakeStep(d){
+  const L = S.lake;
+  const w = Math.max(0, Math.min(pumpRate()*d, tankCap() - L.water)); L.water += w; stagePay('bombeamento', w); L.level = Math.max(0.55, (L.level ?? 1) - w*0.0004 + d*0.004*(1 - (L.level ?? 1)) + d*0.0002);   // o lago baixa ao drenar e enche de volta devagar
+  L.level = Math.min(1, L.level); L.pumping = w > 0;
+  const sd = Math.max(0, Math.min(dredgeRate()*d, shoreCap() - L.sand)); L.sand += sd; stagePay('dragagem', sd); L.dredging = sd > 0;
+  const cl = Math.max(0, Math.min(excRate()*d, shoreCap() - L.clay)); L.clay += cl; stagePay('escavacao', cl); L.digging = cl > 0;
+  let dock = L.trucks.find(t=>t.ph === 'load');
+  L.trucks.forEach(tk=>{ tk.t += d;
+    if(tk.ph === 'back' && tk.t >= L_TRIP){ tk.ph = 'load'; tk.t = 0; if(!dock) dock = tk; }
+    else if(tk.ph === 'load' && tk === dock){   // carrega o que estiver faltando mais no pátio (areia ou argila)
+      if(!tk.kind) tk.kind = (L.sandF/Math.max(1,shoreCap()) <= L.clayF/Math.max(1,shoreCap()) && L.sand >= 1) || L.clay < 1 ? 'areia' : 'argila';
+      const src = tk.kind === 'areia' ? 'sand' : 'clay', m = Math.min(lakeTruckLoad() - tk.load, L[src], 2*d); if(m > 0){ L[src] -= m; tk.load += m; }
+      if(tk.load >= lakeTruckLoad() - 0.01){ tk.ph = 'go'; tk.t = 0; dock = null; } }
+    if(tk.ph === 'go' && tk.t >= L_TRIP*Math.pow(0.88, lLv('lhaul'))){ const dst = tk.kind === 'areia' ? 'sandF' : 'clayF', room = shoreCap() - L[dst];
+      if(room > 0.01){ const m = Math.min(room, tk.load); L[dst] += m; tk.load -= m; } if(tk.load <= 0.01){ tk.load = 0; tk.kind = null; tk.ph = 'back'; tk.t = 0; tk.trips = (tk.trips||0) + 1; } } });
+}
+function lakeTick(sec){ if(!S.lake.open || sec <= 0) return; let left = Math.min(sec, 8*3600); while(left > 0){ const d = Math.min(left, 0.5); lakeStep(d); left -= d; } }
+function lakeBuy(k){ const c = lBuyCost(k); if(!lCanBuy(k) || S.money < c) return; S.money -= c; const L = S.lake;
+  if(k === 'trucks') L.trucks.push({ph:'back', t:0, load:0}); else L[k] = true;
+  toast({pump:'💧 Estação de bombeamento instalada!', pumpOp:'👷 Operador da bomba contratado!', dredge:'🚤 Draga no lago!', dredgeOp:'👷 Operador da draga contratado!',
+    exc:'⛏️ Escavadeira de argila chegou!', excOp:'👷 Operador da escavadeira contratado!', trucks:`🚚 Caçamba de insumos ${L.trucks.length} comprada!`}[k]);
+  if(window.world3d) world3d.onLakeChanged(); render(); save(); }
+function lakeUp(k){ if(!S.lake.open || lLv(k) >= 10) return; const c = lUpCost(k); if(S.money < c) return; S.money -= c; S.lake.lv[k] = lLv(k) + 1; toast(`${L_UP[k].ico} ${L_UP[k].name}: nível ${lLv(k)}!`); render(); save(); }
+function openLake(){ S.lake.open = true; delete S.paid.lake_open; toast('🌊 Lago liberado! Instale a estação de bombeamento, a draga e a escavadeira.'); if(window.world3d) world3d.onLakeChanged(); render(); save(); }
 
 // ===================== MISSÕES =====================
 // uma de cada vez; recompensa ~20-30% do próximo passo, para ajudar sem estragar o desafio
@@ -1441,6 +1495,8 @@ const SELL_ITEMS = [
   {g:'etapa', id:'lenha', ico:'🪚', name:'Lenha cortada', v:8, q:()=>S.forest.buf.lenha, take:n=>{ S.forest.buf.lenha -= n; }},
   {g:'final', id:'sack', ico:'🔥', name:'Sacos de carvão vegetal', v:SACK_VALUE, q:()=>Math.floor(S.forest.sack||0), take:n=>{ S.forest.sack -= n; S.forest.soldSack = (S.forest.soldSack||0) + n; }},
   {g:'final', id:'paper', ico:'📜', name:'Resmas de papel', v:PAPER_VALUE, q:()=>Math.floor(S.forest.paper||0), take:n=>{ S.forest.paper -= n; S.forest.soldPaper = (S.forest.soldPaper||0) + n; }},
+  {g:'etapa', id:'areia', ico:'🏖️', name:'Areia do lago (t)', v:3, q:()=>Math.floor((S.lake.sand||0) + (S.lake.sandF||0)), take:n=>{ const a = Math.min(n, S.lake.sand); S.lake.sand -= a; S.lake.sandF = Math.max(0, S.lake.sandF - (n - a)); }},
+  {g:'etapa', id:'argila', ico:'🟫', name:'Argila do lago (t)', v:2.5, q:()=>Math.floor((S.lake.clay||0) + (S.lake.clayF||0)), take:n=>{ const a = Math.min(n, S.lake.clay); S.lake.clay -= a; S.lake.clayF = Math.max(0, S.lake.clayF - (n - a)); }},
   {g:'final', id:'brita', ico:'⛰️', name:'Brita (t)', v:BRITA_VALUE, q:()=>Math.floor(S.quarry.brita||0), take:n=>{ S.quarry.brita -= n; S.quarry.sold.brita += n; }},
   {g:'final', id:'bloco', ico:'🧱', name:'Paletes de blocos', v:PALLET_BLOCKS*BLOCK_VALUE, q:()=>S.quarry.blocks.pallets||0, take:n=>{ S.quarry.blocks.pallets -= n; S.quarry.sold.pallets += n; }},
   {g:'final', id:'bat', ico:'🔋', name:'Baterias', v:BATTERY_VALUE, q:()=>S.power.batteries||0, take:n=>{ S.power.batteries -= n; S.power.sold = (S.power.sold||0) + n; }},
@@ -1606,6 +1662,38 @@ function buildPanel(){
     const pc = pumpCost();
     add('🛢️', `Campo Maior <span class="count">nv ${O.lvl}</span>`, `+50% em todos os setores e +50 L de tanque (hoje ${fmt(oilStep())} petróleo/s por bomba)`, O.ps ? btn(money(pc), upgradePump, pc) : tag('🔒 Posto','var(--muted)'));
     el.insertAdjacentHTML('beforeend', `<p class="small">Cada galão tem ${GAL_L} L. Os galões vão primeiro para o tanque do galpão (caminhão gasta ${TRUCK_FUEL} L por viagem, coletador ${COLLECTOR_FUEL} L); os que sobram ficam guardados e podem ser vendidos por ${money(GAL_VALUE)} cada.</p>`);
+    return;
+  }
+  if(panelTarget === 'lago'){
+    const L = S.lake;
+    document.getElementById('sheetTitle').textContent = '🌊 Lago e Pátio de Estoque';
+    el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">🌊</span>
+        <div><small>Insumos próprios na fábrica</small><b>🏖️ ${Math.floor(L.sandF)} · 🟫 ${Math.floor(L.clayF)} t · 💧 ${Math.floor(L.water)} m³</b></div><span class="lvlBadge">+${Math.round(LAKE_BONUS*100)}%</span></div>
+      <div class="lvlNext"><small>Situação</small><div>${!lakeUnlocked() ? 'Libera junto com a 🧱 Fábrica de Blocos da pedreira' : !L.open ? 'Compre o terreno do lago, ao sul da pedreira' : !(L.pump && L.pumpOp) ? 'Instale a estação de bombeamento e o operador' : !(L.dredge && L.dredgeOp) ? 'Coloque a draga e o operador para tirar areia' : !(L.exc && L.excOp) ? 'Traga a escavadeira e o operador para a argila' : !L.trucks.length ? 'Compre uma caçamba para levar areia e argila à fábrica' : '✔ Lago abastecendo as fábricas'}</div></div>
+      <div class="flow">${step(L.pump&&L.pumpOp,'💧','Água')}${step(L.dredge&&L.dredgeOp,'🚤','Areia')}${step(L.exc&&L.excOp,'⛏️','Argila')}${arrow(L.trucks.length>0)}${step(L.trucks.length>0,'🚚','Caçambas')}${arrow(L.open)}${step(S.quarry.blocks.open,'🧱','Blocos')}${step(S.quarry.conc.open,'🏗️','Concreto')}</div>
+      <div class="lvlRows">
+        <div><span>💧 Bombeamento</span><b>${fmt(pumpRate())} m³/s · ${money(stageRate('bombeamento'))}/s</b></div>
+        <div><span>🚤 Dragagem de areia</span><b>${fmt(dredgeRate())} t/s · ${money(stageRate('dragagem'))}/s</b></div>
+        <div><span>⛏️ Escavação de argila</span><b>${fmt(excRate())} t/s · ${money(stageRate('escavacao'))}/s</b></div>
+        <div><span>🏖️ Pátio do lago: areia · argila</span><b>${Math.floor(L.sand)} · ${Math.floor(L.clay)} / ${shoreCap()} t</b></div>
+        <div><span>🌊 Nível do lago</span><b>${Math.round((L.level ?? 1)*100)}%</b></div>
+      </div></div>
+      <p class="small">Blocos e concreto feitos com a água, a areia e a argila do lago rendem <b>+${Math.round(LAKE_BONUS*100)}%</b> (bloco: ${LAKE_USE.bloco.agua} m³ de água, ${LAKE_USE.bloco.areia} t de areia e ${LAKE_USE.bloco.argila} t de argila por t de brita; concreto: ${LAKE_USE.concreto.agua} m³ de água e ${LAKE_USE.concreto.areia} t de areia por m³). Quando falta, as fábricas compram sozinhas e rendem o normal. A sobra de areia e argila pode ser vendida na aba 💰 Vender.</p>`);
+    if(!L.open){ const r = lakeOpenLeft(); add('🏗️', 'Terreno do Lago', 'Lago grande ao sul da pedreira, com pátio de estoque na margem.', lakeUnlocked() ? btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openLake(); } }, r) : tag('🔒 Fábrica de blocos','var(--muted)')); return; }
+    const row = (k, ico, name, desc) => { const c = lBuyCost(k); add(ico, name, desc, c === undefined ? tag('✔ Comprado') : lCanBuy(k) ? btn(money(c), ()=>lakeBuy(k), c) : tag('🔒','var(--muted)')); };
+    sec('💧 Água');
+    row('pump', '💧', 'Estação de Bombeamento', 'Drena a água do lago para o reservatório do pátio; a adutora leva até a caixa d\'água da fábrica.');
+    row('pumpOp', '👷', 'Operador da bomba', 'Liga e cuida das bombas.');
+    sec('🏖️ Areia');
+    row('dredge', '🚤', 'Draga de areia', 'Navega no lago puxando areia do fundo pela tubulação flutuante até a pilha do pátio.');
+    row('dredgeOp', '👷', 'Operador da draga', 'Pilota a draga.');
+    sec('🟫 Argila');
+    row('exc', '⛏️', 'Escavadeira de argila', 'Cava o barranco de argila da margem e despeja na pilha do pátio.');
+    row('excOp', '👷', 'Operador da escavadeira', 'Opera a escavadeira.');
+    sec('🚚 Transporte até a pedreira');
+    { const c = lBuyCost('trucks'); add('🚚', `Caçambas de insumos <span class="count">${L.trucks.length}/${L_BUY.trucks.length}</span>`, `Levam ${lakeTruckLoad()} t de areia ou argila do pátio do lago ao pátio de insumos da fábrica.`, c === undefined ? tag('✔ Completo') : lCanBuy('trucks') ? btn(money(c), ()=>lakeBuy('trucks'), c) : tag('🔒 Draga ou escavadeira','var(--muted)')); }
+    sec('🔧 Melhorias');
+    Object.keys(L_UP).forEach(k=>{ const u = L_UP[k], lv = lLv(k), c = lUpCost(k); add(u.ico, `${u.name} <span class="count">nv ${lv}</span>`, '', lv >= 10 ? tag('✔ Máximo') : btn(money(c), ()=>lakeUp(k), c)); });
     return;
   }
   if(panelTarget === 'pedreira'){
@@ -2228,7 +2316,8 @@ function createWorld(){
   // ---------- colisões ----------
   const circles = [], rects = [];
   function blocked(x,z){
-    if(x<-95.5 || x>114 || z<BACK_Z+0.2 || z>26.6) return true;
+    if(x<-95.5 || x>114 || z<BACK_Z+0.2 || z > (x > 62 ? 54 : 26.6)) return true;
+    if(((x-90)/19.4)**2 + ((z-44.5)/9.9)**2 < 1) return true;                                       // água do lago
     if(x > 33.5 && x < 41.6 && (z < -5.6 || z > -2.4)) return true;   // só a estrada leva à floresta
     for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
     for(const r of rects){ if(r.when && !r.when()) continue;
@@ -3788,6 +3877,113 @@ function createWorld(){
   function payQuarry(dt){ if(S.quarry.open || S.money <= 0) return; const r = qOpenLeft(), pay = Math.min(S.money, r, Math.max(QUARRY_OPEN_COST*dt/1.6, 1));
     S.money -= pay; S.paid.q_open = (S.paid.q_open||0) + pay; if(Math.random() < dt*8) burstBills(77.2, 2, 1); if(qOpenLeft() <= 0.0001) openQuarry(); }
 
+  // ---------- LAGO, PÁTIO DE ESTOQUE E PÁTIO DE INSUMOS DA PEDREIRA ----------
+  const LK = {cx:90, cz:44.5, rx:19, rz:9.5, pump:[81.5,33.2], tank:[81.5,29.6], sand:[92,30.2], dock:[98,30.6], clay:[104.5,30.4], exc:[106.5,35.6], bank:[110.5,38.5],
+    dSand:[93.6,18.6], dClay:[95.2,20.6], box:[90.4,19.0]};
+  const lakeEntry = makeTile(74.5, 29.0);
+  const lakeGrp = new THREE.Group(); world.add(lakeGrp);
+  pathRect(74, 26.8, 112, 33.4, M('#d8c49a'), 0.024, M('#bda97f'));                         // pátio de estoque na beira do lago
+  pathRect(96.9, 19.0, 98.9, 26.8, M('#a59a87'), 0.026, M('#8d8372'));                        // estrada até o pátio de insumos
+  const lakeSand = new THREE.Mesh(new THREE.CircleGeometry(1, 48), M('#e6d3a3')); lakeSand.rotation.x = -Math.PI/2; lakeSand.scale.set(LK.rx + 1.6, LK.rz + 1.6, 1); lakeSand.position.set(LK.cx, 0.018, LK.cz); lakeSand.receiveShadow = true; world.add(lakeSand);
+  const lakeWater = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshPhongMaterial({color:'#3a9bd8', shininess:90, specular:new THREE.Color('#bfe8ff'), transparent:true, opacity:0.9}));
+  lakeWater.rotation.x = -Math.PI/2; lakeWater.position.set(LK.cx, 0.05, LK.cz); world.add(lakeWater);
+  const lakeDeep = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({color:'#1f6fa8', transparent:true, opacity:0.35})); lakeDeep.rotation.x = -Math.PI/2; lakeDeep.scale.set(LK.rx*0.55, LK.rz*0.5, 1); lakeDeep.position.set(LK.cx + 2, 0.055, LK.cz + 1.5); world.add(lakeDeep);
+  for(let k=0;k<40;k++){ const a = rnd()*6.28, x = LK.cx + Math.cos(a)*(LK.rx + 1.0 + rnd()*0.8), z = LK.cz + Math.sin(a)*(LK.rz + 1.0 + rnd()*0.8);   // juncos e pedras na margem
+    if(z < LK.cz - 7 && x < 112) continue; if(rnd() < 0.6) for(let j=0;j<3;j++) mesh(new THREE.CylinderGeometry(0.03,0.04,0.8 + rnd()*0.5,4), M('#5f8f3a'), x + (rnd()-.5)*0.4, 0.45, z + (rnd()-.5)*0.4, lakeGrp).castShadow = false;
+    else mesh(new THREE.DodecahedronGeometry(0.3 + rnd()*0.3,0), M('#9b968c'), x, 0.15, z, lakeGrp); }
+  for(const [x,z] of [[68,40],[67,47],[70,53],[113,46],[112,52],[86,55.5],[97,56]]) (rnd() < 0.5 ? pine : roundTree)(x, z, 1);
+  { const b = mesh(new THREE.BoxGeometry(3.4, 1.1, 1.2), M('#8a5a2b'), 0, 0, 0, lakeGrp); b.position.set(LK.cx - 10, 0.12, LK.cz - LK.rz + 1.2); b.scale.y = 0.15; }   // píer
+  // barranco de argila (margem leste)
+  for(let k=0;k<16;k++) mesh(new THREE.DodecahedronGeometry(0.7 + rnd()*0.8, 0), M(rnd() < 0.5 ? '#a8573a' : '#8f4a30'), LK.bank[0] + (rnd()-.5)*4, 0.3 + rnd()*0.9, LK.bank[1] + (rnd()-.5)*4.5, lakeGrp).rotation.set(rnd()*3, rnd()*3, rnd()*3);
+  const lakeSign = labelSprite(5); lakeSign.position.set(92, 4.2, 28.2);
+  const coneM = (col) => { const m = mesh(new THREE.ConeGeometry(1, 1, 26), M(col), 0, 0, 0); m.geometry.translate(0, 0.5, 0); m.visible = false; return m; };
+  const sandPile = coneM('#e2c58a'), clayPile = coneM('#a8573a'), dSandPile = coneM('#e2c58a'), dClayPile = coneM('#a8573a');
+  sandPile.position.set(...[LK.sand[0], 0, LK.sand[1]]); clayPile.position.set(LK.clay[0], 0, LK.clay[1]); dSandPile.position.set(LK.dSand[0], 0, LK.dSand[1]); dClayPile.position.set(LK.dClay[0], 0, LK.dClay[1]);
+  const lakeLabs = {}; for(const [k,x,z,y] of [['tank',LK.tank[0],LK.tank[1],4.6],['sand',LK.sand[0],LK.sand[1],3.4],['clay',LK.clay[0],LK.clay[1],3.4],['box',LK.box[0],LK.box[1],4.4]]){ const l = labelSprite(3); l.position.set(x, y, z); l.visible = false; lakeLabs[k] = l; }
+  const lObj = {}, lWorkers = {};
+  function lakePipe(pts, col='#6f747c', r=0.11, parent=lakeGrp){ for(let i=0;i<pts.length-1;i++){ const a = new THREE.Vector3(...pts[i]), b = new THREE.Vector3(...pts[i+1]), L = a.distanceTo(b);
+    const m = mesh(new THREE.CylinderGeometry(r, r, L, 10), M(col), (a.x+b.x)/2, (a.y+b.y)/2, (a.z+b.z)/2, parent); m.lookAt(b); m.rotateX(Math.PI/2); } }
+  function buildLakeObj(id){ const g = new THREE.Group(); world.add(g); const P = {};
+    if(id === 'pump'){ const [x,z] = LK.pump;
+      mesh(new THREE.BoxGeometry(2.4,1.7,1.8), M('#3d6fa8'), x, 0.85, z, g); const rf = mesh(new THREE.BoxGeometry(2.7,0.22,2.1), M('#2b4f7a'), x, 1.8, z, g);
+      mesh(new THREE.CylinderGeometry(0.35,0.35,0.9,14), M('#c9d1d9'), x + 1.5, 0.45, z, g); P.fan = mesh(new THREE.CylinderGeometry(0.28,0.28,0.06,12), M('#f2b632'), x + 1.5, 0.95, z, g);
+      lakePipe([[x+1.5,0.3,z+0.3],[x+1.5,0.25,z+3.2],[x+1.5,-0.2,z+4.2]], '#3b3f45', 0.12, g);                  // captação dentro do lago
+      lakePipe([[x,0.35,z-0.9],[x,0.35,LK.tank[1]+1.6]], '#2f80ed', 0.13, g);                                    // até o reservatório
+      rects.push({x1:x-1.3, x2:x+2, z1:z-1, z2:z+1, when:()=>!!S.lake.pump}); }
+    if(id === 'tank'){ const [x,z] = LK.tank;
+      mesh(new THREE.CylinderGeometry(1.7,1.7,3.0,24), M('#c9d1d9'), x, 1.6, z, g); mesh(new THREE.CylinderGeometry(1.75,1.75,0.12,24), M('#2f80ed'), x, 3.15, z, g);
+      P.level = mesh(new THREE.BoxGeometry(0.18,2.6,0.05), M('#2f80ed'), x, 0.3, z + 1.72, g); P.level.geometry.translate(0, 1.3, 0);
+      lakePipe([[x+1.2,0.35,z-0.9],[x+1.2,0.35,22.2],[LK.box[0],0.35,22.2],[LK.box[0],0.35,LK.box[1]+0.9]], '#2f80ed', 0.12, g);   // adutora até a caixa d'água da fábrica
+      circles.push({x, z, r:1.8, when:()=>!!S.lake.pump}); }
+    if(id === 'dredge'){ P.boat = new THREE.Group(); g.add(P.boat);
+      mesh(new THREE.BoxGeometry(3.4,0.55,1.8), M('#f2b632'), 0, 0.25, 0, P.boat); mesh(new THREE.BoxGeometry(1.2,1.1,1.2), M('#f4f1ec'), -0.6, 1.0, 0, P.boat);
+      mesh(new THREE.BoxGeometry(1.22,0.45,1.22), M('#9fd6ee'), -0.6, 1.2, 0, P.boat); mesh(new THREE.CylinderGeometry(0.1,0.1,1.2,8), M('#3b3f45'), -0.9, 1.9, -0.3, P.boat);
+      P.arm = new THREE.Group(); P.arm.position.set(1.6, 0.5, 0); P.boat.add(P.arm); const ar = mesh(new THREE.BoxGeometry(2.4,0.22,0.3), M('#d9822b'), 1.0, 0, 0, P.arm); P.arm.rotation.z = -0.45;
+      P.cutter = mesh(new THREE.CylinderGeometry(0.3,0.3,0.5,10), M('#3b3f45'), 2.2, 0, 0, P.arm); P.cutter.rotation.x = Math.PI/2;
+      P.floats = []; for(let k=0;k<9;k++){ const f = mesh(new THREE.CylinderGeometry(0.2,0.2,1.1,10), M('#ff7a2a'), 0, 0.15, 0, g); f.rotation.z = Math.PI/2; P.floats.push(f); }
+      lakePipe([[LK.sand[0]+0.4,0.4,LK.cz-LK.rz+0.6],[LK.sand[0]+0.4,0.6,LK.sand[1]+1.6],[LK.sand[0]+0.2,1.8,LK.sand[1]+0.8]], '#ff7a2a', 0.13, g); }   // descarga na pilha
+    if(id === 'exc'){ const e = makeExcavator(); e.position.set(LK.exc[0], 0, LK.exc[1]); g.add(e); P.e = e;
+      P.scoop = mesh(new THREE.DodecahedronGeometry(0.3,0), M('#a8573a'), 2.4, 0.95, -0.3, e); circles.push({x:LK.exc[0], z:LK.exc[1], r:1.4, when:()=>!!S.lake.exc}); }
+    if(id === 'box'){ const [x,z] = LK.box;   // caixa d'água e canos até o misturador de blocos e a usina
+      for(const [lx,lz] of [[-0.7,-0.7],[0.7,-0.7],[-0.7,0.7],[0.7,0.7]]) mesh(new THREE.BoxGeometry(0.14,2.2,0.14), M('#3b3f45'), x+lx, 1.1, z+lz, g);
+      mesh(new THREE.CylinderGeometry(1.0,1.0,1.4,20), M('#4fb6e8'), x, 2.9, z, g); mesh(new THREE.ConeGeometry(1.05,0.4,20), M('#2f80ed'), x, 3.8, z, g);
+      lakePipe([[x-0.5,2.2,z-0.7],[x-0.5,0.3,z-1.5],[QX.mixer[0]+0.3,0.3,z-1.5],[QX.mixer[0]+0.3,0.3,QX.mixer[1]+2.4]], '#2f80ed', 0.09, g);
+      lakePipe([[x+0.5,2.2,z-0.7],[x+0.5,0.3,z-2.6],[QX.plant[0]+3.4,0.3,z-2.6],[QX.plant[0]+3.4,0.3,QX.plant[1]-2.6]], '#2f80ed', 0.09, g);
+      circles.push({x, z, r:1.1, when:()=>!!S.lake.open}); }
+    lObj[id] = {g, P};
+  }
+  const lTrucks = [];
+  function syncLake(){
+    const L = S.lake;
+    if(L.pumpOp && !lWorkers.pumpOp) lWorkers.pumpOp = oilWorker('#2f80ed', '#ffffff', LK.pump[0] + 1.6, LK.pump[1] - 1.3, 0);
+    if(L.excOp && !lWorkers.excOp) lWorkers.excOp = oilWorker('#f2b632', '#ffffff', LK.exc[0] - 1.8, LK.exc[1] - 1.0, Math.PI/2);
+    if(L.dredgeOp && !lWorkers.dredgeOp && lObj.dredge){ const w = oilWorker('#d9822b', '#ffffff', 0, 0, 0); world.remove(w); w.position.set(0.4, 0.5, 0.55); w.scale.setScalar(0.7); lObj.dredge.P.boat.add(w); lWorkers.dredgeOp = w; }
+    while(lTrucks.length < L.trucks.length){ const g = makeDump(['#2f80ed','#3aa35a'][lTrucks.length % 2]); g.visible = false; world.add(g); lTrucks.push({g}); }
+  }
+  function refreshLake(){
+    const L = S.lake;
+    lakeEntry.mesh.visible = !L.open && lakeUnlocked(); lakeSign.userData.draw(L.open ? '🌊 Lago e Pátio de Estoque' : '🌊 Lago (à venda)', '#9fdcff');
+    if(L.pump && !lObj.pump) buildLakeObj('pump'); if(L.pump && !lObj.tank) buildLakeObj('tank'); if(L.dredge && !lObj.dredge) buildLakeObj('dredge'); if(L.exc && !lObj.exc) buildLakeObj('exc');
+    if(L.open && !lObj.box) buildLakeObj('box');
+    syncLake();
+  }
+  refreshLake();
+  const lRiders = [], lT = {}, sandGeo = new THREE.SphereGeometry(0.12, 6, 4), waterGeo = new THREE.SphereGeometry(0.1, 6, 4);
+  function updateLake(dt, t){
+    const L = S.lake;
+    if(lakeEntry.mesh.visible){ const r = lakeOpenLeft(); lakeEntry.draw('🌊', money(r), 1 - r/LAKE_OPEN_COST, false); }
+    lakeWater.material.color.setHSL(0.56, 0.62, 0.52 + Math.sin(t*0.8)*0.02);
+    const lv = L.open ? (L.level ?? 1) : 1; lakeWater.scale.set(LK.rx*(0.8 + 0.2*lv), LK.rz*(0.8 + 0.2*lv), 1);   // o lago baixa quando drena
+    const pile = (m, v, cap, big=3.0) => { m.visible = v > 0.3; const f = Math.min(1, v/Math.max(1, cap)); m.scale.set(0.5 + big*Math.sqrt(f), 0.2 + big*0.8*f, 0.5 + big*Math.sqrt(f)); };
+    pile(sandPile, L.sand, shoreCap()); pile(clayPile, L.clay, shoreCap()); pile(dSandPile, L.sandF, shoreCap(), 1.8); pile(dClayPile, L.clayF, shoreCap(), 1.8);
+    for(const [k,txt,show] of [['tank',`💧 ${Math.floor(L.water)}/${tankCap()} m³`, !!L.pump],['sand',`🏖️ Areia ${Math.floor(L.sand)}/${shoreCap()} t`, !!L.dredge],['clay',`🟫 Argila ${Math.floor(L.clay)}/${shoreCap()} t`, !!L.exc],
+      ['box',`Insumos: 🏖️ ${Math.floor(L.sandF)} · 🟫 ${Math.floor(L.clayF)} t`, L.open]]){ const l = lakeLabs[k]; l.visible = show; if(show && l.userData.k !== txt){ l.userData.k = txt; l.userData.draw(txt, '#e8f6ff'); } }
+    const tk = lObj.tank; if(tk) tk.P.level.scale.y = Math.max(0.02, L.water/tankCap());
+    const pu = lObj.pump; if(pu && L.pumping){ pu.P.fan.rotation.y += dt*12; lT.w = (lT.w||0) + dt; if(lT.w > 0.3){ lT.w = 0; const r = new THREE.Mesh(waterGeo, M('#4fb6e8')); world.add(r);
+      lRiders.push({r, path:[new THREE.Vector3(LK.pump[0],0.55,LK.pump[1]-0.9), new THREE.Vector3(LK.pump[0],0.55,LK.tank[1]+1.6)], d:0}); } }
+    // draga: varre o lago devagar e a tubulação flutuante acompanha até a pilha de areia
+    const dr = lObj.dredge; if(dr){ const P = dr.P, a = t*0.05, bx = LK.cx + 2 + Math.sin(a)*8, bz = LK.cz + 1 + Math.sin(a*1.7)*3.5;
+      P.boat.position.set(bx, Math.sin(t*1.6)*0.05, bz); P.boat.rotation.y = Math.PI/2 + Math.cos(a)*0.3; P.arm.rotation.z = -0.45 + Math.sin(t*0.9)*0.08; if(L.dredging) P.cutter.rotation.y += dt*8;
+      const sx = LK.sand[0] + 0.4, sz = LK.cz - LK.rz + 0.6, n = P.floats.length;
+      P.floats.forEach((f,k)=>{ const u = (k + 0.5)/n, x = bx + (sx - bx)*u, z = bz + (sz - bz)*u; f.position.set(x, 0.12 + Math.sin(t*1.6 + k)*0.04, z); f.rotation.y = -Math.atan2(sz - bz, sx - bx); });
+      if(L.dredging){ lT.s = (lT.s||0) + dt; if(lT.s > 0.25){ lT.s = 0; const r = new THREE.Mesh(sandGeo, M('#e2c58a')); world.add(r);
+        lRiders.push({r, path:[new THREE.Vector3(LK.sand[0]+0.2,1.8,LK.sand[1]+0.8), new THREE.Vector3(LK.sand[0]+(Math.random()-.5)*1.5, 0.6 + sandPile.scale.y*0.8, LK.sand[1]+(Math.random()-.5)*1.2)], d:0}); } } }
+    // escavadeira: cava o barranco e despeja na pilha de argila
+    const ex = lObj.exc; if(ex){ const P = ex.P, on = L.digging, ph = on ? (t*0.25) % 1 : 0, go = ph < 0.5, f = go ? ph*2 : (ph-0.5)*2, e = f*f*(3-2*f);
+      P.e.rotation.y = go ? 0.6 - 2.2*e : -1.6 + 2.2*e; P.scoop.visible = on && !go; P.e.position.y = on ? Math.abs(Math.sin(t*20))*0.015 : 0; }
+    // caçambas: carregam no pátio, levam ao pátio de insumos da fábrica e voltam
+    const path = [new THREE.Vector3(LK.dock[0],0,LK.dock[1]), new THREE.Vector3(LK.dock[0],0,25.6), new THREE.Vector3(97.9,0,25.6), new THREE.Vector3(97.9,0,20.2)];
+    let qn = 0; L.trucks.forEach((st,k)=>{ const v = lTrucks[k]; if(!v) return; v.g.visible = true; const tg = L_TRIP*Math.pow(0.88, lLv('lhaul'));
+      v.g.userData.fill.material = M(st.kind === 'argila' ? '#a8573a' : '#e2c58a'); v.g.userData.fill.scale.y = Math.max(0.01, st.load/lakeTruckLoad()*0.8);
+      if(st.ph === 'load'){ const q = L.trucks.filter(x=>x.ph === 'load').indexOf(st); placeOn(v.g, [path[1], new THREE.Vector3(path[0].x - q*0.01, 0, path[0].z + q*0.0)], 1); if(q > 0){ v.g.position.x -= 3.2*q; } }
+      else if(st.ph === 'go') placeOn(v.g, path, st.t/tg);
+      else placeOn(v.g, [...path].reverse(), st.t/L_TRIP); });
+    for(let k=lRiders.length-1;k>=0;k--){ const it = lRiders[k]; it.d += dt*3; const a = it.path[0], b = it.path[1], L2 = a.distanceTo(b);
+      if(it.d >= L2){ world.remove(it.r); lRiders.splice(k,1); continue; } it.r.position.lerpVectors(a, b, it.d/L2); }
+  }
+  function payLake(dt){ if(S.lake.open || !lakeUnlocked() || S.money <= 0) return; const r = lakeOpenLeft(), pay = Math.min(S.money, r, Math.max(LAKE_OPEN_COST*dt/1.6, 1));
+    S.money -= pay; S.paid.lake_open = (S.paid.lake_open||0) + pay; if(Math.random() < dt*8) burstBills(74.5, 29, 1); if(lakeOpenLeft() <= 0.0001) openLake(); }
+
   // ---------- personagem ----------
   function makeMiner(shirt, helmet, pants, skinCol){
     const g = new THREE.Group(), P = {};
@@ -4311,9 +4507,10 @@ function createWorld(){
   lvlBtns.push({id:'oil', tile:makeTile(-28.6, 12.2), x:-28.6, z:12.2});
   lvlBtns.push({id:'floresta', tile:makeTile(41, -1.0), x:41, z:-1.0});
   lvlBtns.push({id:'pedreira', tile:makeTile(78, -1.0), x:78, z:-1.0});
+  lvlBtns.push({id:'lago', tile:makeTile(76, 31), x:76, z:31});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
   // ---------- placas fixas na frente de cada construção (cartão pintado na placa) ----------
-  const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4], floresta:[40.0,0.4,-1.0], pedreira:[77.6,0.4,-2.6]};
+  const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4], floresta:[40.0,0.4,-1.0], pedreira:[77.6,0.4,-2.6], lago:[75.6,0.4,31.6]};
   const signBoards = [];
   const cards = lvlBtns.map(b=>{
     const m = mineById(b.id);
@@ -4336,6 +4533,7 @@ function createWorld(){
         btn: open ? (isFinite(b.cost) ? ['Melhorar', money(b.cost)] : ['Máximo','']) : ['🔒 Abrir', money(remaining(toolById(m.tool)))]}; }
     if(b.id === 'galpao') return {name:'Galpão de Entregas', ic:'📦', open:S.depotOpen, rate: S.depotOpen ? `📦 ${fmt(depotTotal())} · ⛽ ${fmt(S.oil.fuel)} L` : 'Fechado', btn: [S.depotOpen ? 'Melhorar' : 'Abrir', money(b.cost)]};
     if(b.id === 'usina') return {name:'Usina de Energia', ic:'⚡', open:S.power.open, rate: `⚡ ${fmt(powerNow)}/${fmt(powerDemand())} kW`, btn: isFinite(b.cost) ? [S.power.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
+    if(b.id === 'lago') return {name:'Lago e Pátio', ic:'🌊', open:S.lake.open, rate: S.lake.open ? `🏖️ ${Math.floor(S.lake.sand + S.lake.sandF)} · 💧 ${Math.floor(S.lake.water)}` : lakeUnlocked() ? 'À venda' : '🔒 Fábrica de blocos', btn: isFinite(b.cost) ? [S.lake.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
     if(b.id === 'pedreira') return {name:'Pedreira', ic:'⛰️', open:S.quarry.open, rate: S.quarry.open ? `⛰️ ${Math.floor(S.quarry.brita)} t de brita` : 'À venda', btn: isFinite(b.cost) ? [S.quarry.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
     if(b.id === 'floresta') return {name:'Floresta', ic:'🌲', open:S.forest.open, rate: S.forest.open ? `🌲 ${Math.floor(S.forest.trees)} árvores` : 'À venda', btn: isFinite(b.cost) ? [S.forest.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
     return {name:'Campo de Petróleo', ic:'🛢️', open:S.oil.open, rate: S.oil.open ? `⛽ ${fmt(fuelNow*60)} L/min` : 'À venda', btn: isFinite(b.cost) ? [S.oil.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
@@ -4383,7 +4581,9 @@ function createWorld(){
   function updateLvlBtns(t){
     lvlBtns.forEach((b,k)=>{
       let lvl, cost, open = true;
-      if(b.id === 'pedreira'){ const Q2 = S.quarry; lvl = (Q2.open?1:0) + qLevel1() + (Q2.crusher?1:0) + (Q2.belt?1:0) + qLevel2() + (Q2.blocks.open?1:0) + (Q2.conc.open?1:0) + Q2.conc.bts.length;
+      if(b.id === 'lago'){ const L2 = S.lake; open = lakeUnlocked(); lvl = (L2.open?1:0) + ['pump','pumpOp','dredge','dredgeOp','exc','excOp'].filter(k=>L2[k]).length + L2.trucks.length + Object.keys(L_UP).reduce((a,k)=>a+lLv(k),0);
+        cost = !L2.open ? lakeOpenLeft() : Math.min(...Object.keys(L_BUY).map(k=>lCanBuy(k) ? lBuyCost(k) : Infinity), ...Object.keys(L_UP).map(k=>lLv(k) < 10 ? lUpCost(k) : Infinity)); }
+      else if(b.id === 'pedreira'){ const Q2 = S.quarry; lvl = (Q2.open?1:0) + qLevel1() + (Q2.crusher?1:0) + (Q2.belt?1:0) + qLevel2() + (Q2.blocks.open?1:0) + (Q2.conc.open?1:0) + Q2.conc.bts.length;
         cost = !Q2.open ? qOpenLeft() : Math.min(...Object.keys(Q_BUY).map(k=>qCanBuy(k) ? qBuyCost(k) : Infinity), ...Object.keys(Q_UP).map(k=>qCanUp(k) ? qUpCost(k) : Infinity)); }
       else if(b.id === 'floresta'){ const F2 = S.forest; lvl = (F2.open?1:0) + FOREST_ITEMS.filter(it=>F2[it.id]).length + F2.lvl;
         const av = FOREST_ITEMS.filter(fCan).map(fLeft); cost = !F2.open ? forestOpenLeft() : av.length ? Math.min(...av) : F2.sr ? forestLvlCost() : Infinity; }
@@ -4633,7 +4833,8 @@ function createWorld(){
 
     // zonas: quadrados de compra, mercado, loja
     let z = null;
-    if(quarryEntry.mesh.visible && quarryEntry.inside(p)) z = 'quarry';
+    if(lakeEntry.mesh.visible && lakeEntry.inside(p)) z = 'lake';
+    else if(quarryEntry.mesh.visible && quarryEntry.inside(p)) z = 'quarry';
     else if((forestEntry.mesh.visible && forestEntry.inside(p)) || FOREST_ITEMS.some(it=>forestTiles[it.id] && forestTiles[it.id].mesh.visible && forestTiles[it.id].inside(p))) z = 'forest';
     else if((oilEntry.mesh.visible && oilEntry.inside(p)) || OIL_ITEMS.some(it=>oilTiles[it.id] && oilTiles[it.id].mesh.visible && oilTiles[it.id].inside(p))) z = 'oil';
     else if((powerEntry.mesh.visible && powerEntry.inside(p)) || POWER_ITEMS.some(it=>pwTiles[it.id] && pwTiles[it.id].mesh.visible && pwTiles[it.id].inside(p))) z = 'pw';
@@ -4656,10 +4857,12 @@ function createWorld(){
     if(z === 'oil') payOil(dt);
     if(z === 'forest') payForest(dt);
     if(z === 'quarry') payQuarry(dt);
+    if(z === 'lake') payLake(dt);
     updateOil(dt, npcT);
     updateCars(dt);
     updateForest(dt, npcT);
     updateQuarry(dt, npcT);
+    updateLake(dt, npcT);
     updatePower(dt, npcT);
     updateDelivery(dt, p);
     updateTrophies(npcT);
@@ -4791,6 +4994,7 @@ function createWorld(){
     onGemItem(id){ if(id === 'capacete') refreshHelmet(); burstBills(player.position.x, player.position.z, 10); },
     onOilChanged(){ refreshOil(); burstBills(player.position.x, player.position.z, 10); },
     onForestChanged(){ refreshForest(); burstBills(player.position.x, player.position.z, 10); },
+    onLakeChanged(){ if(typeof refreshLake === 'function') refreshLake(); burstBills(player.position.x, player.position.z, 10); },
     onQuarryChanged(){ if(typeof refreshQuarry === 'function') refreshQuarry(); burstBills(player.position.x, player.position.z, 10); },
     onPowerChanged(){ refreshPower(); refreshGenerators(); burstBills(player.position.x, player.position.z, 10); },
     celebrate(){ burstBills(player.position.x, player.position.z, 18); },

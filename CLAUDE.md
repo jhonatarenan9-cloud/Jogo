@@ -55,6 +55,9 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   `quarryStep` roda tudo em passos de 0,5 s (funciona offline). As três fases dividem o estoque central `S.quarry.brita`; os caminhões de brita deixam 25% de reserva quando há fábricas.
   Fase 2 libera com a pedreira no nível 6 (`blocksUnlocked`), fase 3 com a fábrica de blocos no nível 4 (`concUnlocked`).
   Insumos externos (cimento, areia, água, argamassa, aditivos) estão em `QUARRY_SUPPLIES` como automáticos; futuras indústrias entram ali (`supplyOk`).
+- **Lago (sul da pedreira):** `LAKE_OPEN_COST` ($15 mil, libera com a fábrica de blocos), `L_BUY` (bomba, draga, escavadeira, operadores, caçambas), `L_UP`.
+  Água (reservatório → adutora → caixa d'água), areia (draga) e argila (escavadeira) vão ao pátio do lago; caçambas levam areia/argila ao pátio de insumos da fábrica.
+  `lakeUse(LAKE_USE.x, q)` consome de verdade; a parte feita com insumos próprios rende +`LAKE_BONUS` (80%). Cada estação paga `STAGE_PAY` (bombeamento, dragagem, escavação).
 - `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `SELL_ITEMS`: aba 💰 Vender (lado direito): preço de venda de cada produto das etapas e dos finais. Cada etapa vale mais que a anterior e menos que terminar a cadeia; carvão bruto bem barato (não pode render mais que um ajudante do Cobre).
 - `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.
