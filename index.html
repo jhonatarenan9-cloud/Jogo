@@ -2507,32 +2507,68 @@ function createWorld(){
   const rollerGeo = new THREE.CylinderGeometry(0.06,0.06,0.62,10), beltDrumGeo = new THREE.CylinderGeometry(0.075,0.075,0.64,14), hubGeo = new THREE.CylinderGeometry(0.1,0.1,0.06,14);
   const BELT_R = 0.65;   // raio das curvas
   const arcBeltMat = new THREE.MeshPhongMaterial({color:'#34373c', side:THREE.DoubleSide, map:grainTex, shininess:8});
-  // curva: pedaço de esteira em arco (lona, paredes de aço e borda amarela), em volta de (cx,cz)
-  function beltArc(parent, cx, cz, r, th0, th1, y){
+  // curva: lona em arco com a MESMA textura listrada das retas (anda no sentido da esteira), paredes de aço e borda amarela
+  // rails: [interna, externa] — nas junções só a borda interna existe (a externa atravessaria a outra esteira)
+  function arcGeo(r, th0, th1, w=0.62, segs=18){
+    const pos = [], uv = [], idx = [], len = Math.abs(th1 - th0)*r;
+    for(let i=0;i<=segs;i++){ const t = i/segs, a = th0 + (th1 - th0)*t;
+      for(const k of [0,1]){ const rr = r + (k ? w/2 : -w/2); pos.push(Math.cos(a)*rr, 0, -Math.sin(a)*rr); uv.push(t*len/0.6, th1 > th0 ? k : 1-k); } }
+    for(let i=0;i<segs;i++){ const a = 2*i, b = a+1, c = a+2, d = a+3; idx.push(a, b, c, b, d, c); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+  }
+  function beltArc(parent, cx, cz, r, th0, th1, y, rails=[true,true], anim=true){
     const a0 = Math.min(th0, th1), len = Math.abs(th1 - th0), g = new THREE.Group(); g.position.set(cx, y, cz); parent.add(g);
-    const top = mesh(new THREE.RingGeometry(r-0.31, r+0.31, 16, 1, a0, len), arcBeltMat, 0, 0.05, 0, g); top.rotation.x = -Math.PI/2;
-    for(const k of [0.35, 0.7]){ const sl = mesh(new THREE.RingGeometry(r-0.3+k*0.6-0.02, r-0.3+k*0.6+0.02, 16, 1, a0, len), M('#4a4e55'), 0, 0.056, 0, g); sl.rotation.x = -Math.PI/2; sl.castShadow = false; }
-    for(const rr of [r-0.35, r+0.35]){
-      const wall = mesh(new THREE.CylinderGeometry(rr, rr, 0.24, 16, 1, true, a0 + Math.PI/2, len), new THREE.MeshPhongMaterial({color:'#4a4f57', side:THREE.DoubleSide, map:grainTex}), 0, -0.04, 0, g);
-      const lip = mesh(new THREE.TorusGeometry(rr, 0.04, 6, 16, len), M('#f2b632'), 0, 0.1, 0, g); lip.rotation.set(-Math.PI/2, 0, a0); lip.castShadow = false; }
-    const am = (a0 + len/2);
+    const tex = new THREE.CanvasTexture(beltTexBase); tex.wrapS = THREE.RepeatWrapping; if(anim) beltTexs.push(tex);
+    const top = mesh(arcGeo(r, th0, th1), new THREE.MeshLambertMaterial({map:tex, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2}), 0, 0.056, 0, g); top.receiveShadow = true;
+    const under = mesh(arcGeo(r, th0, th1), M('#2a2c30'), 0, -0.05, 0, g); under.material = new THREE.MeshLambertMaterial({color:'#2a2c30', side:THREE.DoubleSide});
+    [r-0.35, r+0.35].forEach((rr,i)=>{ if(!rails[i]) return;
+      mesh(new THREE.CylinderGeometry(rr, rr, 0.24, 18, 1, true, a0 + Math.PI/2, len), new THREE.MeshPhongMaterial({color:'#4a4f57', side:THREE.DoubleSide, map:grainTex}), 0, -0.04, 0, g);
+      const lip = mesh(new THREE.TorusGeometry(rr*(i ? 1.0 : 1.0) + (i ? 0.02 : -0.02), 0.04, 6, 18, len), M('#f2b632'), 0, 0.1, 0, g); lip.rotation.set(-Math.PI/2, 0, a0); lip.castShadow = false; });
+    const am = a0 + len/2;
     for(const s of [-0.27, 0.27]) mesh(new THREE.BoxGeometry(0.09, y, 0.09), M('#6f747c'), Math.cos(am)*(r+s), -y/2 - 0.05, -Math.sin(am)*(r+s), g);
     mesh(new THREE.BoxGeometry(0.3, 0.04, 0.3), M('#3b3f45'), Math.cos(am)*r, -y + 0.02, -Math.sin(am)*r, g).castShadow = false;
   }
   const ang = (x, z, cx, cz) => Math.atan2(-(z - cz), x - cx);
-  // curva num canto P (vindo na direção d1 e saindo na d2); serve também para junções em T
-  function beltTurn(parent, px, pz, d1, d2, y, r=BELT_R){
+  // curva no canto P: chega na direção d1 e sai na d2
+  function beltTurn(parent, px, pz, d1, d2, y, rails=[true,true], r=BELT_R){
     const t1x = px - d1[0]*r, t1z = pz - d1[1]*r, cx = t1x + d2[0]*r, cz = t1z + d2[1]*r, t2x = px + d2[0]*r, t2z = pz + d2[1]*r;
     let a = ang(t1x, t1z, cx, cz), b = ang(t2x, t2z, cx, cz), d = b - a; while(d > Math.PI) d -= 2*Math.PI; while(d < -Math.PI) d += 2*Math.PI;
-    beltArc(parent, cx, cz, r, a, a + d, y);
+    beltArc(parent, cx, cz, r, a, a + d, y, rails);
   }
   const dirOf = (a, b) => { const dx = b[0]-a[0], dz = b[1]-a[1], l = Math.hypot(dx, dz) || 1; return [dx/l, dz/l]; };
-  // esteira em vários trechos com as curvas arredondadas
-  function beltLine(parent, pts, y, r=BELT_R){
+  // qual lado da reta (índice de sides) fica na direção w
+  const sideTo = (d, w) => ((-d[1])*w[0] + d[0]*w[1]) > 0 ? 1 : 0;
+  function keepSide(d, w){ const k = [false, false]; k[sideTo(d, w)] = true; return k; }
+  // junção em T: a esteira segue reta (dThrough) e solta um ramal (dBranch); a borda do lado do ramal abre
+  function beltTee(parent, px, pz, dT, dB, y, r=BELT_R){
+    beltSeg(parent, px - dT[0]*r, pz - dT[1]*r, px + dT[0]*r, pz + dT[1]*r, y, [false,false], keepSide(dT, [-dB[0], -dB[1]]));
+    beltTurn(parent, px, pz, dT, dB, y, [true, false], r);
+    // bordas do outro lado do ramal: fecham o canto entre a reta e o ramal
+    const ox = px + dB[0]*0.35 + dT[0]*0.35, oz = pz + dB[1]*0.35 + dT[1]*0.35;
+    railSeg(parent, ox, oz, px + dB[0]*0.35 + dT[0]*r, pz + dB[1]*0.35 + dT[1]*r, y);
+    railSeg(parent, ox, oz, px + dB[0]*r + dT[0]*0.35, pz + dB[1]*r + dT[1]*0.35, y);
+  }
+  function railSeg(parent, x1, z1, x2, z2, y){
+    const len = Math.hypot(x2-x1, z2-z1); if(len < 0.01) return;
+    const g = new THREE.Group(); g.position.set((x1+x2)/2, y, (z1+z2)/2); g.rotation.y = -Math.atan2(z2-z1, x2-x1); parent.add(g);
+    mesh(new THREE.BoxGeometry(len + 0.07, 0.24, 0.07), M('#4a4f57'), 0, -0.04, 0, g); mesh(new THREE.BoxGeometry(len + 0.1, 0.05, 0.1), M('#f2b632'), 0, 0.1, 0, g);
+  }
+  // divisão: chega em dIn e sai para dA e dB (opostos); parede reta do lado de frente
+  function beltSplit(parent, px, pz, dIn, dA, dB, y, r=BELT_R){
+    beltSeg(parent, px - dA[0]*r, pz - dA[1]*r, px + dA[0]*r, pz + dA[1]*r, y, [false,false], keepSide(dA, dIn), false);
+    beltTurn(parent, px, pz, dIn, dA, y, [true, false], r); beltTurn(parent, px, pz, dIn, dB, y, [true, false], r);
+  }
+  // união: chegam por dA e dB (opostos) e saem juntas em dOut; parede reta do lado de trás
+  function beltMerge(parent, px, pz, dA, dB, dOut, y, r=BELT_R){
+    beltSeg(parent, px - dA[0]*r, pz - dA[1]*r, px + dA[0]*r, pz + dA[1]*r, y, [false,false], keepSide(dA, [-dOut[0], -dOut[1]]), false);
+    beltTurn(parent, px, pz, dA, dOut, y, [true, false], r); beltTurn(parent, px, pz, dB, dOut, y, [true, false], r);
+  }
+  // esteira em vários trechos com as curvas arredondadas (capStart/capEnd: tambor nas pontas)
+  function beltLine(parent, pts, y, capStart=true, capEnd=true, r=BELT_R){
     for(let i=0;i<pts.length-1;i++){
       const a = pts[i], b = pts[i+1], d = dirOf(a, b), sa = i > 0 ? r : 0, sb = i < pts.length-2 ? r : 0;
-      beltSeg(parent, a[0] + d[0]*sa, a[1] + d[1]*sa, b[0] - d[0]*sb, b[1] - d[1]*sb, y, [i === 0, i === pts.length-2]);
-      if(i < pts.length-2) beltTurn(parent, b[0], b[1], d, dirOf(b, pts[i+2]), y, r);
+      beltSeg(parent, a[0] + d[0]*sa, a[1] + d[1]*sa, b[0] - d[0]*sb, b[1] - d[1]*sb, y, [i === 0 && capStart, i === pts.length-2 && capEnd]);
+      if(i < pts.length-2) beltTurn(parent, b[0], b[1], d, dirOf(b, pts[i+2]), y);
     }
   }
   // rampa inclinada (subida/descida) com tambores nas pontas e pernas de alturas diferentes
@@ -2563,12 +2599,13 @@ function createWorld(){
         out.push(new THREE.Vector3(cx + sx*Math.cos(th) + ex*Math.sin(th), P.y, cz + sz*Math.cos(th) + ez*Math.sin(th))); } }
     out.push(path[path.length-1]); return out;
   }
-  function beltSeg(parent, x1, z1, x2, z2, y=BELT_Y, caps=[true,true]){
-    const len = Math.hypot(x2-x1, z2-z1);
+  // sides: [lado -, lado +] (lado + = à esquerda de quem anda na esteira); anim=false para peças de junção sem sentido fixo
+  function beltSeg(parent, x1, z1, x2, z2, y=BELT_Y, caps=[true,true], sides=[true,true], anim=true){
+    const len = Math.hypot(x2-x1, z2-z1); if(len < 0.02) return;
     const g = new THREE.Group(); g.position.set((x1+x2)/2, y, (z1+z2)/2); g.rotation.y = -Math.atan2(z2-z1, x2-x1); parent.add(g);
-    const tex = new THREE.CanvasTexture(beltTexBase); tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(len/0.6, 1); beltTexs.push(tex);
+    const tex = new THREE.CanvasTexture(beltTexBase); tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(len/0.6, 1); if(anim) beltTexs.push(tex);
     mesh(new THREE.BoxGeometry(len, 0.1, 0.62), new THREE.MeshLambertMaterial({map:tex}), 0, 0, 0, g);
-    for(const s of [-0.35,0.35]){ mesh(new THREE.BoxGeometry(len, 0.24, 0.07), M('#4a4f57'), 0, -0.04, s, g); mesh(new THREE.BoxGeometry(len, 0.05, 0.1), M('#f2b632'), 0, 0.1, s*1.06, g); }
+    [-0.35,0.35].forEach((s,i)=>{ if(!sides[i]) return; mesh(new THREE.BoxGeometry(len, 0.24, 0.07), M('#4a4f57'), 0, -0.04, s, g); mesh(new THREE.BoxGeometry(len, 0.05, 0.1), M('#f2b632'), 0, 0.1, s*1.06, g); });
     for(let r = -len/2 + 0.45; r < len/2 - 0.3; r += 1.1){ const ro = mesh(rollerGeo, M('#9aa0a8'), r, -0.12, 0, g); ro.rotation.x = Math.PI/2; ro.castShadow = false; }
     [-len/2, len/2].forEach((e,i)=>{ if(!caps[i]) return;   // tambor na ponta: a lona dá a volta nele
       const dr = mesh(beltDrumGeo, M('#2f3236'), e, -0.02, 0, g); dr.rotation.x = Math.PI/2;
@@ -2662,19 +2699,24 @@ function createWorld(){
     if(!coalLineOn()) return;
     const before = beltTexs.length;
     const CY = 3.3, ZB = -16.9, cx = COAL_O.elevX ?? COAL_O.x + 4.85, cz = COAL_O.elevZ ?? -9.0;
-    const rx = COAL_O.coalRouteX ?? cx, LY = 0.55, ZR = -14.6;   // baixa na saída, sobe pela rampa e corre por trás das minas
-    beltLine(coalGroup, [[cx, cz], [rx, cz], [rx, cz - 1.4]], LY);
+    const rx = COAL_O.coalRouteX ?? cx, LY = 0.55, ZR = -16.0, R0 = BELT_R;   // baixa na saída, sobe pela rampa e corre por trás das minas
+    beltLine(coalGroup, [[cx, cz], [rx, cz], [rx, cz - 1.4]], LY, true, true);
     beltRamp(coalGroup, rx, cz - 1.4, LY, rx, ZR, CY);
-    const targets = MINES3.filter(o=>!o.m.fuel && S.smelters[o.m.id]);
-    const maxX = targets.length ? Math.max(...targets.map(o=>o.smX)) : rx + 2;
-    beltLine(coalGroup, [[rx, ZR], [rx, ZB], [maxX + 0.01, ZB]], CY);
+    const targets = MINES3.filter(o=>!o.m.fuel && S.smelters[o.m.id]).sort((a,b)=>a.smX - b.smX);
+    beltSeg(coalGroup, rx, ZR, rx, ZB + R0, CY, [false,false]);
+    beltTurn(coalGroup, rx, ZB, [0,-1], [1,0], CY);                                          // curva para trás das minas
+    let xPrev = rx + R0;
+    if(!targets.length) beltSeg(coalGroup, xPrev, ZB, rx + 3, ZB, CY, [false, true]);
     const DY = 2.35, DZ = -14.55;
-    targets.forEach(o=>{
-      if(o.smX < maxX) beltTurn(coalGroup, o.smX, ZB, [1,0], [0,1], CY);                 // junção arredondada
-      beltSeg(coalGroup, o.smX, ZB + BELT_R, o.smX, ZB + BELT_R + 0.3, CY, [false, false]);
-      beltRamp(coalGroup, o.smX, ZB + BELT_R + 0.3, CY, o.smX, DZ, DY);                    // descida até a fornalha
+    targets.forEach((o,k)=>{
+      const last = k === targets.length - 1;
+      beltSeg(coalGroup, xPrev, ZB, o.smX - R0, ZB, CY, [false,false]);
+      if(last) beltTurn(coalGroup, o.smX, ZB, [1,0], [0,1], CY);                              // a linha termina virando para a última fornalha
+      else { beltTee(coalGroup, o.smX, ZB, [1,0], [0,1], CY); xPrev = o.smX + R0; }           // junção em T: a linha segue e solta um ramal
+      beltSeg(coalGroup, o.smX, ZB + R0, o.smX, ZB + R0 + 0.3, CY, [false, false]);
+      beltRamp(coalGroup, o.smX, ZB + R0 + 0.3, CY, o.smX, DZ, DY);                          // descida até a fornalha
       o.coalPath = roundPath([new THREE.Vector3(cx,LY+0.18,cz), new THREE.Vector3(rx,LY+0.18,cz), new THREE.Vector3(rx,LY+0.18,cz-1.4), new THREE.Vector3(rx,CY+0.18,ZR), new THREE.Vector3(rx,CY+0.18,ZB),
-        new THREE.Vector3(o.smX,CY+0.18,ZB), new THREE.Vector3(o.smX,CY+0.18,ZB+BELT_R+0.3), new THREE.Vector3(o.smX,DY+0.18,DZ), new THREE.Vector3(o.smX,1.85,DZ+0.15)]);
+        new THREE.Vector3(o.smX,CY+0.18,ZB), new THREE.Vector3(o.smX,CY+0.18,ZB+R0+0.3), new THREE.Vector3(o.smX,DY+0.18,DZ), new THREE.Vector3(o.smX,1.85,DZ+0.15)]);
       o.coalLens = o.coalPath.slice(1).map((v,k)=>v.distanceTo(o.coalPath[k]));
       o.coalTotal = o.coalLens.reduce((a,b)=>a+b,0);
     });
@@ -2840,15 +2882,17 @@ function createWorld(){
       beltRamp(pwLinks, -58.6, UZ, 0.55, -64.2, UZ, Y);                                     // subida saindo da mina de carvão
       mesh(new THREE.BoxGeometry(0.8, 0.06, 0.9), M('#3b3f45'), -58.4, 0.03, UZ, pwLinks).castShadow = false;
       beltSeg(pwLinks, -64.2, UZ, -68.3 + BELT_R, UZ, Y, [false, false]);
-      beltTurn(pwLinks, -68.3, UZ, [-1,0], [0,-1], Y); beltSeg(pwLinks, -68.3, UZ - BELT_R, -68.3, -14.0, Y, [false, true]);
-      if(P.brB){ beltTurn(pwLinks, -68.3, UZ, [-1,0], [0,1], Y); beltSeg(pwLinks, -68.3, UZ + BELT_R, -68.3, -9.2, Y, [false, true]); }
+      if(P.brB){ beltSplit(pwLinks, -68.3, UZ, [-1,0], [0,-1], [0,1], Y); beltSeg(pwLinks, -68.3, UZ + BELT_R, -68.3, -9.2, Y, [false, true]); }   // divide para os 2 britadores
+      else beltTurn(pwLinks, -68.3, UZ, [-1,0], [0,-1], Y);
+      beltSeg(pwLinks, -68.3, UZ - BELT_R, -68.3, -14.0, Y, [false, true]);
       const st = [new THREE.Vector3(-58.6,0.73,UZ), new THREE.Vector3(-64.2,Y+0.18,UZ), new THREE.Vector3(-68.3,Y+0.18,UZ)];
       pwPaths.coal = roundPath([...st, new THREE.Vector3(-68.3,Y+0.18,-14), new THREE.Vector3(-69.5,2.4,-14)]);
       pwPaths.coal2 = P.brB ? roundPath([...st, new THREE.Vector3(-68.3,Y+0.18,-9.2), new THREE.Vector3(-69.5,2.4,-9.2)]) : null;
     }
     if(P.lv){
-      beltSeg(pwLinks, -71.6, -14.0, -71.6, UZ - BELT_R, 1.0, [true, false]); beltTurn(pwLinks, -71.6, UZ, [0,1], [-1,0], 1.0);
-      if(P.brB){ beltSeg(pwLinks, -71.6, -9.2, -71.6, UZ + BELT_R, 1.0, [true, false]); beltTurn(pwLinks, -71.6, UZ, [0,-1], [-1,0], 1.0); }
+      beltSeg(pwLinks, -71.6, -14.0, -71.6, UZ - BELT_R, 1.0, [true, false]);
+      if(P.brB){ beltSeg(pwLinks, -71.6, -9.2, -71.6, UZ + BELT_R, 1.0, [true, false]); beltMerge(pwLinks, -71.6, UZ, [0,1], [0,-1], [-1,0], 1.0); }   // junta as 2 saídas
+      else beltTurn(pwLinks, -71.6, UZ, [0,1], [-1,0], 1.0);
       beltSeg(pwLinks, -71.6 - BELT_R, UZ, -75.1, UZ, 1.0, [false, true]);
       pwPaths.cr = roundPath([new THREE.Vector3(-71.6,1.18,-14), new THREE.Vector3(-71.6,1.18,UZ), new THREE.Vector3(-75.1,1.18,UZ)]);
     }
@@ -3219,9 +3263,10 @@ function createWorld(){
     if(F.sr && (F.cv || F.pp)){
       const V = (x,z) => new THREE.Vector3(x, 1.18, z);
       beltSeg(forestLinks, 68.6, 3.6, 68.6, 10.6 - BELT_R, 1.0, [true, false]);
-      if(F.cv){ beltTurn(forestLinks, 68.6, 10.6, [0,1], [-1,0], 1.0); beltLine(forestLinks, [[68.6 - BELT_R, 10.6], [64.0, 10.6], [64.0, 13.2]], 1.0);
+      if(F.cv && F.pp) beltSplit(forestLinks, 68.6, 10.6, [0,1], [-1,0], [1,0], 1.0);          // divide: carvoaria e papel
+      if(F.cv){ if(!F.pp) beltTurn(forestLinks, 68.6, 10.6, [0,1], [-1,0], 1.0); beltLine(forestLinks, [[68.6 - BELT_R, 10.6], [64.0, 10.6], [64.0, 13.2]], 1.0, false, true);
         fPaths.lc = roundPath([V(68.6,3.6), V(68.6,10.6), V(64.0,10.6), V(64.0,13.4)]); } else delete fPaths.lc;
-      if(F.pp){ beltTurn(forestLinks, 68.6, 10.6, [0,1], [1,0], 1.0); beltLine(forestLinks, [[68.6 + BELT_R, 10.6], [70.8, 10.6], [70.8, 13.6]], 1.0);
+      if(F.pp){ if(!F.cv) beltTurn(forestLinks, 68.6, 10.6, [0,1], [1,0], 1.0); beltLine(forestLinks, [[68.6 + BELT_R, 10.6], [70.8, 10.6], [70.8, 13.6]], 1.0, false, true);
         fPaths.lp = roundPath([V(68.6,3.6), V(68.6,10.6), V(70.8,10.6), V(70.8,14.0)]); } else delete fPaths.lp; }
     forestLinks.userData.texs = beltTexs.slice(before);
   }
