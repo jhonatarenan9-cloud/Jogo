@@ -1961,24 +1961,33 @@ function createWorld(){
   R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
   sceneEl.prepend(R.domElement);
   const world = new THREE.Scene();
-  world.background = new THREE.Color('#8fd16a');
-  world.fog = new THREE.Fog('#8fd16a', 48, 95);
+  // céu em degradê e névoa azulada no horizonte (perspectiva atmosférica)
+  world.background = (()=>{ const c = document.createElement('canvas'); c.width = 4; c.height = 256; const g = c.getContext('2d');
+    const gr = g.createLinearGradient(0,0,0,256); gr.addColorStop(0,'#5aa9e6'); gr.addColorStop(0.55,'#a9d8f2'); gr.addColorStop(1,'#e4f1e6');
+    g.fillStyle = gr; g.fillRect(0,0,4,256); return new THREE.CanvasTexture(c); })();
+  world.fog = new THREE.Fog('#c8e3d2', 58, 120);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
   const CAM_BASE = new THREE.Vector3(12, 18.3, 12), CAM_OFF = CAM_BASE.clone();
   const LOOK_SHIFT = new THREE.Vector3(-1.5, 0, -3.2);   // olha um pouco à frente do mineiro (para o lado das minas)   // visão isométrica (diagonal)
 
-  world.add(new THREE.HemisphereLight(0xfffbe8, 0x5d8a30, 0.85));
-  const sun = new THREE.DirectionalLight(0xfff0d6, 0.8);
+  world.add(new THREE.HemisphereLight(0xe8f2ff, 0x4f6a2a, 0.72));
+  const sun = new THREE.DirectionalLight(0xffe6c0, 0.95);
+  const fill = new THREE.DirectionalLight(0xbcd6ff, 0.18); fill.position.set(14, 10, -12); world.add(fill);   // luz de preenchimento do céu
   const SUN_OFF = new THREE.Vector3(-8, 22, 12);
   sun.position.copy(SUN_OFF); sun.target.position.set(0,0,0);
   sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
   Object.assign(sun.shadow.camera, {left:-24, right:24, top:22, bottom:-22, near:1, far:70});
-  sun.shadow.bias = -0.0008;
+  sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
   world.add(sun, sun.target);
   const anims = [];   // animações decorativas (água, borboletas, luzes)
 
   const MATS = {};
-  const M = (color, extra) => { const k = color + (extra?JSON.stringify(extra):''); return MATS[k] || (MATS[k] = new THREE.MeshPhongMaterial(Object.assign({color, flatShading:true, shininess:12}, extra))); };
+  // textura de "grão" bem sutil em todos os materiais: tira a cara de plástico liso
+  const grainTex = (()=>{ const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); const im = g.createImageData(256,256);
+    for(let i=0;i<256*256;i++){ const v = 228 + Math.floor(Math.random()*28); im.data[i*4] = im.data[i*4+1] = im.data[i*4+2] = v; im.data[i*4+3] = 255; }
+    g.putImageData(im,0,0); for(let k=0;k<60;k++){ g.fillStyle = `rgba(0,0,0,${0.03+Math.random()*0.04})`; g.beginPath(); g.arc(Math.random()*256, Math.random()*256, 6+Math.random()*22, 0, 7); g.fill(); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; })();
+  const M = (color, extra) => { const k = color + (extra?JSON.stringify(extra):''); return MATS[k] || (MATS[k] = new THREE.MeshPhongMaterial(Object.assign({color, flatShading:true, shininess:12, map:grainTex}, extra))); };
   // peças redondas (canos, tanques, rodas, cabeças) ficam lisas e com brilho; pedras e árvores continuam facetadas
   const SMOOTH = new Map();
   function smoothOf(mat){ let s2 = SMOOTH.get(mat); if(!s2){ s2 = mat.clone(); s2.flatShading = false; s2.shininess = 38; s2.specular = new THREE.Color('#3a3a3a'); s2.needsUpdate = true; SMOOTH.set(mat, s2); } return s2; }
@@ -1991,10 +2000,15 @@ function createWorld(){
 
   // ---------- chão: grama com faixas e pontinhos ----------
   {
-    const c = document.createElement('canvas'); c.width = 256; c.height = 256; const g = c.getContext('2d');
-    g.fillStyle = '#86d457'; g.fillRect(0,0,256,256); g.fillStyle = '#7dca50'; g.fillRect(0,0,256,128);
-    for(let k=0;k<900;k++){ g.fillStyle = rnd()<0.5 ? 'rgba(60,140,40,.25)' : 'rgba(200,255,150,.22)'; g.fillRect(rnd()*256, rnd()*256, 3, 3); }
-    const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(14, 28);
+    const c = document.createElement('canvas'); c.width = 512; c.height = 512; const g = c.getContext('2d');
+    g.fillStyle = '#5fae37'; g.fillRect(0,0,512,512);
+    for(let k=0;k<70;k++){ const x = rnd()*512, y = rnd()*512, r = 30 + rnd()*90, gr = g.createRadialGradient(x,y,0,x,y,r);   // manchas de grama mais clara/escura
+      const col = rnd() < 0.5 ? '96,170,60' : rnd() < 0.5 ? '70,135,45' : '140,180,80'; gr.addColorStop(0,`rgba(${col},.35)`); gr.addColorStop(1,`rgba(${col},0)`); g.fillStyle = gr;
+      for(const ox of [-512,0,512]) for(const oy of [-512,0,512]){ g.save(); g.translate(ox,oy); g.fillRect(x-r,y-r,r*2,r*2); g.restore(); } }
+    for(let k=0;k<9000;k++){ const x = rnd()*512, y = rnd()*512, l = 2 + rnd()*4;   // folhinhas
+      g.strokeStyle = rnd()<0.5 ? `rgba(50,110,30,${0.25+rnd()*0.25})` : `rgba(190,235,140,${0.18+rnd()*0.2})`; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x,y); g.lineTo(x + (rnd()-.5)*2, y - l); g.stroke(); }
+    const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(16, 9); tex.anisotropy = 4;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 130), new THREE.MeshLambertMaterial({map:tex}));
     ground.rotation.x = -Math.PI/2; ground.position.z = -8; ground.receiveShadow = true; world.add(ground);
   }
@@ -3055,8 +3069,8 @@ function createWorld(){
   // árvores da floresta: 40 lugares; mostra árvore adulta, muda crescendo ou toco
   const forestTrees = [];
   for(let i=0;i<TREE_SLOTS;i++){ const col = i%8, row = Math.floor(i/8), x = 42.2 + col*2.3 + (row%2)*0.6, z = -2.0 + row*2.6;
-    const g = new THREE.Group(); g.position.set(x, 0, z); world.add(g);
-    const tree = new THREE.Group(); g.add(tree);
+    const g = new THREE.Group(); g.position.set(x + (rnd()-.5)*0.5, 0, z + (rnd()-.5)*0.5); g.rotation.y = rnd()*6.28; world.add(g);
+    const tree = new THREE.Group(); g.add(tree); tree.userData.base = 0.85 + rnd()*0.35;
     mesh(new THREE.CylinderGeometry(0.18,0.24,0.9,6), trunk, 0, 0.45, 0, tree);
     mesh(new THREE.ConeGeometry(1.0,1.6,7), leaf[i%3], 0, 1.45, 0, tree); mesh(new THREE.ConeGeometry(0.75,1.3,7), leaf[(i+1)%3], 0, 2.15, 0, tree); mesh(new THREE.ConeGeometry(0.45,0.9,7), leaf[2], 0, 2.7, 0, tree);
     const stump = mesh(new THREE.CylinderGeometry(0.22,0.26,0.3,7), M('#9a6a3a'), 0, 0.15, 0, g);
@@ -3153,7 +3167,7 @@ function createWorld(){
     // árvores: as primeiras são as maduras; a seguinte é a muda crescendo
     const full = Math.floor(F.trees), frac = F.trees - full;
     forestTrees.forEach((tr,i)=>{ tr.g.visible = true;
-      const sc = !F.open ? 1 : i < full ? 1 : i === full ? 0.15 + 0.6*frac : (growers() ? 0.12 : 0);
+      const sc = (tr.tree.userData.base||1) * (!F.open ? 1 : i < full ? 1 : i === full ? 0.15 + 0.6*frac : (growers() ? 0.12 : 0));
       tr.s += (sc - tr.s)*Math.min(1, dt*4); tr.tree.visible = tr.s > 0.05; tr.tree.scale.setScalar(Math.max(0.05, tr.s)); tr.stump.visible = F.open && i >= full; });
     // lenhadores vão até a última árvore madura e cortam
     ['l1','l2','l3'].forEach((k,i)=>{ const w = fWorkers[k]; if(!w) return; const U = w.userData;
@@ -3342,7 +3356,7 @@ function createWorld(){
         P.armR.rotation.x = P.armL.rotation.x = -1.15 + Math.sin(time*50 + k)*0.03;
         w.obj.position.y = Math.abs(Math.sin(time*25 + k))*0.015*w.lvl;
       }
-      if(s < w.prevS){ w.rock.userData.shake = 0.08 + 0.05*w.lvl; w.hits = (w.hits||0) + 1;
+      if(s < w.prevS){ w.rock.userData.shake = 0.08 + 0.05*w.lvl; w.hits = (w.hits||0) + 1; if(Math.random() < 0.6) dustPuff(w.rock.position.clone().setY(0.4), 3);
         if(w.hits >= 3 - Math.min(1, w.lvl)){ w.hits = 0; w.mode = 'carry'; P.chunk.visible = true; P.pickHead.parent.visible = false;
           if(P.ptool){ P.ptool.visible = false; if(P.comp) P.comp.visible = false; if(P.hose) P.hose.visible = false; }
           const a = Math.atan2(w.obj.position.z - o.pilePos.z, w.obj.position.x - o.pilePos.x); w.pileSpot = new THREE.Vector3(o.pilePos.x + Math.cos(a)*1.55, 0, o.pilePos.z + Math.sin(a)*1.55); } }
@@ -3832,6 +3846,16 @@ function createWorld(){
   // ---------- partículas ----------
   const flyers = [], bills = [];
   const blockGeo = new THREE.BoxGeometry(0.22,0.22,0.22), billGeo = new THREE.BoxGeometry(0.5,0.03,0.26);
+  // poeira quando a pedra é quebrada
+  const dusts = [], dustGeo = new THREE.SphereGeometry(0.22, 7, 5);
+  function dustPuff(pos, n=5, col='#c8b28e'){
+    for(let k=0;k<n && dusts.length < 80;k++){ const m = new THREE.Mesh(dustGeo, new THREE.MeshLambertMaterial({color:col, transparent:true, opacity:0.55, depthWrite:false}));
+      m.position.copy(pos).add(new THREE.Vector3((Math.random()-.5)*0.6, Math.random()*0.3, (Math.random()-.5)*0.6)); world.add(m);
+      dusts.push({m, v:new THREE.Vector3((Math.random()-.5)*1.4, 0.6 + Math.random()*0.8, (Math.random()-.5)*1.4), life:0}); }
+  }
+  function updateDust(dt){ for(let k=dusts.length-1;k>=0;k--){ const d = dusts[k]; d.life += dt/0.9;
+    if(d.life >= 1){ world.remove(d.m); d.m.material.dispose(); dusts.splice(k,1); continue; }
+    d.m.position.addScaledVector(d.v, dt); d.v.multiplyScalar(1 - dt*2); d.m.scale.setScalar(0.5 + d.life*1.6); d.m.material.opacity = 0.55*(1 - d.life); } }
   function flyOre(from, to, color){
     const m = new THREE.Mesh(blockGeo, M(color)); m.position.copy(from); world.add(m);
     flyers.push({m, from:from.clone(), to:to.clone().add(new THREE.Vector3((Math.random()-.5)*.6, 0, (Math.random()-.5)*.6)), t:0, dur:0.45+Math.random()*0.2});
@@ -3966,7 +3990,7 @@ function createWorld(){
         addOre(mine.m.id, amt); S.swings = (S.swings||0) + 1;
         if(!mine.m.fuel && Math.random() < gemChance()) findGem(rock.position.clone().setY(1.2));
         rock.userData.shake = 0.18;
-        const from = rock.position.clone().setY(1.0);
+        const from = rock.position.clone().setY(1.0); dustPuff(rock.position.clone().setY(0.5), 6);
         for(let k=0;k<3;k++) flyOre(from, mine.pilePos, mine.m.color);
         floatText('+' + fmt(amt), from.clone().setY(1.8), mine.m.color);
       }
@@ -4040,6 +4064,7 @@ function createWorld(){
     for(const a of anims) a(npcT);
     sun.position.copy(p).add(SUN_OFF); sun.target.position.set(p.x, 0, p.z);
 
+    updateDust(dt);
     for(let k=flyers.length-1;k>=0;k--){ const f = flyers[k]; f.t += dt/f.dur;
       if(f.t >= 1){ world.remove(f.m); flyers.splice(k,1); continue; }
       f.m.position.lerpVectors(f.from, f.to, f.t); f.m.position.y += Math.sin(f.t*Math.PI)*1.6; f.m.rotation.x += dt*8; f.m.rotation.y += dt*6; }
