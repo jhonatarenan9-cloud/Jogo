@@ -478,22 +478,22 @@
 // ===================== DADOS =====================
 const MINES = [
   {id:'cobre',     name:'Cobre',     color:'#d9803f', value:1,    tool:'madeira'},
-  {id:'ferro',     name:'Ferro',     color:'#b9bec6', value:5,    tool:'ferro'},
-  {id:'ouro',      name:'Ouro',      color:'#ffcf3f', value:22,   tool:'britadeira'},
-  {id:'diamante',  name:'Diamante',  color:'#7fe9f7', value:100,  tool:'carregadeira'},
-  {id:'esmeralda', name:'Esmeralda', color:'#2ee67a', value:450, tool:'escavadeira'},
+  {id:'ferro',     name:'Ferro',     color:'#b9bec6', value:3,    tool:'ferro'},
+  {id:'ouro',      name:'Ouro',      color:'#ffcf3f', value:9,   tool:'britadeira'},
+  {id:'diamante',  name:'Diamante',  color:'#7fe9f7', value:25,  tool:'carregadeira'},
+  {id:'esmeralda', name:'Esmeralda', color:'#2ee67a', value:70, tool:'escavadeira'},
   {id:'carvao',    name:'Carvão',    color:'#34343c', value:0,    tool:'madeira', fuel:true},   // combustível das fundições
 ];
 // power = minério por golpe; passive = minério/s extra (máquinas)
 const TOOLS = [
   {id:'madeira',     name:'Picareta de Madeira', ico:'🪵', cost:0,        power:1,  passive:0,   desc:'Ferramenta inicial. Libera a mina de Cobre.'},
-  {id:'ferro',       name:'Picareta de Ferro',   ico:'⛏️', cost:2600,     power:2,  passive:0,   desc:'Mais resistente. Libera a mina de Ferro.'},
-  {id:'britadeira',  name:'Britadeira',          ico:'🔨', cost:40000,    power:4,  passive:0.3, desc:'Quebra rocha dura. Libera a mina de Ouro.'},
-  {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:600000,   power:9,  passive:1.5, desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
-  {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:9000000,  power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
+  {id:'ferro',       name:'Picareta de Ferro',   ico:'⛏️', cost:2000,     power:2,  passive:0,   desc:'Mais resistente. Libera a mina de Ferro.'},
+  {id:'britadeira',  name:'Britadeira',          ico:'🔨', cost:20000,    power:4,  passive:0.3, desc:'Quebra rocha dura. Libera a mina de Ouro.'},
+  {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:200000,   power:9,  passive:1.5, desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
+  {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:2000000,  power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
-const STAFF_COST = {carvao:60, cobre:45, ferro:1100, ouro:16000, diamante:240000, esmeralda:3600000};
+const STAFF_COST = {carvao:60, cobre:45, ferro:550, ouro:5500, diamante:55000, esmeralda:550000};
 // ferramenta dos ajudantes (por mina): picareta -> martelete -> rompedor
 const HELPER_TOOLS = [
   {name:'Picareta', ico:'⛏️', mult:1, costMult:0},
@@ -513,15 +513,15 @@ const coalMult = () => 1 + DRILL_BONUS*S.coalLvl;
 const coalDrillCost = () => Math.ceil(300 * Math.pow(4, S.coalLvl));
 const SMELT_T = {};   // última vez que cada fundição fez barra (para a animação)
 const FUEL = {};   // true quando a fundição recebeu carvão no último ciclo   // barra = 4x o valor do minério
-const BELT_RATE = {cobre:3, ferro:6, ouro:12, diamante:25, esmeralda:50};   // minério/s de cada esteira
-const SMELTER_COST = {cobre:300, ferro:4600, ouro:69000, diamante:1035000, esmeralda:15500000};
-const BELT_COST    = {cobre:150, ferro:2300, ouro:34500, diamante:520000, esmeralda:7800000};
-const SELLBELT_COST = {cobre:220, ferro:3400, ouro:51000, diamante:765000, esmeralda:11500000};
+const BELT_RATE = {cobre:3, ferro:4, ouro:5, diamante:6, esmeralda:8};   // minério/s de cada esteira
+const SMELTER_COST = {cobre:300, ferro:2300, ouro:23000, diamante:230000, esmeralda:2300000};
+const BELT_COST    = {cobre:150, ferro:1150, ouro:11500, diamante:115000, esmeralda:1150000};
+const SELLBELT_COST = {cobre:220, ferro:1700, ouro:17000, diamante:170000, esmeralda:1700000};
 // Área de Entregas: o mineiro leva minério na mochila até o galpão; caminhões levam até a Metalúrgica Aurora
 // a Metalúrgica paga 5x o Mercado: um pouco mais que a barra da fundição (4x), para compensar o investimento extra
 const DEPOT_COST = 2500, DELIVERY_MULT = 5, PICK_RATE = 14, DROP_RATE = 30;
 const LOADER_COSTS = [600, 2500, 9000, 35000];           // carregadores: 1 por caminhão
-const COLLECTOR_COST = {cobre:900, ferro:10800, ouro:162000, diamante:2400000, esmeralda:36000000};
+const COLLECTOR_COST = {cobre:900, ferro:5400, ouro:54000, diamante:540000, esmeralda:5400000};
 const COLLECTOR_SPEED = 7, LOADER_TRIP = 2.4, LOADER_TRIPS = 3;
 const collectorCap = () => Math.round(20 * (1 + 0.4*S.truckLvl));
 const TRUCK_COSTS = [1200, 4500, 16000, 60000], TRUCK_SPEED = 8, TRUCK_AWAY = 6;
@@ -700,7 +700,7 @@ function incomePerSec(){
 }
 function sharpenCost(){ return Math.ceil(250 * Math.pow(3.5, S.sharpen)); }
 function boostCost(){ return Math.ceil(3000 * Math.pow(4, S.boost)); }
-const AUTOSELL_COST = 100000;
+const AUTOSELL_COST = 30000;
 function produce(sec){
   const gained = {};
   for(const m of MINES){ const r = mineRate(m); if(r > 0) gained[m.id] = r*sec; }
@@ -749,7 +749,7 @@ const hasBelt = m => !!S.smelters[m.id] && !!S.belts[m.id];
 // valor do estoque; no modo automático o minério das minas com esteira fica para a fundição
 const oreValue = (auto) => (auto || !S.power ? 0 : (S.power.batteries||0)*BATTERY_VALUE*mkP('bat')) + MINES.reduce((a,m)=>a + (auto && hasBelt(m) ? 0 : S.ore[m.id]*mval(m)) + (S.bars[m.id]||0)*barValue(m), 0);
 const beltRate = m => BELT_RATE[m.id] * (1 + TURBO_BONUS*S.beltLvl) * beltPower();
-const beltSpeedCost = () => Math.ceil(5000000 * Math.pow(4, S.beltLvl));
+const beltSpeedCost = () => Math.ceil(150000 * Math.pow(4, S.beltLvl));
 const hasSellBelt = m => !!S.smelters[m.id] && !!S.sellBelts[m.id];
 const SOLD = {};   // vendido pela esteira de venda (para mostrar o dinheiro subindo no mapa)
 function sellByBelts(){
@@ -1232,17 +1232,17 @@ const MISSIONS = [
   {t:'Venda 20 galões de combustível', p:()=>[S.oil.sold||0, 20], r:2500},
   {t:'Ganhe $30.000 em vendas', p:()=>[S.earned, 30000], r:3000},
   {t:'Abra a 🌲 Floresta (fim da estrada, à direita)', p:()=>[+!!S.forest.open, 1], r:3000, go:()=>S.money >= forestOpenLeft() ? {x:38.4, z:-4} : null},
-  {t:'Compre a Britadeira', p:()=>[+!!S.tools.britadeira, 1], r:6000},
+  {t:'Compre a Britadeira', p:()=>[+!!S.tools.britadeira, 1], r:3000},
   {t:'Monte o Banco de Baterias e venda 10 baterias', p:()=>[S.power.sold||0, 10], r:4000},
-  {t:'Dê o 💥 Rompedor aos ajudantes de alguma mina', p:()=>[Math.max(...MINES.map(m=>S.staff[m.id].tool||0)), 2], r:5000},
-  {t:'Complete a fundição do Ouro (3 itens)', p:()=>[3-factoryMissing(MINES[2]).length, 3], r:25000},
-  {t:'Ganhe $500.000 em vendas', p:()=>[S.earned, 500000], r:60000},
-  {t:'Compre a Máquina Carregadeira', p:()=>[+!!S.tools.carregadeira, 1], r:150000},
-  {t:'Complete a fundição do Diamante (3 itens)', p:()=>[3-factoryMissing(MINES[3]).length, 3], r:400000},
-  {t:'Ganhe $8.000.000 em vendas', p:()=>[S.earned, 8000000], r:1000000},
-  {t:'Compre a Escavadeira Gigante', p:()=>[+!!S.tools.escavadeira, 1], r:2000000},
-  {t:'Complete a fundição da Esmeralda (3 itens)', p:()=>[3-factoryMissing(MINES[4]).length, 3], r:6000000},
-  {t:'Vire Magnata: minere as esmeraldas da meta', p:()=>[S.mined.esmeralda, goal()], r:50000000},
+  {t:'Dê o 💥 Rompedor aos ajudantes de alguma mina', p:()=>[Math.max(...MINES.map(m=>S.staff[m.id].tool||0)), 2], r:3000},
+  {t:'Complete a fundição do Ouro (3 itens)', p:()=>[3-factoryMissing(MINES[2]).length, 3], r:8000},
+  {t:'Ganhe $150.000 em vendas', p:()=>[S.earned, 150000], r:20000},
+  {t:'Compre a Máquina Carregadeira', p:()=>[+!!S.tools.carregadeira, 1], r:50000},
+  {t:'Complete a fundição do Diamante (3 itens)', p:()=>[3-factoryMissing(MINES[3]).length, 3], r:90000},
+  {t:'Ganhe $1.500.000 em vendas', p:()=>[S.earned, 1500000], r:200000},
+  {t:'Compre a Escavadeira Gigante', p:()=>[+!!S.tools.escavadeira, 1], r:450000},
+  {t:'Complete a fundição da Esmeralda (3 itens)', p:()=>[3-factoryMissing(MINES[4]).length, 3], r:1300000},
+  {t:'Vire Magnata: minere as esmeraldas da meta', p:()=>[S.mined.esmeralda, goal()], r:5000000},
 ];
 // ===================== CONQUISTAS =====================
 // cada categoria tem 3 medalhas (bronze, prata, ouro); recompensas pequenas para não desequilibrar
@@ -1257,9 +1257,9 @@ const ACHS = [
   {id:'cobre',   ico:'🟠', name:'Rei do Cobre',          desc:'Cobre minerado',                   v:()=>S.mined.cobre,      t:[500,5000,50000],   r:[100,1000,15000]},
   {id:'carvao',  ico:'⚫', name:'Fornalha Acesa',        desc:'Carvão minerado',                  v:()=>S.mined.carvao,     t:[500,5000,50000],   r:[100,1500,20000]},
   {id:'ferro',   ico:'⚙️', name:'Coração de Ferro',      desc:'Ferro minerado',                   v:()=>S.mined.ferro,      t:[300,3000,30000],   r:[500,6000,80000]},
-  {id:'ouro',    ico:'🟡', name:'Febre do Ouro',         desc:'Ouro minerado',                    v:()=>S.mined.ouro,       t:[200,2000,20000],   r:[1000,10000,100000]},
-  {id:'diamante',ico:'💎', name:'Brilho Eterno',         desc:'Diamante minerado',                v:()=>S.mined.diamante,   t:[100,1000,10000],   r:[5000,50000,500000]},
-  {id:'esmer',   ico:'🟢', name:'Caçador de Esmeraldas', desc:'Esmeralda minerada',               v:()=>S.mined.esmeralda,  t:[5000,200000,2000000],      r:[20000,200000,2000000]},
+  {id:'ouro',    ico:'🟡', name:'Febre do Ouro',         desc:'Ouro minerado',                    v:()=>S.mined.ouro,       t:[200,2000,20000],   r:[800,6000,40000]},
+  {id:'diamante',ico:'💎', name:'Brilho Eterno',         desc:'Diamante minerado',                v:()=>S.mined.diamante,   t:[100,1000,10000],   r:[2000,20000,150000]},
+  {id:'esmer',   ico:'🟢', name:'Caçador de Esmeraldas', desc:'Esmeralda minerada',               v:()=>S.mined.esmeralda,  t:[5000,200000,2000000],      r:[5000,50000,500000]},
   {id:'fortuna', ico:'💰', name:'Fortuna',               desc:'Dinheiro ganho em vendas',         v:()=>S.earned||0,        t:[10000,1e6,1e8],    r:[500,20000,500000]},
   {id:'equipe',  ico:'👷', name:'Equipe Completa',       desc:'Ajudantes contratados',            v:countHelpers,           t:[3,9,18],           r:[100,3000,30000]},
   {id:'chefia',  ico:'👔', name:'Chefia',                desc:'Gerentes contratados',             v:countManagers,          t:[1,3,6],            r:[200,10000,100000]},
@@ -1270,7 +1270,7 @@ const ACHS = [
   {id:'explor',  ico:'🗺️', name:'Explorador',            desc:'Minas abertas',                    v:countOpenMines,         t:[3,4,6],            r:[300,10000,100000]},
   {id:'missao',  ico:'🎯', name:'Cumpridor de Missões',  desc:'Missões concluídas',               v:()=>S.mission||0,       t:[10,20,30],         r:[200,10000,100000]},
   {id:'gemas',   ico:'💎', name:'Garimpeiro',            desc:'Gemas raras encontradas',          v:()=>S.gemsFound||0,     t:[1,10,40],          r:[100,5000,500000]},
-  {id:'magnata', ico:'🏆', name:'Magnata',               desc:'Minere as esmeraldas da meta',          v:()=>+!!S.won,           t:[1],                r:[1000000], gold:true},
+  {id:'magnata', ico:'🏆', name:'Magnata',               desc:'Minere as esmeraldas da meta',          v:()=>+!!S.won,           t:[1],                r:[300000], gold:true},
 ];
 const ACH_TOTAL = ACHS.reduce((a,x)=>a + x.t.length, 0);
 const achTier = (a, k) => a.gold ? 2 : k;        // a do Magnata é direto ouro

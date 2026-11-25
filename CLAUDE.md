@@ -70,8 +70,9 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 ## Simulador de economia (use sempre que mexer em valores)
 `node tools/simular_economia.js [horas] [barato|minas|equipe|fabricas|todas]`: um robô joga com as funções reais do jogo (em segundos)
 e mostra quando compra cada mina/fábrica e de onde vem o dinheiro. Metas atuais (jogo ativo):
-Ferro 15–25 min · Ouro 35 min–1h30 · Diamante 2–4h · Esmeralda 4–9,5h · Magnata 22–28h (`GOAL` = 8 milhões de esmeraldas).
-A curva: valor do minério cresce ~4,5x por mina e a ferramenta ~15x, para a renda não disparar sozinha.
+Ferro 15–22 min · Ouro 30–45 min · Diamante 1h20–3h30 · Esmeralda 3–9h · Magnata ~22–30h (`GOAL` = 8 milhões de esmeraldas).
+Números pequenos de propósito: minério $1/3/9/25/70 (~3x por mina), ferramentas $2 mil/20 mil/200 mil/2 milhões (10x),
+esteiras de fundição limitadas (`BELT_RATE` 3–8 minérios/s) e Turbo caro, para o fim de jogo ficar nos milhões e não em bilhões.
 Custos de cada mina (fundição, esteiras, coletor, ajudantes) acompanham ~27% do preço da próxima ferramenta.
 O robô não simula caminhões de entrega (rodam no 3D), então o jogo real fica um pouco mais rápido.
 
