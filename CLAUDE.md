@@ -67,6 +67,18 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `PR_ITEMS`, `prGain`, `doPrestige`, `goal()`: prestígio (aba ⭐ Era, lado direito). Depois de virar Magnata, recomeça com estrelas (raiz dos milhões ganhos na era) para melhorias permanentes; a meta de esmeraldas dobra a cada era. Mantém estrelas, gemas, itens de gema e conquistas.
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
+## Simulador de economia (use sempre que mexer em valores)
+`node tools/simular_economia.js [horas] [barato|minas|equipe|fabricas|todas]`: um robô joga com as funções reais do jogo (em segundos)
+e mostra quando compra cada mina/fábrica e de onde vem o dinheiro. Metas atuais (jogo ativo):
+Ferro 15–25 min · Ouro 35 min–1h30 · Diamante 2–4h · Esmeralda 4–9,5h · Magnata 22–28h (`GOAL` = 8 milhões de esmeraldas).
+A curva: valor do minério cresce ~4,5x por mina e a ferramenta ~15x, para a renda não disparar sozinha.
+Custos de cada mina (fundição, esteiras, coletor, ajudantes) acompanham ~27% do preço da próxima ferramenta.
+O robô não simula caminhões de entrega (rodam no 3D), então o jogo real fica um pouco mais rápido.
+
+## Offline e números
+Offline: `OFFLINE_RATE` (25%) até `OFFLINE_MAX` (4 h), simulado em passos de 10 s; relógio voltando não paga nada; janela mostra relatório.
+`fmt` corta casas (nunca mostra "1000K"). Sons em `sfx()` (botão 🔊 desliga, `S.mute`).
+
 ## Começo do jogo
 Jogo novo começa com `START_MONEY` ($1.000). O bônus de teste de $10 milhões foi removido.
 

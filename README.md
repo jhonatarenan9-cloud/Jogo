@@ -41,5 +41,5 @@ Tela de abertura, câmera isométrica, cartões flutuando sobre cada mina e fáb
 - **💎 Gemas raras:** caem ao minerar com a picareta e nas entregas. Compre itens especiais na Loja → Gemas.
 - **🏆 Conquistas e Troféus:** 52 medalhas (bronze, prata e ouro) em 18 categorias, com pequenas recompensas, título de minerador e um pódio de troféus na praça.
 - **🎯 Missões:** uma sequência de 32 objetivos com recompensa em dinheiro, sempre mostrando a próxima conquista no topo da tela.
-- Objetivo final: minerar 1.000 esmeraldas e virar Magnata da Mineração.
+- Objetivo final: minerar 8 milhões de esmeraldas e virar Magnata da Mineração (a meta dobra a cada Nova Era).
 - **⛰️ Pedreira, Blocos e Concreto:** explosões no paredão, ajudantes e carregadeiras levam as pedras ao britador, a esteira forma o monte de brita (estoque central) e caminhões vendem. Depois: fábrica de blocos (misturador, prensa, cura, paletes) e usina de concreto usinado com caminhões-betoneira.
