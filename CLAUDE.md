@@ -67,6 +67,14 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `PR_ITEMS`, `prGain`, `doPrestige`, `goal()`: prestígio (aba ⭐ Era, lado direito). Depois de virar Magnata, recomeça com estrelas (raiz das dezenas de milhões ganhos na era, ~10 estrelas com $1 bilhão) para melhorias permanentes; a meta de esmeraldas cresce 50% a cada era; Herança dá $2 mil/5 mil/12 mil. Mantém estrelas, gemas, itens de gema e conquistas.
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
+## XP e níveis
+`XP_CFG` (valores por ação), `xpNeed(l) = 100·l^1,5`, `XP_TITLES`, `LVL_REQ` (níveis mínimos: banco de baterias 8, floresta 9, pedreira 10,
+blocos 12, lago 13, concreto 15 — escolhidos pelo simulador para nunca travar quem já tem o dinheiro). O XP entra por ganchos em `hookXP`
+(só quando o dinheiro ou o estado muda: compra que falha não dá XP) e por `xpMilestones` (faturamento/minério dobrando e um "turno" a cada
+2 min produzindo = 4% do nível, que também roda offline). Recompensa por nível em `levelReward` (~1,5 min de produção; gema a cada 5;
++2% de produção a cada 10; ×1,5 por 10 min a cada 25; gemas extras a cada 50/100). Ritmo simulado: nível 10 em 30 min, 13 em 1h, 21 em 6h,
+~43 em 24h. O nível passa de uma Era para a outra. Saves antigos recebem XP retroativo pelo que já construíram (sem dinheiro de níveis).
+
 ## Simulador de economia (use sempre que mexer em valores)
 `node tools/simular_economia.js [horas] [barato|minas|equipe|fabricas|todas]`: um robô joga com as funções reais do jogo (em segundos)
 e mostra quando compra cada mina/fábrica e de onde vem o dinheiro. Metas atuais (jogo ativo):

@@ -33,13 +33,34 @@
   .scene canvas{display:block;width:100%;height:100%;cursor:grab}
   #topbar{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
     display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+  #rightCol{display:flex;flex-direction:column;align-items:stretch;gap:5px;flex:none}
+  #xpBox{background:var(--hudbg);border:2.5px solid var(--navyD);box-shadow:0 3px 0 var(--navyD);border-radius:12px;padding:3px 7px 5px;color:#fff;pointer-events:auto}
+  #xpBox .xpTop{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;line-height:1.2;margin-bottom:2px}
+  #xpBox .xpLvl{background:linear-gradient(#b48cff,#7a4fd6);border:2px solid #3d2378;border-radius:8px;padding:0 6px;font-family:'Lilita One',sans-serif;font-size:12px;letter-spacing:.3px}
+  #xpBox .xpTitle{color:#ffe9a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+  #xpBox .xpBar{position:relative;height:14px;background:#1b2540;border-radius:7px;overflow:hidden;border:1.5px solid #0c1a33}
+  #xpFill{height:100%;width:0;background:linear-gradient(90deg,#8e5bd6,#c79bff);border-radius:6px;transition:width .6s ease-out}
+  #xpTxt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:800 10px Nunito,sans-serif;color:#fff;text-shadow:0 1px 0 #000}
+  .xpFloat{position:fixed;z-index:30;pointer-events:none;font:16px 'Lilita One',sans-serif;color:#d9b8ff;text-shadow:0 2px 0 #3d2378,0 0 6px rgba(0,0,0,.4);animation:xpUp 1.1s ease-out forwards;white-space:nowrap}
+  @keyframes xpUp{0%{opacity:0;transform:translate(-50%,6px) scale(.8)}15%{opacity:1;transform:translate(-50%,0) scale(1.1)}100%{opacity:0;transform:translate(-50%,-38px) scale(1)}}
+  #lvlUp{position:fixed;inset:0;z-index:46;display:flex;align-items:center;justify-content:center;background:rgba(20,8,45,.55);padding:20px}
+  #lvlUp .lu{position:relative;overflow:hidden;width:min(330px,100%);background:linear-gradient(#6a3fc4,#3d2378);border:4px solid #241245;border-radius:20px;box-shadow:0 6px 0 #241245;text-align:center;color:#fff;padding:16px 14px;font-weight:800;animation:luPop .45s cubic-bezier(.2,1.6,.4,1)}
+  #lvlUp .luRays{position:absolute;left:50%;top:60px;width:420px;height:420px;margin:-210px 0 0 -210px;background:repeating-conic-gradient(rgba(255,230,140,.18) 0 12deg,transparent 12deg 24deg);animation:spin 8s linear infinite;pointer-events:none}
+  #lvlUp .luStar{position:relative;font-size:64px;line-height:1;animation:luStar 1.2s ease-in-out infinite alternate}
+  #lvlUp h2{position:relative;margin:6px 0 2px;font:34px 'Lilita One',sans-serif;color:#ffe066;text-shadow:0 3px 0 #241245}
+  #lvlUp #luName{position:relative;color:#d9b8ff;margin-bottom:10px}
+  #lvlUp #luRew{position:relative;background:rgba(0,0,0,.25);border-radius:12px;padding:8px 10px;margin-bottom:12px;font-size:14px;line-height:1.6;text-align:left}
+  #lvlUp button{position:relative;width:100%;font:18px 'Lilita One',sans-serif;padding:10px}
+  @keyframes luPop{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
+  @keyframes luStar{0%{transform:scale(1) rotate(-8deg)}100%{transform:scale(1.15) rotate(8deg)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
   #hud{font-size:12px;line-height:1.45;color:#fff;background:var(--hudbg);padding:6px 10px;border-radius:12px;min-width:0}
   #hud b{color:var(--gold)}
   .moneyPill{display:flex;align-items:center;gap:8px;background:var(--hudbg);padding:6px 12px 6px 8px;border-radius:14px;flex:none}
   .moneyPill .bill{font-size:24px}
   .money{font-size:22px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;line-height:1.1;text-shadow:0 2px 0 rgba(0,0,0,.35)}
   .rate{font-size:11px;color:#d9f0c8}
-  #goalBox{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(360px,calc(100% - 20px));
+  #goalBox{position:absolute;top:calc(100px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(360px,calc(100% - 20px));
     background:var(--hudbg);border-radius:12px;padding:6px 10px 8px;font-size:12px;color:#fff;pointer-events:none;text-align:center}
   #goalBox b{color:var(--gold)}
   .goalHead{font-weight:800;font-size:12px;color:#ffd27a;margin-bottom:2px}
@@ -393,8 +414,11 @@
 <div class="scene" id="scene">
   <div id="topbar">
     <div id="hud"></div>
-    <div class="moneyPill"><span class="bill">💵</span><div><div class="money" id="money">$0</div><div class="rate" id="rate"></div></div><div class="gemCount" id="gemCount" hidden>💎 0</div></div>
+    <div id="rightCol"><div class="moneyPill"><span class="bill">💵</span><div><div class="money" id="money">$0</div><div class="rate" id="rate"></div></div><div class="gemCount" id="gemCount" hidden>💎 0</div></div>
+    <div id="xpBox"><div class="xpTop"><span class="xpLvl" id="xpLvl">Nv 1</span><span class="xpTitle" id="xpTitle">Aprendiz</span></div>
+      <div class="xpBar"><div id="xpFill"></div><span id="xpTxt">0 / 100 XP</span></div></div></div>
   </div>
+  <div id="lvlUp" hidden><div class="lu"><div class="luRays"></div><div class="luStar">⭐</div><h2 id="luTitle">NÍVEL 2!</h2><div id="luName"></div><div id="luRew"></div><button class="claim" id="luOk">Continuar</button></div></div>
   <div id="goalBox"><div id="goalText"></div><div class="progress"><div id="goalBar"></div></div></div>
   <div id="joy" hidden><div id="knob"></div></div>
   <div id="crosshair" hidden></div>
@@ -584,7 +608,7 @@ const prGain = () => S.won ? Math.max(1, Math.floor(Math.sqrt(S.earned/1e7))) : 
 function buyPr(it){ const c = prCost(it); if(prLv(it.id) >= it.max || S.pr.stars < c) return; S.pr.stars -= c; S.pr.lv[it.id] = prLv(it.id) + 1; toast(`⭐ ${it.name} nível ${prLv(it.id)}!`); render(); save(); }
 function doPrestige(){
   const gain = prGain(); if(gain <= 0) return;
-  const keep = {pr:S.pr, ach:S.ach, gems:S.gems, gemsFound:S.gemsFound, gemItems:S.gemItems, fp:S.fp, viewV2:true};
+  const keep = {xp:S.xp, pr:S.pr, ach:S.ach, gems:S.gems, gemsFound:S.gemsFound, gemItems:S.gemItems, fp:S.fp, viewV2:true};
   keep.pr.stars += gain; keep.pr.total = (keep.pr.total||0) + gain; keep.pr.eras = (keep.pr.eras||0) + 1;
   S = Object.assign(newState(), keep); S.money = prStart(); save();
   try{ sessionStorage.setItem('mina-era', String(keep.pr.eras)); }catch(_){}
@@ -609,6 +633,7 @@ function newState(){
     lake:{open:false, pump:false, pumpOp:false, dredge:false, dredgeOp:false, exc:false, excOp:false, trucks:[], lv:{}, water:0, sand:0, clay:0, sandF:0, clayF:0, level:1},
     quarry:{open:false, crusher:false, belt:false, helpers:0, loaders:0, trucks:[], lv:{}, blastT:0, blasts:0, rocks:0, hopper:0, brita:0, earned:0, sold:{brita:0, pallets:0, m3:0},
       blocks:{open:false, helpers:0, belt:false, trucks:[], mix:0, cure:0, loose:0, pallets:0}, conc:{open:false, belt:false, bts:[], bin:0}},
+    xp:{lvl:1, xp:0, total:0, nextEarn:1000, nextOre:100, boostUntil:0},
     pr:{stars:0, total:0, eras:0, lv:{}}, genLvl:0, noGen:true, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
     bag:Object.fromEntries(MINES.map(m=>[m.id,0])), depot:Object.fromEntries(MINES.map(m=>[m.id,0])),
@@ -618,7 +643,7 @@ function newState(){
 let S = newState();
 try{
   const raw = localStorage.getItem(SAVE_KEY);
-  if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d);
+  if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d); if(!d.xp) delete S.xp;   // save sem XP: migração retroativa abaixo
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
     S.lake = Object.assign(newState().lake, d.lake, {lv:Object.assign({}, d.lake && d.lake.lv)});
@@ -686,7 +711,7 @@ function helperCost(m){ return Math.ceil(STAFF_COST[m.id] * Math.pow(2.2, S.staf
 function managerCost(m){ return STAFF_COST[m.id] * MANAGER_COST_MULT; }
 const boostMult = () => 1 + BOOST_BONUS*S.boost;
 // minério/s de uma mina vindo dos ajudantes
-function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) * (1 + (S.power.tb ? POWER_LIGHT_BONUS*gridRatio : 0)) * (1 + 0.1*prLv('equipe')) : 0; }
+function mineRate(m){ const st = S.staff[m.id]; return isUnlocked(m) ? st.n * HELPER_RATE * (st.mgr ? MANAGER_MULT : 1) * HELPER_TOOLS[st.tool||0].mult * boostMult() * (m.fuel ? COAL_HELPER_MULT*coalMult() : 1) * (1 + (S.power.tb ? POWER_LIGHT_BONUS*gridRatio : 0)) * (1 + 0.1*prLv('equipe')) * lvlBonus() * lvlBoost() : 0; }
 // minério/s das máquinas (vai para a mina ativa)
 function machineRate(){ let r = 0; for(const t of TOOLS) if(S.tools[t.id]) r += t.passive; return r * boostMult(); }
 function incomePerSec(){
@@ -717,6 +742,7 @@ function produce(sec){
   sellByBelts();
   stageTick(sec);
   marketTick(sec);
+  xpMilestones(sec);
   return gained;
 }
 function fmt(n){
@@ -850,7 +876,7 @@ function buyGenerator(){ const c = GEN_COSTS[S.genLvl]; if(c === undefined || S.
 const pwItem = id => POWER_ITEMS.find(x=>x.id===id);
 const pwLeft = it => Math.max(0, it.cost - (S.paid['pw_'+it.id]||0));
 const powerOpenLeft = () => Math.max(0, POWER_OPEN_COST - (S.paid.pw_open||0));
-const pwCan = it => S.power.open && !S.power[it.id] && (!it.need || S.power[it.need]);
+const pwCan = it => S.power.open && !S.power[it.id] && (!it.need || S.power[it.need]) && (it.id !== 'bat' || lvlOk('bank'));
 const crushers = () => (S.power.brA && S.power.opA ? 1 : 0) + (S.power.brB && S.power.opB ? 1 : 0);
 const boilerHands = () => (S.power.cd ? (S.power.aj1 ? 1 : 0) + (S.power.aj2 ? 1 : 0) : 0);
 const powerOn = () => !!(S.power.tb && crushers() && S.power.maq && boilerHands());
@@ -1038,8 +1064,8 @@ const qBuyCost = k => { const Q = S.quarry, n = {crusher:+Q.crusher, belt:+Q.bel
 const qOpenLeft = () => Math.max(0, QUARRY_OPEN_COST - (S.paid.q_open||0));
 const qLevel1 = () => { const Q = S.quarry; return Q.helpers + Q.loaders + Q.trucks.length + ['blast','rocks','crush','belt','stock','sell'].reduce((a,k)=>a+qLv(k), 0); };
 const qLevel2 = () => { const B = S.quarry.blocks; return B.helpers + B.trucks.length + (B.belt?1:0) + ['bfill','bmix','bmach','bstore','bsell'].reduce((a,k)=>a+qLv(k), 0); };
-const blocksUnlocked = () => { const Q = S.quarry; return Q.crusher && Q.belt && Q.trucks.length >= 1 && qLevel1() >= 6; };
-const concUnlocked = () => { const B = S.quarry.blocks; return B.open && B.trucks.length >= 1 && qLevel2() >= 4; };
+const blocksUnlocked = () => { const Q = S.quarry; return Q.crusher && Q.belt && Q.trucks.length >= 1 && qLevel1() >= 6 && lvlOk('blocks'); };
+const concUnlocked = () => { const B = S.quarry.blocks; return B.open && B.trucks.length >= 1 && qLevel2() >= 4 && lvlOk('conc'); };
 // números da produção
 const blastEvery = () => Math.max(4, 16 * Math.pow(0.86, qLv('blast')));
 const rocksPerBlast = () => 5 + 3*qLv('rocks');
@@ -1161,7 +1187,7 @@ const L_UP = {lpump:{ico:'💧', name:'Bombas mais fortes', base:3000}, ldredge:
   lhaul:{ico:'🚚', name:'Caçambas maiores', base:4000}, ltank:{ico:'🛢️', name:'Caixa d\'água e pátio maiores', base:2500}};
 const lLv = k => (S.lake.lv[k]||0), lUpCost = k => Math.ceil(L_UP[k].base * Math.pow(2.6, lLv(k)));
 const lakeOpenLeft = () => Math.max(0, LAKE_OPEN_COST - (S.paid.lake_open||0));
-const lakeUnlocked = () => !!S.quarry.blocks.open;
+const lakeUnlocked = () => !!S.quarry.blocks.open && lvlOk('lake');
 const lBuyCost = k => { const L = S.lake, n = k === 'trucks' ? L.trucks.length : +!!L[k]; return L_BUY[k][n]; };
 const lCanBuy = k => { const L = S.lake; if(!L.open || lBuyCost(k) === undefined) return false; if(k.endsWith('Op')) return !!L[k.slice(0,-2)]; if(k === 'trucks') return !!(L.dredge || L.exc); return true; };
 const pumpRate = () => (S.lake.pump && S.lake.pumpOp ? 0.8 : 0) * (1 + 0.4*lLv('lpump'));       // m³/s
@@ -1689,7 +1715,7 @@ function buildPanel(){
     document.getElementById('sheetTitle').textContent = '🌊 Lago e Pátio de Estoque';
     el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">🌊</span>
         <div><small>Insumos próprios na fábrica</small><b>🏖️ ${Math.floor(L.sandF)} · 🟫 ${Math.floor(L.clayF)} t · 💧 ${Math.floor(L.water)} m³</b></div><span class="lvlBadge">+${Math.round(LAKE_BONUS*100)}%</span></div>
-      <div class="lvlNext"><small>Situação</small><div>${!lakeUnlocked() ? 'Libera junto com a 🧱 Fábrica de Blocos da pedreira' : !L.open ? 'Compre o terreno do lago, ao sul da pedreira' : !(L.pump && L.pumpOp) ? 'Instale a estação de bombeamento e o operador' : !(L.dredge && L.dredgeOp) ? 'Coloque a draga e o operador para tirar areia' : !(L.exc && L.excOp) ? 'Traga a escavadeira e o operador para a argila' : !L.trucks.length ? 'Compre uma caçamba para levar areia e argila à fábrica' : '✔ Lago abastecendo as fábricas'}</div></div>
+      <div class="lvlNext"><small>Situação</small><div>${!lakeUnlocked() ? `Libera com a 🧱 Fábrica de Blocos da pedreira e o nível ${LVL_REQ.lake} (hoje ${lvl()})` : !L.open ? 'Compre o terreno do lago, ao sul da pedreira' : !(L.pump && L.pumpOp) ? 'Instale a estação de bombeamento e o operador' : !(L.dredge && L.dredgeOp) ? 'Coloque a draga e o operador para tirar areia' : !(L.exc && L.excOp) ? 'Traga a escavadeira e o operador para a argila' : !L.trucks.length ? 'Compre uma caçamba para levar areia e argila à fábrica' : '✔ Lago abastecendo as fábricas'}</div></div>
       <div class="flow">${step(L.pump&&L.pumpOp,'💧','Água')}${step(L.dredge&&L.dredgeOp,'🚤','Areia')}${step(L.exc&&L.excOp,'⛏️','Argila')}${arrow(L.trucks.length>0)}${step(L.trucks.length>0,'🚚','Caçambas')}${arrow(L.open)}${step(S.quarry.blocks.open,'🧱','Blocos')}${step(S.quarry.conc.open,'🏗️','Concreto')}</div>
       <div class="lvlRows">
         <div><span>💧 Bombeamento</span><b>${fmt(pumpRate())} m³/s · ${money(stageRate('bombeamento'))}/s</b></div>
@@ -1736,7 +1762,7 @@ function buildPanel(){
         <div class="lvlRows">${st.map(x=>`<div style="${x.neck ? 'background:#ffd9c9;' : ''}flex-direction:column;align-items:stretch;gap:4px"><span style="display:flex;justify-content:space-between"><span>${x.ico} ${x.name}${x.neck ? ' · ⚠️ gargalo' : ''}</span><b>${fmt(x.v)}/min</b></span>
           <span style="height:7px;background:#c9b48a;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${x.v/max*100}%;background:${x.neck ? '#d9542b' : '#4caf50'}"></i></span></div>`).join('')}</div>
         <div class="lvlNext"><small>Sugestão</small><div>💡 ${Q.brita >= stockCap() - 1 ? 'Estoque de brita cheio: venda mais rápido (caminhões ou fábricas) ou aumente o estoque.' : Q.rocks >= rockCap() - 1 ? 'Pátio lotado de pedras: aumente a carga até o britador.' : neck.fix + '.'}</div></div></div>`); }
-    if(!Q.open){ const r = qOpenLeft(); add('🏗️', 'Terreno da Pedreira', 'Paredões de rocha a leste da floresta. As explosões começam sozinhas. Também dá para pagar pisando no quadrado.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openQuarry(); } }, r)); return; }
+    if(!Q.open){ const r = qOpenLeft(); add('🏗️', 'Terreno da Pedreira', `Paredões de rocha a leste da floresta. As explosões começam sozinhas. Também dá para pagar pisando no quadrado.${lvlOk('quarry') ? '' : ` Precisa do nível ${LVL_REQ.quarry}.`}`, lvlOk('quarry') ? btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openQuarry(); } }, r) : tag('🔒 Nível ' + LVL_REQ.quarry, 'var(--muted)')); return; }
     const buyRow = (k, ico, name, desc, n, max) => { const c = qBuyCost(k), can = qCanBuy(k);
       add(ico, `${name}${max > 1 ? ` <span class="count">${n}/${max}</span>` : ''}`, desc, c === undefined ? tag('✔ Completo') : can ? btn(money(c), ()=>quarryBuy(k), c) : tag('🔒 Bloqueado','var(--muted)')); };
     const UPV = {blast:[()=>60/blastEvery(),'explosões/min'], rocks:[rocksPerBlast,'pedras/explosão'], crush:[()=>crushRate()*BRITA_PER_ROCK*60,'t/min'], belt:[()=>qBeltRate()*60,'t/min'],
@@ -1750,7 +1776,7 @@ function buildPanel(){
       else { right = document.createElement('div'); right.style.cssText = 'display:flex;flex-direction:column;gap:4px';
         right.appendChild(btn(money(c), ()=>quarryUp(k), c));
         const mx = document.createElement('button'); mx.textContent = 'Máx'; mx.style.cssText = 'padding:4px 8px;font-size:12px'; mx.dataset.cost = c;
-        mx.onclick = ()=>{ let n = 0; while(qCanUp(k) && S.money >= qUpCost(k) && n < Q_UP_MAX){ S.money -= qUpCost(k); S.quarry.lv[k] = qLv(k) + 1; n++; } if(n){ toast(`${u.ico} ${u.name}: +${n} nível(is)!`); save(); } buildPanel(); render(); };
+        mx.onclick = ()=>{ let n = 0; while(qCanUp(k) && S.money >= qUpCost(k) && n < Q_UP_MAX){ quarryUp(k); n++; } if(n){ toast(`${u.ico} ${u.name}: +${n} nível(is)!`); save(); } buildPanel(); render(); };
         right.appendChild(mx); }
       add(u.ico, `${u.name} <span class="count">nv ${lv}</span>`, desc, right); });
     { const t = Math.floor(Q.brita), b2 = document.createElement('button'); b2.className = 'primary'; b2.style.width = '100%'; b2.style.marginBottom = '10px';
@@ -1763,7 +1789,7 @@ function buildPanel(){
     buyRow('trucks', '🚚', 'Caminhões de brita', `Chegam, carregam e vendem a brita (${money(BRITA_VALUE)}/t).`, Q.trucks.length, 3);
     upRows(1);
     sec('🧱 Fase 2 · Fábrica de blocos');
-    if(!B.open) el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">${blocksUnlocked() ? 'Liberada!' : `Para liberar: britador, esteira, 1 caminhão e a pedreira no nível 6 (hoje ${qLevel1()}).`} Cada t de brita vira ${BLOCKS_PER_T} blocos (${money(BLOCKS_PER_T*BLOCK_VALUE)}), mais que vender a brita (${money(BRITA_VALUE)}). Água e argamassa vêm sozinhas.</p>`);
+    if(!B.open) el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">${blocksUnlocked() ? 'Liberada!' : `Para liberar: britador, esteira, 1 caminhão, a pedreira no nível 6 (hoje ${qLevel1()}) e você no nível ${LVL_REQ.blocks} (hoje ${lvl()}).`} Cada t de brita vira ${BLOCKS_PER_T} blocos (${money(BLOCKS_PER_T*BLOCK_VALUE)}), mais que vender a brita (${money(BRITA_VALUE)}). Água e argamassa vêm sozinhas.</p>`);
     buyRow('bOpen', '🏭', 'Fábrica de Blocos', 'Misturador, prensa de blocos, prateleiras de cura e pátio de paletes.', +B.open, 1);
     if(B.open){
       el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlRows">
@@ -1774,7 +1800,7 @@ function buildPanel(){
       buyRow('bTrucks', '🚛', 'Caminhões de paletes', `Carregam os paletes e vendem (${money(PALLET_BLOCKS*BLOCK_VALUE)} cada).`, B.trucks.length, 3);
       upRows(2); }
     sec('🏗️ Fase 3 · Usina de concreto usinado');
-    if(!C.open) el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">${concUnlocked() ? 'Liberada!' : `Para liberar: fábrica de blocos com 1 caminhão e nível 4 (hoje ${qLevel2()}).`} A usina mistura brita com cimento, areia, água e aditivos (automáticos) e enche as betoneiras: ${money(CONC_VALUE)} por m³ (1 t de brita).</p>`);
+    if(!C.open) el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:0">${concUnlocked() ? 'Liberada!' : `Para liberar: fábrica de blocos com 1 caminhão e nível 4 (hoje ${qLevel2()}) e você no nível ${LVL_REQ.conc} (hoje ${lvl()}).`} A usina mistura brita com cimento, areia, água e aditivos (automáticos) e enche as betoneiras: ${money(CONC_VALUE)} por m³ (1 t de brita).</p>`);
     buyRow('cOpen', '🏗️', 'Usina de Concreto', 'Silos, misturador central e a primeira betoneira. Uma carregadeira traz a brita.', +C.open, 1);
     if(C.open){
       el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlRows">
@@ -1800,7 +1826,7 @@ function buildPanel(){
         <div><span>📜 Resmas de papel</span><b>${Math.floor(F.paper)}/${PAPER_CAP} ≈ ${money(paperValue())}</b></div>
         <div><span>💵 Lucro das etapas</span><b>corte ${money(stageRate('corte'))}/s · serraria ${money(stageRate('serraria'))}/s</b></div>
       </div></div>`);
-    if(!F.open){ const r = forestOpenLeft(); add('🏗️', 'Terreno da Floresta', 'Libera a floresta a leste das minas. Também dá para pagar pisando no quadrado no fim da estrada.', btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openForest(); } }, r)); return; }
+    if(!F.open){ const r = forestOpenLeft(); add('🏗️', 'Terreno da Floresta', `Libera a floresta a leste das minas. Também dá para pagar pisando no quadrado no fim da estrada.${lvlOk('forest') ? '' : ` Precisa do nível ${LVL_REQ.forest}.`}`, lvlOk('forest') ? btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openForest(); } }, r) : tag('🔒 Nível ' + LVL_REQ.forest, 'var(--muted)')); return; }
     if(F.cv || F.pp){ const v = sackValue() + paperValue(), bt = document.createElement('button'); bt.className = 'primary'; bt.style.width = '100%'; bt.style.marginBottom = '10px';
       bt.textContent = v > 0 ? `🌲 Vender carvão vegetal e papel por ${money(v)}` : '🌲 Nada pronto para vender ainda'; bt.disabled = v <= 0;
       bt.onclick = ()=>{ sellForest(); buildPanel(); }; el.appendChild(bt); }
@@ -2194,16 +2220,22 @@ function buildShop(){
   } else {
     const tb = beltSpeedCost();
     add('⚡', `Esteiras Turbo <span class="count">nv ${S.beltLvl}</span>`, `+${Math.round(TURBO_BONUS*100)}% de velocidade em todas as esteiras`,
-      MINES.some(hasBelt) ? btn(money(tb), ()=>{ if(S.money<tb) return; S.money-=tb; S.beltLvl++; buildShop(); render(); save(); }, tb) : tag('🔒 Esteira','var(--muted)'));
+      MINES.some(hasBelt) ? btn(money(tb), buyTurbo, tb) : tag('🔒 Esteira','var(--muted)'));
     const sc = sharpenCost();
-    add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, `+${Math.round(SHARPEN_BONUS*100)}% de minério por golpe`, btn(money(sc), ()=>{ if(S.money<sc)return; S.money-=sc; S.sharpen++; buildShop(); render(); save(); }, sc));
+    add('🪨', `Afiar Ferramenta <span class="count">nv ${S.sharpen}</span>`, `+${Math.round(SHARPEN_BONUS*100)}% de minério por golpe`, btn(money(sc), buySharpen, sc));
     const bc = boostCost();
-    add('⚙️', `Manutenção <span class="count">nv ${S.boost}</span>`, `+${Math.round(BOOST_BONUS*100)}% na produção dos funcionários e máquinas`, btn(money(bc), ()=>{ if(S.money<bc)return; S.money-=bc; S.boost++; buildShop(); render(); save(); }, bc));
+    add('⚙️', `Manutenção <span class="count">nv ${S.boost}</span>`, `+${Math.round(BOOST_BONUS*100)}% na produção dos funcionários e máquinas`, btn(money(bc), buyBoost, bc));
     add('💼', 'Vendedor Automático', 'Vende todo minério automaticamente', S.autoSell ? tag('✔ Ativo') :
-      btn(money(AUTOSELL_COST), ()=>{ if(S.money<AUTOSELL_COST)return; S.money-=AUTOSELL_COST; S.autoSell=true; sellAll(true); buildShop(); render(); save(); }, AUTOSELL_COST));
+      btn(money(AUTOSELL_COST), buyAutoSell, AUTOSELL_COST));
   }
 }
+function renderXP(){
+  const X = S.xp; if(!X) return; const need = xpNeed(X.lvl);
+  document.getElementById('xpLvl').textContent = 'Nv ' + X.lvl; document.getElementById('xpTitle').textContent = xpTitle(X.lvl) + (lvlBoost() > 1 ? ' · ⚡×1,5' : '');
+  document.getElementById('xpFill').style.width = Math.min(100, X.xp/need*100) + '%'; document.getElementById('xpTxt').textContent = `${fmt(X.xp)} / ${fmt(need)} XP`;
+}
 function render(){
+  renderXP();
   const m = mineById(S.active);
   document.getElementById('money').textContent = money(S.money);
   { const g = document.getElementById('gemCount'); g.hidden = !S.gemsFound; g.textContent = '💎 ' + S.gems; }
@@ -3681,7 +3713,8 @@ function createWorld(){
   const fRiders = [], fT = {}, lenhaGeo = new THREE.BoxGeometry(0.5,0.18,0.18);
   function updateForest(dt, t){
     const F = S.forest, b = F.buf;
-    if(forestEntry.mesh.visible){ const r = forestOpenLeft(); forestEntry.draw('🌲', money(r), 1 - r/FOREST_OPEN_COST, false); }
+    forestEntry.mesh.visible = !F.open;
+    if(forestEntry.mesh.visible){ const r = forestOpenLeft(), ok = lvlOk('forest'); forestEntry.draw(ok ? '🌲' : '🔒', ok ? money(r) : 'Nível ' + LVL_REQ.forest, ok ? 1 - r/FOREST_OPEN_COST : 0, !ok); }
     FOREST_ITEMS.forEach(it=>{ const tl = forestTiles[it.id]; if(tl && tl.mesh.visible){ const r = fLeft(it); tl.draw(it.ico, money(r), 1 - r/it.cost, false); } });
     // árvores: as primeiras são as maduras; a seguinte é a muda crescendo
     const full = Math.floor(F.trees), frac = F.trees - full;
@@ -3718,7 +3751,7 @@ function createWorld(){
       let d = it.d, s2 = 0; while(d > lens[s2]){ d -= lens[s2]; s2++; } it.r.position.lerpVectors(it.path[s2], it.path[s2+1], d/lens[s2]); it.r.scale.setScalar(riderScale(it.d, tot)); }
   }
   function payForest(dt){
-    const F = S.forest; if(S.money <= 0) return;
+    const F = S.forest; if(S.money <= 0 || (!F.open && !lvlOk('forest'))) return;
     if(!F.open){ const r = forestOpenLeft(), pay = Math.min(S.money, r, Math.max(FOREST_OPEN_COST*dt/1.6, 1)); S.money -= pay; S.paid.fo_open = (S.paid.fo_open||0) + pay; if(Math.random() < dt*8) burstBills(38.4, -4, 1); if(forestOpenLeft() <= 0.0001) openForest(); return; }
     const it = FOREST_ITEMS.find(x=>x.kind === 'm' && forestTiles[x.id].mesh.visible && forestTiles[x.id].inside(player.position)); if(!it) return;
     const r = fLeft(it), pay = Math.min(S.money, r, Math.max(it.cost*dt/1.6, 1)); S.money -= pay; S.paid['fo_'+it.id] = (S.paid['fo_'+it.id]||0) + pay;
@@ -3907,7 +3940,7 @@ function createWorld(){
   let lastBlasts = null, shake = 0, blastFx = [];
   function updateQuarry(dt, t){
     const Q = S.quarry, B = Q.blocks, C = Q.conc;
-    if(quarryEntry.mesh.visible){ const r = qOpenLeft(); quarryEntry.draw('⛰️', money(r), 1 - r/QUARRY_OPEN_COST, false); }
+    if(quarryEntry.mesh.visible){ const r = qOpenLeft(), ok = lvlOk('quarry'); quarryEntry.draw(ok ? '⛰️' : '🔒', ok ? money(r) : 'Nível ' + LVL_REQ.quarry, ok ? 1 - r/QUARRY_OPEN_COST : 0, !ok); }
     if(!Q.open){ rockPile.count = 0; return; }
     // sirene antes da explosão e a explosão
     const left = blastEvery() - Q.blastT; sirenMat.color.set(left < 2.5 && Math.sin(t*16) > 0 ? '#ff3b2a' : '#5a1a14');
@@ -3990,7 +4023,7 @@ function createWorld(){
       else truckDrive(v.g, st, btPath, T_IN, cTripTime(), 0);
       if(st.payN && st.payN !== v.payN){ v.payN = st.payN; if(player.position.distanceTo(V3(108,15)) < 40) floatText('🏗️ +' + money(st.paid), new THREE.Vector3(110, 2.5, 22), '#9cff7a'); } });
   }
-  function payQuarry(dt){ if(S.quarry.open || S.money <= 0) return; const r = qOpenLeft(), pay = Math.min(S.money, r, Math.max(QUARRY_OPEN_COST*dt/1.6, 1));
+  function payQuarry(dt){ if(S.quarry.open || S.money <= 0 || !lvlOk('quarry')) return; const r = qOpenLeft(), pay = Math.min(S.money, r, Math.max(QUARRY_OPEN_COST*dt/1.6, 1));
     S.money -= pay; S.paid.q_open = (S.paid.q_open||0) + pay; if(Math.random() < dt*8) burstBills(77.2, 2, 1); if(qOpenLeft() <= 0.0001) openQuarry(); }
 
   // ---------- LAGO, PÁTIO DE ESTOQUE E PÁTIO DE INSUMOS DA PEDREIRA ----------
@@ -4067,6 +4100,7 @@ function createWorld(){
   const lRiders = [], lT = {}, sandGeo = new THREE.SphereGeometry(0.12, 6, 4), waterGeo = new THREE.SphereGeometry(0.1, 6, 4);
   function updateLake(dt, t){
     const L = S.lake;
+    lakeEntry.mesh.visible = !L.open && lakeUnlocked();
     if(lakeEntry.mesh.visible){ const r = lakeOpenLeft(); lakeEntry.draw('🌊', money(r), 1 - r/LAKE_OPEN_COST, false); }
     lakeWater.material.color.setHSL(0.56, 0.62, 0.52 + Math.sin(t*0.8)*0.02);
     const lv = L.open ? (L.level ?? 1) : 1; lakeWater.scale.set(LK.rx*(0.8 + 0.2*lv), LK.rz*(0.8 + 0.2*lv), 1);   // o lago baixa quando drena
@@ -5131,6 +5165,107 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
+// ===================== EXPERIÊNCIA (XP) E NÍVEIS =====================
+// todos os valores de XP ficam aqui. O XP só é dado quando a compra dá certo (o dinheiro ou o estado mudou);
+// nada no jogo pode ser vendido de volta, então não dá para comprar e vender o mesmo item para ganhar XP.
+const XP_CFG = {
+  contratar:25, melhorarFunc:15, upgradeMaquina:50, comprarMaquina:150, comprarVeiculo:100, melhorarVeiculo:40, melhorarEstoque:30, melhorarEsteira:30,
+  gerente:100, automatizar:250, missao:200, contrato:150, terreno:500, novaMina:1000, novaFabrica:1000, metaProducao:100, medalha:60,
+};
+const xpNeed = l => Math.round(100 * Math.pow(l, 1.5));          // XP para sair do nível l
+const XP_TITLES = [[1,'Aprendiz'],[5,'Minerador'],[10,'Empreendedor'],[20,'Empresário'],[30,'Empresário Industrial'],[50,'Magnata Industrial'],[75,'Barão da Indústria'],[100,'Rei da Indústria'],[150,'Magnata Global'],[200,'Imperador Industrial'],[500,'Lenda Industrial']];
+const xpTitle = l => XP_TITLES.filter(t=>l >= t[0]).pop()[1];
+const lvl = () => (S.xp && S.xp.lvl) || 1;
+const lvlBonus = () => 1 + 0.02*Math.floor(lvl()/10);             // +2% de produção a cada 10 níveis
+const lvlBoost = () => (S.xp && S.xp.boostUntil > Date.now()) ? 1.5 : 1;   // bônus temporário dos níveis 25, 50...
+// requisitos de nível (fracos de propósito: no ritmo normal o jogador já passou deles quando tem o dinheiro)
+const LVL_REQ = {bank:8, forest:9, quarry:10, blocks:12, lake:13, conc:15};
+const lvlOk = k => lvl() >= (LVL_REQ[k]||0);
+let xpQueue = 0, xpQueueT = 0;
+function gainXP(n, why){
+  if(!(n > 0) || !S.xp) return; const X = S.xp; X.xp += n; X.total += n;
+  xpQueue += n; clearTimeout(xpQueueT); xpQueueT = setTimeout(()=>{ xpFloat('+' + fmt(xpQueue) + ' XP'); xpQueue = 0; }, 60);
+  const ups = [];
+  while(X.xp >= xpNeed(X.lvl)){ X.xp -= xpNeed(X.lvl); X.lvl++; ups.push(X.lvl); }
+  if(ups.length) levelUp(ups);
+}
+function xpFloat(txt){ if(typeof document === 'undefined') return; const box = document.getElementById('xpBox'); if(!box) return; const r = box.getBoundingClientRect();
+  const f = document.createElement('div'); f.className = 'xpFloat'; f.textContent = txt; f.style.left = (r.left + r.width/2) + 'px'; f.style.top = (r.bottom + 4) + 'px';
+  document.body.appendChild(f); setTimeout(()=>f.remove(), 1150); }
+function levelReward(L){
+  const out = [], cash = Math.round(Math.max(30*L, incomePerSec()*90 + 20*L));   // ~1,5 min de produção dos ajudantes
+  S.money += cash; out.push(`💵 ${money(cash)}`);
+  if(L % 5 === 0){ S.gems += 1; out.push('💎 1 gema'); }
+  if(L % 10 === 0) out.push(`📈 Produção dos ajudantes +2% para sempre (agora +${Math.round((lvlBonus()-1)*100)}%)`);
+  if(L % 25 === 0){ S.xp.boostUntil = Date.now() + 10*60*1000; out.push('⚡ Produção ×1,5 por 10 minutos'); }
+  if(L % 50 === 0){ S.gems += 4; out.push('💎 +4 gemas de bônus'); }
+  if(L % 100 === 0){ S.gems += 10; out.push('👑 +10 gemas de bônus'); }
+  const un = Object.entries(LVL_REQ).filter(([k,v])=>v === L).map(([k])=>({forest:'🌲 Floresta', quarry:'⛰️ Pedreira', blocks:'🧱 Fábrica de Blocos', lake:'🌊 Lago', conc:'🏗️ Usina de Concreto', bank:'🔋 Banco de Baterias'}[k]));
+  un.forEach(u=>out.push(`🔓 ${u} liberado(a) para comprar`));
+  if(XP_TITLES.some(t=>t[0] === L)) out.push(`🏅 Novo título: ${xpTitle(L)}`);
+  return out;
+}
+function levelUp(ups){
+  const rew = []; ups.forEach(L=>rew.push(...levelReward(L)));
+  const L = ups[ups.length-1]; save();
+  if(typeof document === 'undefined' || !document.getElementById('lvlUp') || window.SIM) return;
+  document.getElementById('luTitle').textContent = `NÍVEL ${L}!`; document.getElementById('luName').textContent = '🏅 ' + xpTitle(L);
+  document.getElementById('luRew').innerHTML = rew.join('<br>'); document.getElementById('lvlUp').hidden = false;
+  sfx('win'); setTimeout(()=>sfx('win'), 380); if(window.world3d) world3d.celebrate();
+}
+// metas de produção acumuladas: faturamento e minério dobram a cada meta (dá pouco XP de propósito)
+const XP_SHIFT = 120, XP_SHIFT_PCT = 0.04;   // a cada 2 min produzindo: 4% do XP do nível (sobe ~1 nível a cada 50 min só produzindo)
+function xpMilestones(sec){ const X = S.xp; if(!X) return;
+  if(sec > 0 && (incomePerSec() > 0 || S.quarry.open)){ X.shiftT = (X.shiftT||0) + sec; while(X.shiftT >= XP_SHIFT){ X.shiftT -= XP_SHIFT; gainXP(Math.max(10, Math.round(xpNeed(X.lvl)*XP_SHIFT_PCT)), 'turno'); } }
+  while((S.earned||0) >= X.nextEarn){ X.nextEarn *= 2; gainXP(XP_CFG.metaProducao, 'meta'); }
+  const ore = MINES.reduce((a,m)=>a + (S.mined[m.id]||0), 0); while(ore >= X.nextOre){ X.nextOre *= 2; gainXP(XP_CFG.metaProducao/2, 'meta'); } }
+// ganchos nas compras: cada função recebe o XP certo só quando a compra acontece
+(function hookXP(){
+  const C = XP_CFG, paid = (fn, xp) => { const f = window[fn]; window[fn] = function(...a){ const m0 = S.money, r = f.apply(this, a); if(S.money < m0 - 1e-9) gainXP(typeof xp === 'function' ? xp(...a) : xp, fn); return r; }; };
+  const done = (fn, xp) => { const f = window[fn]; window[fn] = function(...a){ const r = f.apply(this, a); gainXP(typeof xp === 'function' ? xp(...a) : xp, fn); return r; }; };
+  paid('hireHelper', C.contratar); paid('hireManager', C.gerente); paid('upgradeHelperTool', C.melhorarFunc);
+  done('completeTool', C.novaMina); done('completeSmelter', C.comprarMaquina); paid('buyBelt', C.automatizar); paid('buySellBelt', C.automatizar);
+  paid('buyCoalDrill', C.upgradeMaquina); paid('buyCollector', C.comprarVeiculo); paid('buyTruck', C.comprarVeiculo); paid('buyLoader', C.contratar);
+  paid('buyTruckCap', C.melhorarVeiculo); paid('buyBag', C.melhorarEstoque); done('openDepot', C.terreno); paid('repairAll', 10);
+  done('openPower', C.terreno); done('completePowerItem', it => it.kind === 'w' ? C.contratar : it.id === 'tb' ? C.automatizar : C.comprarMaquina); paid('upgradeBoiler', C.upgradeMaquina);
+  done('openOil', C.terreno); done('completeOilItem', it => it.kind === 'w' ? C.contratar : it.id === 'ld' ? C.comprarVeiculo : it.id === 'ps' ? C.automatizar : C.comprarMaquina); paid('upgradePump', C.upgradeMaquina);
+  done('openForest', C.terreno); done('completeForestItem', it => it.kind === 'w' ? C.contratar : it.id === 'tr' ? C.comprarVeiculo : C.comprarMaquina); paid('upgradeForest', C.upgradeMaquina);
+  done('openQuarry', C.terreno);
+  paid('quarryBuy', k => ({crusher:C.comprarMaquina, belt:C.automatizar, helpers:C.contratar, loaders:C.comprarVeiculo, trucks:C.comprarVeiculo, bOpen:C.novaFabrica, bHelpers:C.contratar,
+    bBelt:C.automatizar, bTrucks:C.comprarVeiculo, cOpen:C.novaFabrica, cBelt:C.automatizar, cTrucks:C.comprarVeiculo})[k]);
+  paid('quarryUp', k => ({stock:C.melhorarEstoque, bstore:C.melhorarEstoque, ccap:C.melhorarEstoque, belt:C.melhorarEsteira, sell:C.melhorarVeiculo, bsell:C.melhorarVeiculo, ctrans:C.melhorarVeiculo, cspeed:C.melhorarVeiculo})[k] || C.upgradeMaquina);
+  done('openLake', C.terreno); paid('lakeBuy', k => k.endsWith('Op') ? C.contratar : k === 'trucks' ? C.comprarVeiculo : C.comprarMaquina);
+  paid('lakeUp', k => k === 'ltank' ? C.melhorarEstoque : k === 'lhaul' ? C.melhorarVeiculo : C.upgradeMaquina);
+  paid('buyGemItem', 30);
+  const dd = window.deliverDeal; window.deliverDeal = function(...a){ const n0 = S.market.deals||0, r = dd.apply(this, a); if((S.market.deals||0) > n0) gainXP(C.contrato, 'contrato'); return r; };
+  const cm = window.checkMissions; window.checkMissions = function(...a){ const m0 = S.mission, skip = !!S.skipMissionRewards, r = cm.apply(this, a); if(!skip && S.mission > m0) gainXP(C.missao*(S.mission - m0), 'missao'); return r; };
+  const ca = window.checkAchievements; window.checkAchievements = function(...a){ const n0 = Object.keys(S.ach||{}).length, r = ca.apply(this, a), n = Object.keys(S.ach||{}).length - n0; if(n > 0) gainXP(C.medalha*n, 'medalha'); return r; };
+})();
+// compras da loja que não tinham função própria
+function buySharpen(){ const c = sharpenCost(); if(S.money < c) return; S.money -= c; S.sharpen++; gainXP(XP_CFG.upgradeMaquina, 'afiar'); buildShop(); render(); save(); }
+function buyBoost(){ const c = boostCost(); if(S.money < c) return; S.money -= c; S.boost++; gainXP(XP_CFG.upgradeMaquina, 'boost'); buildShop(); render(); save(); }
+function buyTurbo(){ const c = beltSpeedCost(); if(S.money < c || !MINES.some(hasBelt)) return; S.money -= c; S.beltLvl++; gainXP(XP_CFG.melhorarEsteira, 'turbo'); buildShop(); render(); save(); }
+function buyAutoSell(){ if(S.autoSell || S.money < AUTOSELL_COST) return; S.money -= AUTOSELL_COST; S.autoSell = true; gainXP(XP_CFG.automatizar, 'auto'); sellAll(true); buildShop(); render(); save(); }
+// saves antigos: XP retroativo pelo que já foi construído (sobe os níveis sem pagar as recompensas em dinheiro)
+(function migrateXP(){
+  if(S.xp) return; const C = XP_CFG; let x = 0;
+  x += (TOOLS.filter(t=>S.tools[t.id]).length - 1)*C.novaMina;
+  for(const m of MINES){ const st = S.staff[m.id]; x += st.n*C.contratar + (st.mgr ? C.gerente : 0) + (st.tool||0)*C.melhorarFunc;
+    if(S.smelters[m.id]) x += C.comprarMaquina; if(S.belts[m.id]) x += C.automatizar; if(S.sellBelts[m.id]) x += C.automatizar; if(S.collectors[m.id]) x += C.comprarVeiculo; }
+  x += (S.sharpen + S.boost + S.coalLvl)*C.upgradeMaquina + S.beltLvl*C.melhorarEsteira + (S.mission||0)*C.missao + Object.keys(S.ach||{}).length*C.medalha;
+  if(S.depotOpen) x += C.terreno + (S.trucks||0)*C.comprarVeiculo + (S.loaders||0)*C.contratar;
+  for(const [o, items] of [[S.power, POWER_ITEMS], [S.oil, OIL_ITEMS], [S.forest, FOREST_ITEMS]]){ if(o.open) x += C.terreno; items.forEach(it=>{ if(o[it.id]) x += it.kind === 'w' ? C.contratar : C.comprarMaquina; }); x += (o.lvl||0)*C.upgradeMaquina; }
+  const Q = S.quarry; if(Q.open) x += C.terreno + (Q.crusher ? C.comprarMaquina : 0) + (Q.belt ? C.automatizar : 0) + Q.helpers*C.contratar + Q.loaders*C.comprarVeiculo + Q.trucks.length*C.comprarVeiculo
+    + (Q.blocks.open ? C.novaFabrica : 0) + Q.blocks.helpers*C.contratar + Q.blocks.trucks.length*C.comprarVeiculo + (Q.conc.open ? C.novaFabrica : 0) + Q.conc.bts.length*C.comprarVeiculo
+    + Object.values(Q.lv).reduce((a,v)=>a+v, 0)*C.upgradeMaquina;
+  if(S.lake.open) x += C.terreno + ['pump','dredge','exc'].filter(k=>S.lake[k]).length*C.comprarMaquina + ['pumpOp','dredgeOp','excOp'].filter(k=>S.lake[k]).length*C.contratar;
+  S.xp = {lvl:1, xp:0, total:0, nextEarn:1000, nextOre:100, boostUntil:0};
+  while((S.earned||0) >= S.xp.nextEarn) S.xp.nextEarn *= 2;
+  const ore = MINES.reduce((a,m)=>a + (S.mined[m.id]||0), 0); while(ore >= S.xp.nextOre) S.xp.nextOre *= 2;
+  S.xp.total = x; S.xp.xp = x; while(S.xp.xp >= xpNeed(S.xp.lvl)){ S.xp.xp -= xpNeed(S.xp.lvl); S.xp.lvl++; }
+  if(S.xp.lvl > 1) setTimeout(()=>toast(`⭐ Sistema de níveis chegou! Pelo que você já construiu, você começa no nível ${S.xp.lvl}.`), 2200);
+})();
+
 // ganhos offline: 25% do tempo fora, até 4 h, simulado em passos de 10 s (respeita estoques, matérias-primas, transporte e vendas)
 const OFFLINE_MAX = 4*3600, OFFLINE_RATE = 0.25;
 (function offline(){
@@ -5205,6 +5340,7 @@ function showWelcome(){
     document.getElementById('welcome').hidden = true; window.pendingWelcome = null; render(); save(); };
   x2.onclick = ()=>close(true); document.getElementById('wClaim').onclick = ()=>close(false);
 }
+document.getElementById('luOk').onclick = ()=>{ document.getElementById('lvlUp').hidden = true; buildShop(); if(sheetOpen === 'panel') buildPanel(); render(); };
 document.getElementById('title').onclick = ()=>{ document.getElementById('title').hidden = true; showWelcome(); };
 
 buildMines(); buildShop(); render();
