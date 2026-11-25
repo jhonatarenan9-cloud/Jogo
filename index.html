@@ -516,6 +516,20 @@ const TOOLS = [
   {id:'carregadeira',name:'Máquina Carregadeira',ico:'🚜', cost:200000,   power:9,  passive:1.5, desc:'Pá carregadeira pesada. Libera a mina de Diamante.'},
   {id:'escavadeira', name:'Escavadeira Gigante', ico:'🏗️', cost:2000000,  power:20, passive:5,   desc:'Máquina colossal. Libera a mina de Esmeralda.'},
 ];
+// fazenda (definida aqui porque o estado inicial usa a lista; lógica mais abaixo)
+const FARM_FEED = {auto:true, ownDiscount:0};   // ownDiscount: fração do custo economizada com ração própria (futuro)
+const FARM = [
+  {id:'ovelha', name:'Ovelhas', ico:'🐑', prod:'Fardos de lã', pico:'🧶', type:'prod', open:40000, lvl:14, start:3, cap:8, animal:900,
+    rawName:'lã', rawRate:0.1, perUnit:4, value:250, feed:0.2, machine:['Lavadora de lã', 6000], help:[1200, 3000, 7000], truck:[5000, 14000], color:'#f4f1ec'},
+  {id:'vaca', name:'Vacas leiteiras', ico:'🐄', prod:'Caixas de leite', pico:'🥛', type:'prod', open:120000, lvl:17, start:3, cap:6, animal:4000,
+    rawName:'leite (L)', rawRate:0.25, perUnit:2, value:70, feed:0.6, machine:['Pasteurizadora e embaladora', 20000], help:[4000, 10000, 24000], truck:[15000, 40000], color:'#9fd3ee'},
+  {id:'galinha', name:'Galinhas', ico:'🐔', prod:'Caixas de ovos', pico:'🥚', type:'prod', open:300000, lvl:20, start:10, cap:24, animal:2500,
+    rawName:'ovos', rawRate:0.25, perUnit:30, value:600, feed:0.1, machine:['Lavadora e embaladora de ovos', 45000], help:[9000, 22000, 50000], truck:[35000, 90000], color:'#f2d7a6'},
+  {id:'boi', name:'Gado de corte', ico:'🐂', prod:'Carne bovina embalada', pico:'🥩', type:'corte', open:800000, lvl:24, start:4, cap:12, animal:30000,
+    birth:40, grow1:60, grow2:90, packs:20, value:200, feed:1.5, slaughter:12, machine:['Frigorífico', 150000], help:[20000, 50000, 120000], truck:[80000, 200000], color:'#c2453a'},
+  {id:'porco', name:'Porcos', ico:'🐖', prod:'Carne suína embalada', pico:'🥓', type:'corte', open:2000000, lvl:28, start:6, cap:20, animal:45000,
+    birth:25, grow1:40, grow2:60, packs:12, value:330, feed:1.0, slaughter:5, machine:['Frigorífico de suínos', 400000], help:[50000, 120000, 300000], truck:[200000, 500000], color:'#e98a96'},
+];
 // Funcionários: até 3 ajudantes por mina + 1 gerente por mina
 const STAFF_COST = {carvao:60, cobre:45, ferro:550, ouro:5500, diamante:55000, esmeralda:550000};
 // ferramenta dos ajudantes (por mina): picareta -> martelete -> rompedor
@@ -633,6 +647,7 @@ function newState(){
     lake:{open:false, pump:false, pumpOp:false, dredge:false, dredgeOp:false, exc:false, excOp:false, trucks:[], lv:{}, water:0, sand:0, clay:0, sandF:0, clayF:0, level:1},
     quarry:{open:false, crusher:false, belt:false, helpers:0, loaders:0, trucks:[], lv:{}, blastT:0, blasts:0, rocks:0, hopper:0, brita:0, earned:0, sold:{brita:0, pallets:0, m3:0},
       blocks:{open:false, helpers:0, belt:false, trucks:[], mix:0, cure:0, loose:0, pallets:0}, conc:{open:false, belt:false, bts:[], bin:0}},
+    farm:Object.fromEntries(FARM.map(d=>[d.id, {open:false, n:0, baby:0, young:0, adult:0, queue:0, rep:0.3, helpers:0, machine:false, trucks:[], lv:{}, raw:0, hopper:0, stock:0, feedDebt:0, earned:0, sold:0}])),
     xp:{lvl:1, xp:0, total:0, nextEarn:1000, nextOre:100, boostUntil:0},
     pr:{stars:0, total:0, eras:0, lv:{}}, genLvl:0, noGen:true, autoFuel:false, market:{m:{}, p:{}, t:0, deal:null, dealT:20, deals:0, cars:0, carEarn:0},
     depotOpen:false, loaders:0, collectors:{}, split:{}, haul:Object.fromEntries(MINES.map(m=>[m.id,0])), trucks:0, truckLvl:0, bagLvl:0, deliveries:0,
@@ -646,6 +661,7 @@ try{
   if(raw){ const d = JSON.parse(raw), n = newState(); S = Object.assign(n, d); if(!d.xp) delete S.xp;   // save sem XP: migração retroativa abaixo
     S.ore = Object.assign(newState().ore, d.ore); S.mined = Object.assign(newState().mined, d.mined);
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
+    { const n = newState().farm; S.farm = n; if(d.farm) for(const k in n) if(d.farm[k]) S.farm[k] = Object.assign(n[k], d.farm[k], {lv:Object.assign({}, d.farm[k].lv)}); }
     S.lake = Object.assign(newState().lake, d.lake, {lv:Object.assign({}, d.lake && d.lake.lv)});
     { const n = newState().quarry, q = d.quarry || {}; S.quarry = Object.assign(n, q, {lv:Object.assign({}, q.lv), sold:Object.assign(n.sold, q.sold),
         blocks:Object.assign(n.blocks, q.blocks), conc:Object.assign(n.conc, q.conc)}); }
@@ -739,6 +755,7 @@ function produce(sec){
   forestTick(sec);
   quarryTick(sec);
   lakeTick(sec);
+  farmTick(sec);
   sellByBelts();
   stageTick(sec);
   marketTick(sec);
@@ -759,7 +776,7 @@ const MARKET_MIN = 0.7, MARKET_MAX = 1.4, MARKET_EVERY = 30;   // limites e segu
 const mk = id => (S.market && S.market.m[id]) || 1;
 const mkP = id => mk(id) * prSell();   // preço de venda: mercado × Negociante
 const mval = m => m.value * mkP(m.id);
-const MARKET_KEYS = () => [...MINES.filter(m=>!m.fuel).map(m=>m.id), 'moido','limpo','crude','clean','drums','diesel','bat','gal','tora','lenha','sack','paper','brita','bloco','concreto','areia','argila'];
+const MARKET_KEYS = () => [...MINES.filter(m=>!m.fuel).map(m=>m.id), 'moido','limpo','crude','clean','drums','diesel','bat','gal','tora','lenha','sack','paper','brita','bloco','concreto','areia','argila', ...FARM.map(d=>'f_'+d.id)];
 function marketTick(sec){
   const K = S.market; K.t = (K.t||0) + sec;
   if(K.t < MARKET_EVERY) return; const steps = Math.min(20, Math.floor(K.t/MARKET_EVERY)); K.t -= Math.floor(K.t/MARKET_EVERY)*MARKET_EVERY;
@@ -1226,6 +1243,74 @@ function lakeBuy(k){ const c = lBuyCost(k); if(!lCanBuy(k) || S.money < c) retur
 function lakeUp(k){ if(!S.lake.open || lLv(k) >= 10) return; const c = lUpCost(k); if(S.money < c) return; S.money -= c; S.lake.lv[k] = lLv(k) + 1; toast(`${L_UP[k].ico} ${L_UP[k].name}: nível ${lLv(k)}!`); render(); save(); }
 function openLake(){ S.lake.open = true; delete S.paid.lake_open; toast('🌊 Lago liberado! Instale a estação de bombeamento, a draga e a escavadeira.'); if(window.world3d) world3d.onLakeChanged(); render(); save(); }
 
+// ===================== FAZENDA (sul da rodovia) =====================
+// 5 criações com o mesmo motor. 'prod' (ovelha, vaca, galinha): animais produzem matéria-prima → ajudantes coletam →
+// máquina processa → estoque → caminhões vendem. 'corte' (gado, porco): reprodução → filhote → jovem → adulto → frigorífico → embalagens.
+// A ração hoje é automática e seu custo é descontado das vendas. Futuro: plantação de milho/fábrica de ração entra em FARM_FEED.
+
+const FARM_UP = {grow:{ico:'🌱', name:'Produção / crescimento mais rápido', f:2.6}, help:{ico:'👷', name:'Funcionários mais rápidos', f:2.6}, mach:{ico:'⚙️', name:'Máquina mais rápida', f:2.6},
+  stock:{ico:'📦', name:'Estoque maior', f:2.4}, pasture:{ico:'🧱', name:'Expandir cercado (+50% animais)', f:3.0}, truck:{ico:'🚛', name:'Caminhões maiores e mais rápidos', f:2.6}, rep:{ico:'💞', name:'Reprodução mais rápida', f:2.6}};
+const FU_BASE = {grow:0.06, help:0.05, mach:0.06, stock:0.03, pasture:0.12, truck:0.06, rep:0.06};   // custo base = fração do preço da criação
+const fDef = id => FARM.find(d=>d.id===id);
+const fSt = id => S.farm[id];
+const fLv = (id, k) => (S.farm[id].lv[k]||0);
+const fUpCost = (id, k) => Math.ceil(fDef(id).open*FU_BASE[k]*Math.pow(FARM_UP[k].f, fLv(id, k)));
+const fCap = id => Math.round(fDef(id).cap * (1 + 0.5*fLv(id, 'pasture')));
+const fStockCap = id => Math.round(40 * (1 + 0.5*fLv(id, 'stock')));
+const fTruckLoad = id => Math.round((fDef(id).type === 'corte' ? 20 : 8) * (1 + 0.5*fLv(id, 'truck')));
+const fTrip = id => 22 * Math.pow(0.88, fLv(id, 'truck'));
+const fAnimals = id => { const F = S.farm[id]; return fDef(id).type === 'corte' ? F.baby + F.young + F.adult : F.n; };
+const fAnimalCost = id => Math.ceil(fDef(id).animal * Math.pow(1.15, S.farm[id].bought||0));
+const fUnlocked = d => lvl() >= d.lvl;
+const fBuyCost = (id, k) => { const F = S.farm[id], d = fDef(id); if(k === 'open') return F.open ? undefined : Math.max(0, d.open - (S.paid['fa_'+id]||0));
+  if(k === 'machine') return F.machine ? undefined : d.machine[1]; if(k === 'help') return d.help[F.helpers]; if(k === 'truck') return d.truck[F.trucks.length];
+  if(k === 'animal') return fAnimals(id) < fCap(id) ? fAnimalCost(id) : undefined; };
+const fCanBuy = (id, k) => { const F = S.farm[id], d = fDef(id); if(k === 'open') return !F.open && fUnlocked(d); if(!F.open || fBuyCost(id, k) === undefined) return false;
+  if(k === 'truck') return F.machine; return true; };
+const fFeedRate = id => fAnimals(id) * fDef(id).feed * (1 - FARM_FEED.ownDiscount);   // $/s de ração
+function farmPay(id, units){ const d = fDef(id), F = S.farm[id], gross = units*d.value*mkP('f_'+id), feed = Math.min(F.feedDebt, gross*0.6), v = gross - feed;
+  F.feedDebt -= feed; S.money += v; S.earned += v; F.earned = (F.earned||0) + v; F.sold = (F.sold||0) + units; gainXP(10, 'venda'); return v; }
+function farmStep(dt){
+  for(const d of FARM){ const F = S.farm[d.id]; if(!F.open) continue; const id = d.id;
+    F.feedDebt = Math.min(F.feedDebt + fFeedRate(id)*dt, 1e12);
+    const gr = 1 + 0.35*fLv(id, 'grow'), hs = 1 + 0.3*fLv(id, 'help'), ms = 1 + 0.4*fLv(id, 'mach');
+    if(d.type === 'prod'){
+      F.raw = Math.min(F.n*d.perUnit*2, F.raw + F.n*d.rawRate*gr*dt);                                       // matéria-prima nos animais (limite)
+      const col = Math.max(0, Math.min(F.raw, F.helpers*d.rawRate*3*hs*dt)); F.raw -= col; F.hopper += col; F.collecting = col > 0;   // cada funcionário dá conta de ~3 animais
+      if(F.machine){ const m = Math.max(0, Math.min(F.hopper, d.rawRate*d.cap*0.8*ms*dt, (fStockCap(id) - F.stock)*d.perUnit)); F.hopper -= m; F.stock += m/d.perUnit; F.working = m > 0; }
+      F.hopper = Math.min(F.hopper, 60*d.perUnit);
+    } else {
+      const cap = fCap(id), B = Math.max(2, Math.round(F.rep*cap)), tot = F.baby + F.young + F.adult;
+      if(tot < cap && F.adult >= 2){ const b = Math.min(cap - tot, Math.min(F.adult, B)/2*(1 + 0.35*fLv(id, 'rep'))/d.birth*dt); F.baby += b; F.births = (F.births||0) + b; }
+      const g1 = Math.min(F.baby, F.baby/(d.grow1/gr)*dt + 0.0001*dt), g2 = Math.min(F.young, F.young/(d.grow2/gr)*dt + 0.0001*dt); F.baby -= g1; F.young += g1 - g2; F.adult += g2;
+      if(F.machine && F.adult > B){ const x = F.adult - B; F.adult -= x; F.queue += x; }                    // adultos além das matrizes vão para o frigorífico
+      if(F.machine){ const m = Math.max(0, Math.min(F.queue, ms/d.slaughter*dt*(1 + 0.25*F.helpers), (fStockCap(id) - F.stock)/d.packs)); F.queue -= m; F.stock += m*d.packs; F.working = m > 0; }
+    }
+    let dock = F.trucks.find(t=>t.ph === 'load');
+    F.trucks.forEach(tk=>{ tk.t += dt;
+      if(tk.ph === 'in' && tk.t >= 6){ tk.ph = 'load'; tk.t = 0; if(!dock) dock = tk; }
+      else if(tk.ph === 'load' && tk === dock){ const m = Math.min(fTruckLoad(id) - tk.load, Math.floor(F.stock*100)/100, 2*dt*(1 + 0.5*fLv(id,'truck'))); if(m > 0){ F.stock -= m; tk.load += m; }
+        if(tk.load >= fTruckLoad(id) - 0.01){ tk.ph = 'out'; tk.t = 0; dock = null; } }
+      if(tk.ph === 'out' && tk.t >= fTrip(id)){ tk.paid = farmPay(id, tk.load); tk.payN = (tk.payN||0) + 1; tk.load = 0; tk.ph = 'in'; tk.t = 0; } });
+  }
+}
+function farmTick(sec){ if(!S.farm || !FARM.some(d=>S.farm[d.id].open) || sec <= 0) return; let left = Math.min(sec, 8*3600); while(left > 0){ const d = Math.min(left, 0.5); farmStep(d); left -= d; } }
+function farmOpen(id){ const F = S.farm[id], d = fDef(id); F.open = true; delete S.paid['fa_'+id];
+  if(d.type === 'corte'){ F.adult = d.start; F.baby = 2; } else F.n = d.start;
+  toast(`${d.ico} ${d.name} na fazenda! Contrate um ajudante e compre a ${d.machine[0].toLowerCase()}.`); if(window.world3d) world3d.onFarmChanged(); render(); save(); }
+function farmBuy(id, k){
+  if(!fCanBuy(id, k)) return; const c = fBuyCost(id, k); if(S.money < c) return; S.money -= c; const F = S.farm[id], d = fDef(id);
+  if(k === 'open'){ farmOpen(id); return; }
+  if(k === 'machine'){ F.machine = true; toast(`⚙️ ${d.machine[0]} pronta!`); }
+  if(k === 'help'){ F.helpers++; toast(`👷 Funcionário ${F.helpers} das ${d.name.toLowerCase()} contratado!`); }
+  if(k === 'truck'){ F.trucks.push({ph:'in', t:0, load:0}); toast(`🚛 Caminhão ${F.trucks.length} da fazenda comprado!`); }
+  if(k === 'animal'){ F.bought = (F.bought||0) + 1; if(d.type === 'corte') F.adult += 1; else F.n += 1; toast(`${d.ico} +1 animal (${Math.round(fAnimals(id))}/${fCap(id)})`); }
+  if(window.world3d) world3d.onFarmChanged(); render(); save();
+}
+function farmUp(id, k){ if(!S.farm[id].open) return; const c = fUpCost(id, k); if(S.money < c || fLv(id, k) >= 10) return; S.money -= c; S.farm[id].lv[k] = fLv(id, k) + 1;
+  toast(`${FARM_UP[k].ico} ${FARM_UP[k].name}: nível ${fLv(id, k)}`); if(window.world3d) world3d.onFarmChanged(); render(); save(); }
+function farmSellNow(id){ const F = S.farm[id], n = Math.floor(F.stock); if(n <= 0) return; F.stock -= n; const v = farmPay(id, n); toast(`${fDef(id).pico} ${n} vendidos por ${money(v)}`); render(); save(); }
+
 // ===================== MISSÕES =====================
 // uma de cada vez; recompensa ~20-30% do próximo passo, para ajudar sem estragar o desafio
 const MISSIONS = [
@@ -1545,6 +1630,7 @@ const SELL_ITEMS = [
   {g:'etapa', id:'argila', ico:'🟫', name:'Argila do lago (t)', v:2.5, q:()=>Math.floor((S.lake.clay||0) + (S.lake.clayF||0)), take:n=>{ const a = Math.min(n, S.lake.clay); S.lake.clay -= a; S.lake.clayF = Math.max(0, S.lake.clayF - (n - a)); }},
   {g:'final', id:'brita', ico:'⛰️', name:'Brita (t)', v:BRITA_VALUE, q:()=>Math.floor(S.quarry.brita||0), take:n=>{ S.quarry.brita -= n; S.quarry.sold.brita += n; }},
   {g:'final', id:'bloco', ico:'🧱', name:'Paletes de blocos', v:PALLET_BLOCKS*BLOCK_VALUE, q:()=>S.quarry.blocks.pallets||0, take:n=>{ S.quarry.blocks.pallets -= n; S.quarry.sold.pallets += n; }},
+  ...FARM.map(d=>({g:'final', id:'f_'+d.id, ico:d.pico, name:d.prod, v:d.value, q:()=>Math.floor((S.farm[d.id]||{}).stock||0), take:n=>{ S.farm[d.id].stock -= n; S.farm[d.id].sold = (S.farm[d.id].sold||0) + n; }})),
   {g:'final', id:'bat', ico:'🔋', name:'Baterias', v:BATTERY_VALUE, q:()=>S.power.batteries||0, take:n=>{ S.power.batteries -= n; S.power.sold = (S.power.sold||0) + n; }},
   {g:'final', id:'gal', ico:'⛽', name:'Galões', v:GAL_VALUE, q:()=>Math.floor(S.oil.gal||0), take:n=>{ S.oil.gal -= n; S.oil.sold = (S.oil.sold||0) + n; }},
   {g:'final', id:'ore', ico:'⛏️', name:'Minérios e barras', v:1, q:()=>MINES.reduce((a,m)=>m.fuel ? a : a + S.ore[m.id]*mval(m) + (S.bars[m.id]||0)*barValue(m), 0),
@@ -1567,12 +1653,13 @@ function dealPool(){
   if(O.s1 && O.m1) out.push({key:'drums', ico:'🛢️', name:'Tambores de petróleo', unit:20, n:20});
   if(S.forest.cv && S.forest.cw) out.push({key:'sack', ico:'🔥', name:'Sacos de carvão vegetal', unit:SACK_VALUE, n:20});
   if(S.forest.pp && S.forest.pw) out.push({key:'paper', ico:'📜', name:'Resmas de papel', unit:PAPER_VALUE, n:40});
+  FARM.forEach(d=>{ const F = S.farm[d.id]; if(F.open && F.machine) out.push({key:'f_'+d.id, ico:d.pico, name:d.prod, unit:d.value, n:d.type === 'corte' ? 30 : 12}); });
   if(P.lv && P.maq) out.push({key:'limpo', ico:'💧', name:'Carvão lavado', unit:3, n:30});
   return out;
 }
-const dealQty = k => k.startsWith('bar_') ? S.bars[k.slice(4)]||0 : k === 'bat' ? S.power.batteries||0 : k === 'gal' ? Math.floor(S.oil.gal||0) : k === 'drums' ? Math.floor(S.oil.drums) : k === 'limpo' ? S.power.buf.limpo : k === 'sack' ? Math.floor(S.forest.sack) : k === 'paper' ? Math.floor(S.forest.paper) : 0;
+const dealQty = k => k.startsWith('bar_') ? S.bars[k.slice(4)]||0 : k === 'bat' ? S.power.batteries||0 : k === 'gal' ? Math.floor(S.oil.gal||0) : k === 'drums' ? Math.floor(S.oil.drums) : k === 'limpo' ? S.power.buf.limpo : k === 'sack' ? Math.floor(S.forest.sack) : k === 'paper' ? Math.floor(S.forest.paper) : k.startsWith('f_') ? Math.floor(S.farm[k.slice(2)].stock) : 0;
 function dealTake(k, n){ if(k.startsWith('bar_')) S.bars[k.slice(4)] -= n; else if(k === 'bat'){ S.power.batteries -= n; S.power.sold = (S.power.sold||0) + n; }
-  else if(k === 'gal'){ S.oil.gal -= n; S.oil.sold = (S.oil.sold||0) + n; } else if(k === 'drums') S.oil.drums -= n; else if(k === 'limpo') S.power.buf.limpo -= n; else if(k === 'sack') S.forest.sack -= n; else if(k === 'paper') S.forest.paper -= n; }
+  else if(k === 'gal'){ S.oil.gal -= n; S.oil.sold = (S.oil.sold||0) + n; } else if(k === 'drums') S.oil.drums -= n; else if(k === 'limpo') S.power.buf.limpo -= n; else if(k === 'sack') S.forest.sack -= n; else if(k === 'paper') S.forest.paper -= n; else if(k.startsWith('f_')) S.farm[k.slice(2)].stock -= n; }
 function dealTick(){
   const K = S.market, now = Date.now();
   if(K.deal && now > K.deal.until){ K.deal = null; K.dealT = Date.now() + DEAL_GAP*1000; }
@@ -1708,6 +1795,39 @@ function buildPanel(){
     const pc = pumpCost();
     add('🛢️', `Campo Maior <span class="count">nv ${O.lvl}</span>`, `+50% em todos os setores e +50 L de tanque (hoje ${fmt(oilStep())} petróleo/s por bomba)`, O.ps ? btn(money(pc), upgradePump, pc) : tag('🔒 Posto','var(--muted)'));
     el.insertAdjacentHTML('beforeend', `<p class="small">Cada galão tem ${GAL_L} L. Os galões vão primeiro para o tanque do galpão (caminhão gasta ${TRUCK_FUEL} L por viagem, coletador ${COLLECTOR_FUEL} L); os que sobram ficam guardados e podem ser vendidos por ${money(GAL_VALUE)} cada.</p>`);
+    return;
+  }
+  if(panelTarget === 'fazenda'){
+    document.getElementById('sheetTitle').textContent = '🚜 Fazenda';
+    const tot = FARM.reduce((a,d)=>a + (S.farm[d.id].earned||0), 0);
+    el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="lvlTop"><span class="lvlIco">🚜</span><div><small>Faturamento total da fazenda</small><b>${money(tot)}</b></div><span class="lvlBadge">${FARM.filter(d=>S.farm[d.id].open).length}/5</span></div>
+      <p class="small" style="margin:8px 0 0;color:#5a4630">A ração é automática e o custo dela é descontado de cada venda. Uma plantação de milho e uma fábrica de ração poderão baixar esse custo no futuro.</p></div>`);
+    for(const d of FARM){ const F = S.farm[d.id], id = d.id;
+      sec(`${d.ico} ${d.name} → ${d.pico} ${d.prod}`);
+      if(!F.open){ const r = fBuyCost(id, 'open'); add(d.ico, `Criação de ${d.name.toLowerCase()}`, `Cercado, ${d.start} animais e galpão. ${d.prod}: ${money(d.value)} cada.${fUnlocked(d) ? '' : ` Precisa do nível ${d.lvl} (hoje ${lvl()}).`}`,
+        fUnlocked(d) ? btn(money(r), ()=>farmBuy(id,'open'), r) : tag('🔒 Nível ' + d.lvl, 'var(--muted)')); continue; }
+      const corte = d.type === 'corte', B = Math.max(2, Math.round(F.rep*fCap(id)));
+      el.insertAdjacentHTML('beforeend', `<div class="lvlCard"><div class="flow">${corte ? `${step(true,'💞','Reprodução')}${arrow(true)}${step(true,'🐣','Crescimento')}${arrow(F.machine)}${step(F.machine,'🏭','Frigorífico')}` : `${step(true,d.ico,'Animais')}${arrow(F.helpers>0)}${step(F.helpers>0,'👷','Coleta')}${arrow(F.machine)}${step(F.machine,'⚙️','Máquina')}`}${arrow(F.trucks.length>0)}${step(F.trucks.length>0,'🚛','Venda')}</div>
+        <div class="lvlRows">
+          ${corte ? `<div><span>🐂 Adultos · jovens · filhotes</span><b>${fmt(F.adult)} · ${fmt(F.young)} · ${fmt(F.baby)} / ${fCap(id)}</b></div>
+            <div><span>💞 Matrizes (reprodução)</span><b>${B} (${Math.round(F.rep*100)}% do cercado)</b></div><div><span>🏭 Na fila do frigorífico</span><b>${fmt(F.queue)}</b></div>`
+          : `<div><span>${d.ico} Animais</span><b>${F.n} / ${fCap(id)}</b></div><div><span>🧺 ${d.rawName} esperando coleta · no galpão</span><b>${fmt(F.raw)} · ${fmt(F.hopper)}</b></div>`}
+          <div><span>📦 Estoque</span><b>${Math.floor(F.stock)} / ${fStockCap(id)} ${d.pico}</b></div>
+          <div><span>🌾 Ração</span><b>-${money(fFeedRate(id))}/s (descontada nas vendas)</b></div>
+          <div><span>💵 Faturado · vendidos</span><b>${money(F.earned||0)} · ${fmt(F.sold||0)}</b></div></div></div>`);
+      if(corte){ const r = document.createElement('div'); r.className = 'row'; r.style.cssText = 'display:flex;gap:8px;margin:-4px 0 10px';
+        for(const [lab, dv] of [['− matrizes', -0.1], ['+ matrizes', 0.1]]){ const b2 = document.createElement('button'); b2.textContent = lab; b2.style.flex = '1';
+          b2.onclick = ()=>{ F.rep = Math.max(0.1, Math.min(0.6, Math.round((F.rep + dv)*10)/10)); save(); buildPanel(); }; r.appendChild(b2); }
+        el.appendChild(r); el.insertAdjacentHTML('beforeend', `<p class="small" style="margin-top:-6px">Mais matrizes = mais filhotes; menos matrizes = mais adultos vão para o frigorífico. Sempre ficam pelo menos 2 para a criação continuar. Com o cercado cheio a reprodução pausa.</p>`); }
+      const row = (k, ico, name, desc, n, max) => { const c = fBuyCost(id, k); add(ico, `${name}${max ? ` <span class="count">${n}/${max}</span>` : ''}`, desc, c === undefined ? tag(k === 'animal' ? 'Cercado cheio' : '✔ Completo') : fCanBuy(id, k) ? btn(money(c), ()=>farmBuy(id, k), c) : tag('🔒','var(--muted)')); };
+      row('animal', d.ico, `Comprar ${corte ? 'animal adulto' : 'animal'}`, `${Math.round(fAnimals(id))}/${fCap(id)} no cercado.`, 0, 0);
+      row('help', '👷', 'Funcionários', corte ? 'Alimentam e levam os animais prontos ao frigorífico (+25% cada no frigorífico).' : `Recolhem ${d.rawName} e levam ao galpão (cada um dá conta de ~3 animais).`, F.helpers, d.help.length);
+      row('machine', '⚙️', d.machine[0], corte ? 'Processa os adultos (sem cenas: tudo dentro do galpão) e embala a carne.' : `Limpa/trata e embala: ${d.perUnit} ${d.rawName} = 1 ${d.prod.toLowerCase().replace(/s$/,'')}.`, +F.machine, 1);
+      row('truck', '🚛', 'Caminhões', `Levam ${fTruckLoad(id)} por viagem e pagam na entrega.`, F.trucks.length, d.truck.length);
+      Object.keys(FARM_UP).filter(k=>k !== 'rep' || corte).forEach(k=>{ const u = FARM_UP[k], c = fUpCost(id, k), lv2 = fLv(id, k);
+        add(u.ico, `${u.name} <span class="count">nv ${lv2}</span>`, '', lv2 >= 10 ? tag('✔ Máximo') : btn(money(c), ()=>farmUp(id, k), c)); });
+      if(F.stock >= 1){ const b2 = document.createElement('button'); b2.className = 'primary'; b2.style.cssText = 'width:100%;margin-bottom:10px'; b2.textContent = `${d.pico} Vender ${Math.floor(F.stock)} agora`; b2.onclick = ()=>{ farmSellNow(id); buildPanel(); }; el.appendChild(b2); }
+    }
     return;
   }
   if(panelTarget === 'lago'){
@@ -2411,12 +2531,14 @@ function createWorld(){
   asphalt(-1.5, 24.0, 1.5, 28.9);                      // Rua do Galpão: pátio de entregas → rodovia
   asphalt(60, 28.9, HWY_E, 31.9);                       // rodovia até a pedreira
   asphalt(HWY_E - 3, 26.8, HWY_E, 28.9);                // ligação com a estrada dos caminhões da pedreira
-  ROADS.push([-110, 28.9, 60, 31.9], [-95, -5.3, 41.5, -2.7]);   // rodovia e estrada principal também contam como estrada
+  ROADS.push([-110, 28.9, 60, 31.9], [-95, -5.3, 41.5, -2.7]);
+  asphalt(-1.5, 31.9, 1.5, 36.5);                       // estrada da rodovia até a fazenda
+  ROADS.push([-45, 36.5, 45, 38.7]);                    // corredor da fazenda (sem árvores em cima)   // rodovia e estrada principal também contam como estrada
 
   // ---------- colisões ----------
   const circles = [], rects = [];
   function blocked(x,z){
-    if(x<-95.5 || x>114 || z<BACK_Z+0.2 || z > (x > 62 ? 54 : 32.1)) return true;
+    if(x<-95.5 || x>114 || z<BACK_Z+0.2 || z > (x > 62 ? 54 : (x > -46 && x < 46 && (z > 36 || Math.abs(x) < 1.6) ? 55.5 : 32.1))) return true;
     if(((x-90)/19.4)**2 + ((z-44.5)/9.9)**2 < 1) return true;                                       // água do lago
     if(x > 33.5 && x < 41.6 && (z < -5.6 || z > -2.4) && !(z > 28.6 && z < 32.2)) return true;   // só a estrada leva à floresta
     for(const c of circles) if((!c.when || c.when()) && (x-c.x)**2 + (z-c.z)**2 < (c.r+0.32)**2) return true;
@@ -4134,6 +4256,137 @@ function createWorld(){
   function payLake(dt){ if(S.lake.open || !lakeUnlocked() || S.money <= 0) return; const r = lakeOpenLeft(), pay = Math.min(S.money, r, Math.max(LAKE_OPEN_COST*dt/1.6, 1));
     S.money -= pay; S.paid.lake_open = (S.paid.lake_open||0) + pay; if(Math.random() < dt*8) burstBills(74.5, 29, 1); if(lakeOpenLeft() <= 0.0001) openLake(); }
 
+  // ---------- FAZENDA (sul da rodovia, x -45..45, z 36..56) ----------
+  const FZ = {lane:37.6, top:41.6, bot:54.6};
+  const FX = {ovelha:-36, vaca:-18, galinha:0, boi:18, porco:36};
+  pathRect(-45, FZ.lane - 1.1, 45, FZ.lane + 1.1);                                // corredor da fazenda
+  const farmSign = labelSprite(5); farmSign.position.set(0, 4.2, 36.0); farmSign.userData.draw('🚜 Fazenda', '#ffe9a8');
+  const grassFarm = (()=>{ const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.fillStyle = '#7cc24e'; g.fillRect(0,0,128,128);
+    for(let k=0;k<900;k++){ g.fillStyle = Math.random() < 0.5 ? 'rgba(60,120,30,.35)' : 'rgba(200,240,140,.3)'; g.fillRect(Math.random()*128, Math.random()*128, 2, 4); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 4); return new THREE.MeshLambertMaterial({map:t}); })();
+  // construções e cercas de cada criação
+  const fObj3 = {};
+  function fenceRect(g, x1, z1, x2, z2, gapX){
+    const wood = M('#a0693a'), post = (x,z)=>mesh(new THREE.BoxGeometry(0.16,1.0,0.16), wood, x, 0.5, z, g);
+    const rail = (ax,az,bx,bz)=>{ const L = Math.hypot(bx-ax, bz-az); for(const y of [0.38,0.78]){ const r = mesh(new THREE.BoxGeometry(L,0.08,0.06), wood, (ax+bx)/2, y, (az+bz)/2, g); r.rotation.y = -Math.atan2(bz-az, bx-ax); } };
+    for(let x=x1;x<=x2+0.01;x+=1.5){ post(x,z1); post(x,z2); } for(let z=z1;z<=z2+0.01;z+=1.5){ post(x1,z); post(x2,z); }
+    rail(x1,z1,gapX-0.9,z1); rail(gapX+0.9,z1,x2,z1); rail(x1,z2,x2,z2); rail(x1,z1,x1,z2); rail(x2,z1,x2,z2);
+  }
+  function barn(g, x, z, w, d, wall, roof, label){
+    mesh(new THREE.BoxGeometry(w+0.3,0.2,d+0.3), M('#9b968c'), x, 0.1, z, g);
+    mesh(new THREE.BoxGeometry(w,2.2,d), M(wall), x, 1.3, z, g);
+    const rf = mesh(new THREE.CylinderGeometry(d*0.62, d*0.62, w+0.3, 3), M(roof), x, 2.55, z, g); rf.rotation.z = Math.PI/2; rf.scale.set(0.55, 1, 0.95);
+    for(const s of [-1,1]) mesh(new THREE.BoxGeometry(0.12,2.2,0.12), M('#f4f1ec'), x + s*w/2, 1.3, z + d/2, g);
+    mesh(new THREE.BoxGeometry(1.3,1.6,0.08), M('#7a3d22'), x - w/2 + 1.0, 1.0, z + d/2 + 0.02, g);                  // porta de celeiro
+    for(const r of [0.45,-0.45]){ const x2 = mesh(new THREE.BoxGeometry(1.5,0.08,0.06), M('#f4f1ec'), x - w/2 + 1.0, 1.0, z + d/2 + 0.07, g); x2.rotation.z = r; }
+    mesh(new THREE.BoxGeometry(0.7,0.5,0.06), M('#9fd3ee'), x + w/2 - 0.9, 1.6, z + d/2 + 0.02, g);
+    const lb = labelSprite(3.2); lb.position.set(x, 4.0, z); g.add(lb); lb.userData.draw(label, '#ffffff');
+    rects.push({x1:x-w/2-0.1, x2:x+w/2+0.1, z1:z-d/2-0.1, z2:z+d/2+0.1, when:()=>g.visible});
+  }
+  function buildFarmArea(d){
+    const cx = FX[d.id], g = new THREE.Group(); world.add(g); const o = {g, d};
+    const ground = new THREE.Mesh(new THREE.BoxGeometry(9.4, 0.04, FZ.bot - FZ.top + 0.4), grassFarm); ground.position.set(cx - 3, 0.025, (FZ.top + FZ.bot)/2); ground.receiveShadow = true; g.add(ground);
+    fenceRect(g, cx - 7.6, FZ.top, cx + 1.6, FZ.bot, cx - 3);
+    // silo de ração, comedouro e bebedouro
+    mesh(new THREE.CylinderGeometry(0.75,0.75,3.0,16), M('#c9d1d9'), cx - 6.6, 1.9, FZ.bot - 1.1, g); mesh(new THREE.ConeGeometry(0.8,0.7,16), M('#d9542b'), cx - 6.6, 3.75, FZ.bot - 1.1, g);
+    for(const [lx,lz] of [[-0.5,-0.5],[0.5,-0.5],[-0.5,0.5],[0.5,0.5]]) mesh(new THREE.BoxGeometry(0.1,0.5,0.1), M('#6f747c'), cx - 6.6 + lx, 0.25, FZ.bot - 1.1 + lz, g);
+    mesh(new THREE.BoxGeometry(3.2,0.45,0.6), M('#8a5a2b'), cx - 3.8, 0.25, FZ.bot - 1.4, g); mesh(new THREE.BoxGeometry(3.0,0.1,0.45), M('#e2c58a'), cx - 3.8, 0.45, FZ.bot - 1.4, g);
+    mesh(new THREE.CylinderGeometry(0.55,0.55,0.4,16), M('#6f747c'), cx - 0.6, 0.2, FZ.bot - 1.2, g); mesh(new THREE.CylinderGeometry(0.5,0.5,0.04,16), M('#4fb6e8'), cx - 0.6, 0.41, FZ.bot - 1.2, g);
+    // galpão/máquina de processamento, esteira e estoque
+    barn(g, cx + 4.6, 46.5, 4.6, 4.0, d.type === 'corte' ? '#e8e4da' : '#b5523b', d.type === 'corte' ? '#5c6b78' : '#f4f1ec', `${d.machine[0].split(' ')[0] === 'Frigorífico' ? '🏭' : '⚙️'} ${d.machine[0]}`);
+    o.mach = new THREE.Group(); o.mach.position.set(cx + 4.6, 0, 44.2); g.add(o.mach);
+    mesh(new THREE.BoxGeometry(1.4,1.0,0.9), M('#2f80ed'), 0, 0.5, 0, o.mach); o.led = mesh(new THREE.BoxGeometry(0.3,0.15,0.05), new THREE.MeshBasicMaterial({color:'#ff5a4a'}), 0.4, 0.85, 0.46, o.mach);
+    o.wheel = mesh(new THREE.CylinderGeometry(0.3,0.3,0.12,14), M('#c9d1d9'), -0.4, 0.75, 0.48, o.mach); o.wheel.rotation.x = Math.PI/2;
+    o.beltG = new THREE.Group(); g.add(o.beltG);
+    o.pal = new THREE.InstancedMesh(new THREE.BoxGeometry(0.42,0.32,0.32), M(d.color), 30); { const dd = new THREE.Object3D();
+      for(let k=0;k<30;k++){ dd.position.set(cx + 6.0 + (k%3)*0.46, 0.25 + Math.floor(k/9)*0.34, 39.4 + (Math.floor(k/3)%3)*0.36); dd.updateMatrix(); o.pal.setMatrixAt(k, dd.matrix); } }
+    o.pal.count = 0; o.pal.castShadow = true; g.add(o.pal); mesh(new THREE.BoxGeometry(1.6,0.1,1.3), M('#b7844d'), cx + 6.46, 0.05, 39.76, g);
+    // animais (até 16 visíveis) passeando no cercado
+    o.animals = []; for(let k=0;k<16;k++){ const a = makeAnimal(d.id); a.visible = false; a.position.set(cx - 3 + (Math.random()-.5)*7, 0, 48 + (Math.random()-.5)*10); g.add(a); o.animals.push({m:a, tx:a.position.x, tz:a.position.z, wait:Math.random()*3, sc:1}); }
+    o.workers = []; o.op = null; o.items = []; o.cartT = 0; o.walker = null;
+    o.tile = makeTile(cx - 3, FZ.lane + 2.2);
+    fObj3[d.id] = o; return o;
+  }
+  function makeAnimal(id){
+    const g = new THREE.Group(), P = {}; const leg = (col, x, z, h=0.4, w=0.1)=>{ const l = mesh(new THREE.CylinderGeometry(w, w*0.9, h, 6), M(col), x, h/2, z, g); return l; };
+    if(id === 'ovelha'){ const b = mesh(new THREE.DodecahedronGeometry(0.42,1), M('#f4f1ec'), 0, 0.62, 0, g); b.scale.set(1.3,0.95,1);
+      P.head = mesh(new THREE.BoxGeometry(0.24,0.26,0.24), M('#2b2b30'), 0.55, 0.78, 0, g); for(const [x,z] of [[0.28,0.18],[0.28,-0.18],[-0.28,0.18],[-0.28,-0.18]]) leg('#2b2b30', x, z, 0.36, 0.06); }
+    else if(id === 'vaca' || id === 'boi'){ const col = id === 'vaca' ? '#f4f1ec' : '#7a4a2a';
+      mesh(new THREE.BoxGeometry(1.3,0.6,0.6), M(col), 0, 0.85, 0, g);
+      if(id === 'vaca'){ for(const [x,y,z] of [[0.2,1.0,0.31],[-0.35,0.8,-0.31],[-0.1,1.1,0]]) mesh(new THREE.BoxGeometry(0.35,0.25,0.02), M('#2b2b30'), x, y, z, g); mesh(new THREE.SphereGeometry(0.14,8,6), M('#f2a0b0'), -0.3, 0.5, 0, g); }
+      P.head = mesh(new THREE.BoxGeometry(0.36,0.36,0.34), M(col), 0.78, 1.0, 0, g); mesh(new THREE.BoxGeometry(0.12,0.16,0.3), M('#f2c2b0'), 0.98, 0.92, 0, g);
+      for(const s of [-1,1]) mesh(new THREE.ConeGeometry(0.05,0.18,6), M('#e8e0d0'), 0.78, 1.25, s*0.14, g);
+      for(const [x,z] of [[0.45,0.2],[0.45,-0.2],[-0.45,0.2],[-0.45,-0.2]]) leg(col, x, z, 0.55, 0.08); }
+    else if(id === 'galinha'){ const b = mesh(new THREE.SphereGeometry(0.2,10,8), M('#f4f1ec'), 0, 0.3, 0, g); b.scale.set(1.2,1,0.9);
+      P.head = mesh(new THREE.SphereGeometry(0.11,8,6), M('#f4f1ec'), 0.2, 0.48, 0, g); mesh(new THREE.BoxGeometry(0.06,0.08,0.04), M('#e5483b'), 0.22, 0.6, 0, g); mesh(new THREE.ConeGeometry(0.04,0.1,6), M('#f2a516'), 0.33, 0.47, 0, g).rotation.z = -Math.PI/2;
+      for(const z of [0.07,-0.07]) leg('#f2a516', 0, z, 0.16, 0.02); g.scale.setScalar(1.3); }
+    else if(id === 'porco'){ const b = mesh(new THREE.SphereGeometry(0.4,12,10), M('#f2a5b0'), 0, 0.5, 0, g); b.scale.set(1.45,0.95,1);
+      P.head = mesh(new THREE.SphereGeometry(0.24,10,8), M('#f2a5b0'), 0.56, 0.58, 0, g); mesh(new THREE.CylinderGeometry(0.1,0.1,0.08,10), M('#e98a96'), 0.78, 0.55, 0, g).rotation.z = Math.PI/2;
+      for(const s of [-1,1]) mesh(new THREE.ConeGeometry(0.07,0.12,4), M('#e98a96'), 0.56, 0.82, s*0.13, g);
+      for(const [x,z] of [[0.3,0.2],[0.3,-0.2],[-0.3,0.2],[-0.3,-0.2]]) leg('#e98a96', x, z, 0.3, 0.07); }
+    g.userData = P; return g;
+  }
+  let fTrucks3 = {};
+  function refreshFarm(){
+    for(const d of FARM){ const F = S.farm[d.id]; let o = fObj3[d.id] || buildFarmArea(d);
+      const on = F.open; o.g.children.forEach(c=>{ if(c !== o.tile.mesh) c.visible = on; }); o.g.visible = true; o.mach.visible = on && F.machine;
+      if(on) o.animals.forEach(a=>a.m.visible = false);
+      // funcionários e operador
+      while(on && o.workers.length < F.helpers){ const w = oilWorker(['#3aa35a','#d9822b','#2f80ed'][o.workers.length%3], '#f4f1ec', FX[d.id] + 1.2, 47, 0);
+        w.userData.item = mesh(new THREE.BoxGeometry(0.32,0.26,0.28), M(d.type === 'corte' ? '#e8e0d0' : d.color), 0, 1.0, 0.38, w); w.userData.item.visible = false; o.workers.push({w, ph:o.workers.length*0.33}); }
+      if(on && F.machine && !o.op){ o.op = oilWorker('#24324a', '#f2b632', FX[d.id] + 4.0, 43.2, 0); }
+      // esteira do galpão até o estoque
+      if(on && F.machine && !o.beltG.children.length){ beltSeg(o.beltG, FX[d.id] + 4.6, 43.4, FX[d.id] + 4.6, 40.3, 0.8); }
+      while((fTrucks3[d.id] = fTrucks3[d.id] || []).length < F.trucks.length){ const t = makeFlatbed(['#3aa35a','#d94a4a'][fTrucks3[d.id].length%2]); t.visible = false; world.add(t); fTrucks3[d.id].push(t); }
+    }
+  }
+  refreshFarm();
+  const fRid = [];
+  function updateFarm(dt, t){
+    for(const d of FARM){ const F = S.farm[d.id], o = fObj3[d.id], cx = FX[d.id];
+      const tl = o.tile; tl.mesh.visible = !F.open;
+      if(!F.open){ const ok = fUnlocked(d), r = fBuyCost(d.id, 'open'); tl.draw(ok ? d.ico : '🔒', ok ? money(r) : 'Nível ' + d.lvl, ok ? 1 - r/d.open : 0, !ok); continue; }
+      // animais: adultos, jovens e filhotes (tamanhos diferentes) passeando e pastando
+      const list = d.type === 'corte' ? [[F.adult + F.queue*0, 1], [F.young, 0.72], [F.baby, 0.45]] : [[F.n, 1]];
+      const total = list.reduce((a,x)=>a + x[0], 0), shown = Math.min(16, Math.round(total)), sizes = [];
+      for(const [n, sc] of list){ const k = total ? Math.round(n/total*shown) : 0; for(let i=0;i<k && sizes.length<shown;i++) sizes.push(sc); } while(sizes.length < shown) sizes.push(1);
+      o.animals.forEach((a,i)=>{ const v = i < sizes.length; a.m.visible = v; if(!v) return; a.sc += (sizes[i] - a.sc)*Math.min(1, dt*0.5); a.m.scale.setScalar(a.sc*(d.id === 'galinha' ? 1.3 : 1));
+        const p = a.m.position, dx = a.tx - p.x, dz = a.tz - p.z, dd = Math.hypot(dx, dz);
+        if(a.wait > 0){ a.wait -= dt; const h = a.m.userData.head; if(h) h.position.y = (d.id === 'galinha' ? 0.48 : d.id === 'ovelha' ? 0.78 : d.id === 'porco' ? 0.58 : 1.0) - Math.max(0, Math.sin(t*3 + i))*0.25; }   // pastando
+        else if(dd < 0.1){ a.wait = 1 + Math.random()*4; a.tx = cx - 3 + (Math.random()-.5)*7.6; a.tz = FZ.top + 1.2 + Math.random()*(FZ.bot - FZ.top - 3); }
+        else { const sp = (d.id === 'galinha' ? 1.2 : 0.7)*dt; p.x += dx/dd*Math.min(sp, dd); p.z += dz/dd*Math.min(sp, dd); a.m.rotation.y = Math.atan2(-dz, dx); p.y = Math.abs(Math.sin(t*8 + i))*0.03; } });
+      // funcionários: levam a lã/leite/ovos (ou guiam o animal) do cercado até o galpão
+      o.workers.forEach((w,k)=>{ const U = w.w.userData, busy = d.type === 'corte' ? F.queue > 0.02 || F.working : F.collecting; w.ph = (w.ph + dt*0.18) % 1;
+        const go = w.ph < 0.5, f = go ? w.ph*2 : (w.ph - 0.5)*2, e = f*f*(3-2*f), ax = cx - 1.5, az = 47 + k*1.2, bx = cx + 2.0, bz = 46 + k*0.4;
+        if(!busy){ w.w.position.set(ax, 0, az); U.item.visible = false; U.legL.rotation.x = U.legR.rotation.x = 0; U.armR.rotation.x = -0.6 + Math.sin(t*3 + k)*0.4; return; }
+        w.w.position.set(go ? ax + (bx-ax)*e : bx + (ax-bx)*e, 0, go ? az + (bz-az)*e : bz + (az-bz)*e); w.w.rotation.y = go ? Math.PI/2 : -Math.PI/2;
+        const sw = Math.sin(t*10 + k); U.legL.rotation.x = sw*0.6; U.legR.rotation.x = -sw*0.6; U.item.visible = go && d.type !== 'corte'; U.armL.rotation.x = U.armR.rotation.x = go ? -1.2 : -sw*0.4; });
+      // animal adulto sendo levado ao frigorífico (some ao entrar no galpão) / vaca indo à ordenha
+      if((d.type === 'corte' && F.queue > 0.3) || (d.id === 'vaca' && F.collecting)){ if(!o.walker){ o.walker = {m:makeAnimal(d.id), f:0}; world.add(o.walker.m); }
+        const W = o.walker; W.f += dt*0.12; const f = W.f % 1, ax = cx - 1.0, bx = cx + 2.4, x = ax + (bx - ax)*Math.min(1, f*1.25);
+        W.m.position.set(x, 0, 46.8); W.m.rotation.y = 0; W.m.visible = f < 0.8 || d.id === 'vaca'; if(d.id === 'vaca' && f >= 0.8){ W.m.position.x = bx - (f-0.8)*5*(bx-ax); W.m.rotation.y = Math.PI; } }
+      else if(o.walker){ world.remove(o.walker.m); o.walker = null; }
+      // máquina, operador, esteira com produtos e estoque
+      if(o.mach.visible){ o.led.material.color.set(F.working ? '#7dff6a' : '#ffd23f'); if(F.working) o.wheel.rotation.y += dt*8; o.mach.position.y = F.working ? Math.abs(Math.sin(t*25))*0.015 : 0;
+        if(o.op){ o.op.userData.armR.rotation.x = -1.0 + Math.sin(t*3)*0.3; o.op.userData.armL.rotation.x = -0.8; }
+        o.rT = (o.rT||0) + dt; if(F.working && o.rT > 0.9){ o.rT = 0; const r = new THREE.Mesh(new THREE.BoxGeometry(0.34,0.24,0.26), M(d.color)); r.castShadow = true; world.add(r);
+          fRid.push({r, a:new THREE.Vector3(cx + 4.6, 1.05, 43.4), b:new THREE.Vector3(cx + 4.6, 1.05, 40.3), d:0}); } }
+      o.pal.count = Math.min(30, Math.ceil(F.stock/fStockCap(d.id)*30));
+      // caminhões: descem da rodovia, carregam no estoque e saem
+      const ts = fTrucks3[d.id] || [], path = [new THREE.Vector3(0.6, 0, 30.4), new THREE.Vector3(0.6, 0, FZ.lane), new THREE.Vector3(cx + 6.4, 0, FZ.lane)];
+      F.trucks.forEach((st, k)=>{ const v = ts[k]; if(!v) return; v.userData.pal.forEach((p2,i)=>p2.visible = i < Math.round(st.load/fTruckLoad(d.id)*6));
+        if(st.ph === 'in'){ v.visible = st.t > 1; placeOn(v, path, (st.t - 1)/5); }
+        else if(st.ph === 'out'){ const f = st.t/Math.min(fTrip(d.id), 7); v.visible = f < 1; if(f < 1) placeOn(v, [...path].reverse(), f); }
+        else { v.visible = true; placeOn(v, path, 1); v.position.x -= k*3.6*(st === F.trucks.find(x=>x.ph === 'load') ? 0 : 1); }
+        if(st.payN && st.payN !== v.userData.payN){ v.userData.payN = st.payN; if(player.position.distanceTo(new THREE.Vector3(cx, 0, 40)) < 35) floatText('+' + money(st.paid), new THREE.Vector3(cx + 6, 2.4, 38), '#9cff7a'); } });
+    }
+    for(let k=fRid.length-1;k>=0;k--){ const it = fRid[k]; it.d += dt*1.6; const L = it.a.distanceTo(it.b); if(it.d >= L){ world.remove(it.r); fRid.splice(k,1); continue; }
+      it.r.position.lerpVectors(it.a, it.b, it.d/L); it.r.scale.setScalar(riderScale(it.d, L)); }
+  }
+  function payFarm(dt){ const p = player.position; for(const d of FARM){ const o = fObj3[d.id], F = S.farm[d.id]; if(F.open || !fUnlocked(d) || !o.tile.inside(p) || S.money <= 0) continue;
+    const r = fBuyCost(d.id, 'open'), pay = Math.min(S.money, r, Math.max(d.open*dt/1.6, 1)); S.money -= pay; S.paid['fa_'+d.id] = (S.paid['fa_'+d.id]||0) + pay;
+    if(Math.random() < dt*8) burstBills(o.tile.x, o.tile.z, 1); if(fBuyCost(d.id, 'open') <= 0.0001) farmOpen(d.id); } }
+
   // ---------- personagem ----------
   function makeMiner(shirt, helmet, pants, skinCol){
     const g = new THREE.Group(), P = {};
@@ -4658,9 +4911,10 @@ function createWorld(){
   lvlBtns.push({id:'floresta', tile:makeTile(41, -1.0), x:41, z:-1.0});
   lvlBtns.push({id:'pedreira', tile:makeTile(78, -1.0), x:78, z:-1.0});
   lvlBtns.push({id:'lago', tile:makeTile(76, 31), x:76, z:31});
+  lvlBtns.push({id:'fazenda', tile:makeTile(3.4, 36.0), x:3.4, z:36.0});
   const upArrows = lvlBtns.map(b=>{ const c = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,4), new THREE.MeshBasicMaterial({color:'#5fe05a'})); c.position.set(b.x, 1.2, b.z); world.add(c); return c; });
   // ---------- placas fixas na frente de cada construção (cartão pintado na placa) ----------
-  const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4], floresta:[40.0,0.4,-1.0], pedreira:[77.6,0.4,-2.6], lago:[75.6,0.4,31.6]};
+  const CARD_POS = {galpao:[-4,0.4,13.6], usina:[-76,0.4,-4.2], oil:[-30,0.4,13.4], floresta:[40.0,0.4,-1.0], pedreira:[77.6,0.4,-2.6], lago:[75.6,0.4,31.6], fazenda:[3.4,0.4,35.6]};
   const signBoards = [];
   const cards = lvlBtns.map(b=>{
     const m = mineById(b.id);
@@ -4683,6 +4937,7 @@ function createWorld(){
         btn: open ? (isFinite(b.cost) ? ['Melhorar', money(b.cost)] : ['Máximo','']) : ['🔒 Abrir', money(remaining(toolById(m.tool)))]}; }
     if(b.id === 'galpao') return {name:'Galpão de Entregas', ic:'📦', open:S.depotOpen, rate: S.depotOpen ? `📦 ${fmt(depotTotal())} · ⛽ ${fmt(S.oil.fuel)} L` : 'Fechado', btn: [S.depotOpen ? 'Melhorar' : 'Abrir', money(b.cost)]};
     if(b.id === 'usina') return {name:'Usina de Energia', ic:'⚡', open:S.power.open, rate: `⚡ ${fmt(powerNow)}/${fmt(powerDemand())} kW`, btn: isFinite(b.cost) ? [S.power.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
+    if(b.id === 'fazenda'){ const on = FARM.filter(d=>S.farm[d.id].open).length; return {name:'Fazenda', ic:'🚜', open:on > 0, rate: on ? `${on}/5 criações` : `🔒 Nível ${FARM[0].lvl}`, btn: isFinite(b.cost) ? [on ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']}; }
     if(b.id === 'lago') return {name:'Lago e Pátio', ic:'🌊', open:S.lake.open, rate: S.lake.open ? `🏖️ ${Math.floor(S.lake.sand + S.lake.sandF)} · 💧 ${Math.floor(S.lake.water)}` : lakeUnlocked() ? 'À venda' : '🔒 Fábrica de blocos', btn: isFinite(b.cost) ? [S.lake.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
     if(b.id === 'pedreira') return {name:'Pedreira', ic:'⛰️', open:S.quarry.open, rate: S.quarry.open ? `⛰️ ${Math.floor(S.quarry.brita)} t de brita` : 'À venda', btn: isFinite(b.cost) ? [S.quarry.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
     if(b.id === 'floresta') return {name:'Floresta', ic:'🌲', open:S.forest.open, rate: S.forest.open ? `🌲 ${Math.floor(S.forest.trees)} árvores` : 'À venda', btn: isFinite(b.cost) ? [S.forest.open ? 'Melhorar' : 'Comprar', money(b.cost)] : ['Máximo','']};
@@ -4731,7 +4986,10 @@ function createWorld(){
   function updateLvlBtns(t){
     lvlBtns.forEach((b,k)=>{
       let lvl, cost, open = true;
-      if(b.id === 'lago'){ const L2 = S.lake; open = lakeUnlocked(); lvl = (L2.open?1:0) + ['pump','pumpOp','dredge','dredgeOp','exc','excOp'].filter(k=>L2[k]).length + L2.trucks.length + Object.keys(L_UP).reduce((a,k)=>a+lLv(k),0);
+      if(b.id === 'fazenda'){ lvl = FARM.reduce((a,d)=>{ const F = S.farm[d.id]; return a + (F.open ? 1 + F.helpers + F.trucks.length + (F.machine?1:0) + Object.values(F.lv).reduce((x,y)=>x+y,0) : 0); }, 0);
+        const cs = []; FARM.forEach(d=>{ ['open','machine','help','truck','animal'].forEach(k=>{ if(fCanBuy(d.id,k)) cs.push(fBuyCost(d.id,k)); }); if(S.farm[d.id].open) Object.keys(FARM_UP).forEach(k=>{ if(k !== 'rep' || d.type === 'corte') cs.push(fUpCost(d.id,k)); }); });
+        cost = cs.length ? Math.min(...cs) : Infinity; open = fUnlocked(FARM[0]); }
+      else if(b.id === 'lago'){ const L2 = S.lake; open = lakeUnlocked(); lvl = (L2.open?1:0) + ['pump','pumpOp','dredge','dredgeOp','exc','excOp'].filter(k=>L2[k]).length + L2.trucks.length + Object.keys(L_UP).reduce((a,k)=>a+lLv(k),0);
         cost = !L2.open ? lakeOpenLeft() : Math.min(...Object.keys(L_BUY).map(k=>lCanBuy(k) ? lBuyCost(k) : Infinity), ...Object.keys(L_UP).map(k=>lLv(k) < 10 ? lUpCost(k) : Infinity)); }
       else if(b.id === 'pedreira'){ const Q2 = S.quarry; lvl = (Q2.open?1:0) + qLevel1() + (Q2.crusher?1:0) + (Q2.belt?1:0) + qLevel2() + (Q2.blocks.open?1:0) + (Q2.conc.open?1:0) + Q2.conc.bts.length;
         cost = !Q2.open ? qOpenLeft() : Math.min(...Object.keys(Q_BUY).map(k=>qCanBuy(k) ? qBuyCost(k) : Infinity), ...Object.keys(Q_UP).map(k=>qCanUp(k) ? qUpCost(k) : Infinity)); }
@@ -5009,11 +5267,13 @@ function createWorld(){
     if(z === 'forest') payForest(dt);
     if(z === 'quarry') payQuarry(dt);
     if(z === 'lake') payLake(dt);
+    if(p.z > 38 && p.z < 42 && Math.abs(p.x) < 46) payFarm(dt);
     updateOil(dt, npcT);
     updateCars(dt);
     updateForest(dt, npcT);
     updateQuarry(dt, npcT);
     updateLake(dt, npcT);
+    updateFarm(dt, npcT);
     updatePower(dt, npcT);
     updateDelivery(dt, p);
     updateTrophies(npcT);
@@ -5145,6 +5405,7 @@ function createWorld(){
     onGemItem(id){ if(id === 'capacete') refreshHelmet(); burstBills(player.position.x, player.position.z, 10); },
     onOilChanged(){ refreshOil(); burstBills(player.position.x, player.position.z, 10); },
     onForestChanged(){ refreshForest(); burstBills(player.position.x, player.position.z, 10); },
+    onFarmChanged(){ refreshFarm(); burstBills(player.position.x, player.position.z, 10); },
     onLakeChanged(){ if(typeof refreshLake === 'function') refreshLake(); burstBills(player.position.x, player.position.z, 10); },
     onQuarryChanged(){ if(typeof refreshQuarry === 'function') refreshQuarry(); burstBills(player.position.x, player.position.z, 10); },
     onPowerChanged(){ refreshPower(); refreshGenerators(); burstBills(player.position.x, player.position.z, 10); },
@@ -5237,6 +5498,9 @@ function xpMilestones(sec){ const X = S.xp; if(!X) return;
   done('openLake', C.terreno); paid('lakeBuy', k => k.endsWith('Op') ? C.contratar : k === 'trucks' ? C.comprarVeiculo : C.comprarMaquina);
   paid('lakeUp', k => k === 'ltank' ? C.melhorarEstoque : k === 'lhaul' ? C.melhorarVeiculo : C.upgradeMaquina);
   paid('buyGemItem', 30);
+  done('farmOpen', C.novaFabrica);
+  paid('farmBuy', (id, k) => ({machine:C.comprarMaquina, help:C.contratar, truck:C.comprarVeiculo, animal:20})[k] || 0);
+  paid('farmUp', (id, k) => k === 'pasture' ? C.melhorarEstoque : k === 'truck' ? C.melhorarVeiculo : k === 'help' ? C.melhorarFunc : C.upgradeMaquina);
   const dd = window.deliverDeal; window.deliverDeal = function(...a){ const n0 = S.market.deals||0, r = dd.apply(this, a); if((S.market.deals||0) > n0) gainXP(C.contrato, 'contrato'); return r; };
   const cm = window.checkMissions; window.checkMissions = function(...a){ const m0 = S.mission, skip = !!S.skipMissionRewards, r = cm.apply(this, a); if(!skip && S.mission > m0) gainXP(C.missao*(S.mission - m0), 'missao'); return r; };
   const ca = window.checkAchievements; window.checkAchievements = function(...a){ const n0 = Object.keys(S.ach||{}).length, r = ca.apply(this, a), n = Object.keys(S.ach||{}).length - n0; if(n > 0) gainXP(C.medalha*n, 'medalha'); return r; };

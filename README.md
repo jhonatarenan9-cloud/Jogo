@@ -43,3 +43,4 @@ Tela de abertura, câmera isométrica, cartões flutuando sobre cada mina e fáb
 - **🎯 Missões:** uma sequência de 32 objetivos com recompensa em dinheiro, sempre mostrando a próxima conquista no topo da tela.
 - Objetivo final: minerar 8 milhões de esmeraldas e virar Magnata da Mineração (a meta dobra a cada Nova Era).
 - **⛰️ Pedreira, Blocos e Concreto:** explosões no paredão, ajudantes e carregadeiras levam as pedras ao britador, a esteira forma o monte de brita (estoque central) e caminhões vendem. Depois: fábrica de blocos (misturador, prensa, cura, paletes) e usina de concreto usinado com caminhões-betoneira.
+- **🚜 Fazenda:** ovelhas (lã), vacas (leite), galinhas (ovos), gado e porcos (carne, com reprodução e crescimento). Funcionários, máquinas de processamento, esteiras, estoques e caminhões; ração automática descontada das vendas.

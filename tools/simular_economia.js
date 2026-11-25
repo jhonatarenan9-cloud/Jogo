@@ -47,6 +47,10 @@ function bot(cfg){
         Object.keys(Q_UP).filter(qCanUp).forEach(k=>add('qu:'+k, qUpCost(k), ()=>quarryUp(k), 'melhoria')); }
       if(lakeUnlocked()){ if(!S.lake.open) add('lake', lakeOpenLeft(), ()=>{ S.money -= lakeOpenLeft(); openLake(); }, 'fabrica');
         else { Object.keys(L_BUY).filter(lCanBuy).forEach(k=>add('l:'+k, lBuyCost(k), ()=>lakeBuy(k), 'fabrica')); Object.keys(L_UP).forEach(k=>add('lu:'+k, lUpCost(k), ()=>lakeUp(k), 'melhoria')); } } }
+    for(const d of FARM){ const id = d.id, F = S.farm[id];
+      if(!F.open){ if(fCanBuy(id,'open')) add('farm:'+id, fBuyCost(id,'open'), ()=>farmBuy(id,'open'), 'fabrica'); continue; }
+      for(const k of ['machine','help','truck','animal']) if(fCanBuy(id,k)) add('f'+k+':'+id, fBuyCost(id,k), ()=>farmBuy(id,k), k === 'machine' ? 'fabrica' : 'equipe');
+      Object.keys(FARM_UP).filter(k=>k !== 'rep' || d.type === 'corte').forEach(k=>{ if(fLv(id,k) < 10) add('fu:'+k+':'+id, fUpCost(id,k), ()=>farmUp(id,k), 'melhoria'); }); }
     return c;
   }
   function openPowerBuy(){ S.money -= powerOpenLeft(); openPower(); }
@@ -84,7 +88,7 @@ function bot(cfg){
     const r = await p.evaluate(`(${bot.toString()})(${JSON.stringify({horas:HORAS, ativo:HORAS, est})})`);
     const hm = s => { s = Math.round(s); const h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h${String(m).padStart(2,'0')}` : `${m}min${String(s%60).padStart(2,'0')}`; };
     console.log(`\n===== estratégia: ${est} (${HORAS}h de jogo ativo) =====`);
-    const keys = ['helper:cobre','smelter:cobre','usina','pw:tb','belt:cobre','tool:ferro','oil','oil:ps','tool:britadeira','forest','quarry','q:bOpen','lake','q:cOpen','tool:carregadeira','tool:escavadeira','MAGNATA'];
+    const keys = ['farm:ovelha','farm:vaca','farm:galinha','farm:boi','farm:porco','helper:cobre','smelter:cobre','usina','pw:tb','belt:cobre','tool:ferro','oil','oil:ps','tool:britadeira','forest','quarry','q:bOpen','lake','q:cOpen','tool:carregadeira','tool:escavadeira','MAGNATA'];
     for(const k of keys){ const e = r.log.find(x=>x[1] === k); console.log(`  ${k.padEnd(20)} ${e ? hm(e[0]) : '—'}`); }
     console.log('  marcos:'); r.fins.forEach(f=>console.log(`   ${String(f.min).padStart(5)} min · dinheiro ${Math.round(f.money)} · ganho total ${Math.round(f.earned)} · minas ${f.tools} · ${Math.round(f.rate)}/s · NÍVEL ${f.lvl} · esmeraldas ${f.esm}\n        ${JSON.stringify(f.src)}`));
     await p.close();

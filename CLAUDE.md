@@ -59,6 +59,11 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   Água (reservatório → adutora → caixa d'água), areia (draga) e argila (escavadeira) vão ao pátio do lago; caçambas levam areia/argila ao pátio de insumos da fábrica.
   `lakeUse(LAKE_USE.x, q)` consome de verdade; a parte feita com insumos próprios rende +`LAKE_BONUS` (80%). Cada estação paga `STAGE_PAY` (bombeamento, dragagem, escavação).
 - **Estradas:** `asphalt()` registra cada avenida em `ROADS` (árvores/flores não nascem em cima; o personagem anda +30% no asfalto via `onRoad`). Avenidas em x=`AVE_A` (24) e `AVE_B` (-64,5), Rua do Galpão (x=0) e rodovia até `HWY_E` (74). Carros fazem circuitos rodovia → avenida → estrada principal → outra avenida em `spawnCar`.
+- **Fazenda (sul da rodovia, x -45..45, z 36–56):** `FARM` (5 criações: ovelha/vaca/galinha = 'prod'; boi/porco = 'corte' com filhote→jovem→adulto),
+  `FARM_UP`/`FU_BASE` (melhorias, custo = fração do preço da criação × fator^nível), `farmStep` (passos de 0,5 s, funciona offline).
+  Abertura: ovelhas $40 mil nv 14, vacas $120 mil nv 17, galinhas $300 mil nv 20, gado $800 mil nv 24, porcos $2 milhões nv 28; cada uma se paga em ~1 h.
+  Ração automática: custo (`feed` por animal/s) acumula em `feedDebt` e é descontado das vendas (até 60%). Futuro milho/ração: `FARM_FEED.ownDiscount`.
+  Matrizes do corte: `rep` (10–60% do cercado, mínimo 2); adultos além disso vão ao frigorífico; reprodução pausa com o cercado cheio.
 - `STAGE_PAY`: lucro por etapa do carvão e do petróleo (carvão bruto, britagem, lavagem, caldeira, extração, separação, refino). Mantenha bem abaixo do produto final.
 - `SELL_ITEMS`: aba 💰 Vender (lado direito): preço de venda de cada produto das etapas e dos finais. Cada etapa vale mais que a anterior e menos que terminar a cadeia; carvão bruto bem barato (não pode render mais que um ajudante do Cobre).
 - `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.
