@@ -663,6 +663,10 @@ try{
     S.collectors = d.collectors || {}; S.split = d.split || {}; S.haul = Object.assign(newState().haul, d.haul); if(d.loaders === undefined) S.loaders = d.trucks || 0;   // saves antigos: cada caminhão já tinha quem carregasse
     { const n = newState().farm; S.farm = n; if(d.farm) for(const k in n) if(d.farm[k]) S.farm[k] = Object.assign(n[k], d.farm[k], {lv:Object.assign({}, d.farm[k].lv)}); }
     S.lake = Object.assign(newState().lake, d.lake, {lv:Object.assign({}, d.lake && d.lake.lv)});
+    if(d.quarry && d.quarry.lv && !('p1' in d.quarry.lv) && Object.keys(d.quarry.lv).length){   // melhorias antigas → uma por fase (média dos níveis)
+      const o = d.quarry.lv, avg = ks => Math.round(ks.reduce((a,k)=>a + (o[k]||0), 0)/ks.length);
+      d.quarry.lv = {p1:avg(['blast','rocks','crush','belt','stock','sell']), p2:avg(['bfill','bmix','bmach','bstore','bsell']), p3:avg(['cfill','ccap','cmix','cload','ctrans','cspeed'])}; }
+    if(d.lake && d.lake.lv && !('lake' in d.lake.lv) && Object.keys(d.lake.lv).length){ const o = d.lake.lv; d.lake.lv = {lake:Math.round(['lpump','ldredge','lexc','lhaul','ltank'].reduce((a,k)=>a + (o[k]||0), 0)/5)}; }
     { const n = newState().quarry, q = d.quarry || {}; S.quarry = Object.assign(n, q, {lv:Object.assign({}, q.lv), sold:Object.assign(n.sold, q.sold),
         blocks:Object.assign(n.blocks, q.blocks), conc:Object.assign(n.conc, q.conc)}); }
     S.forest = Object.assign(newState().forest, d.forest, {buf:Object.assign(newState().forest.buf, d.forest && d.forest.buf)});
@@ -1061,26 +1065,22 @@ const Q_BUY = {   // compras únicas e em sequência (preço de cada unidade)
   bOpen:[20000], bHelpers:[1500, 3500, 8000], bBelt:[8000], bTrucks:[5000, 15000, 40000],
   cOpen:[50000], cBelt:[15000], cTrucks:[10000, 25000, 60000, 150000],
 };
-const Q_UP = {   // melhorias por nível (custo base × 2,6^nível, até 10 níveis)
-  blast:{ico:'💥', name:'Explosões mais frequentes', base:2000, ph:1}, rocks:{ico:'🪨', name:'Mais pedras por explosão', base:2000, ph:1},
-  crush:{ico:'⚙️', name:'Britador mais rápido', base:3000, ph:1, need:'crusher'}, belt:{ico:'🛤️', name:'Esteira mais rápida', base:2500, ph:1, need:'belt'},
-  stock:{ico:'⛰️', name:'Estoque maior', base:1500, ph:1, need:'belt'}, sell:{ico:'🚚', name:'Caminhões de brita maiores', base:2500, ph:1, need:'trucks'},
-  bfill:{ico:'🧺', name:'Abastecimento mais rápido', base:3000, ph:2}, bmix:{ico:'🌀', name:'Misturador maior', base:3500, ph:2},
-  bmach:{ico:'🧱', name:'Máquina de blocos mais rápida', base:4000, ph:2}, bstore:{ico:'📦', name:'Pátio de paletes maior', base:2500, ph:2},
-  bsell:{ico:'🚛', name:'Caminhões de blocos maiores', base:3500, ph:2},
-  cfill:{ico:'🧺', name:'Abastecimento de brita mais rápido', base:6000, ph:3}, ccap:{ico:'🏗️', name:'Usina com mais capacidade', base:6000, ph:3},
-  cmix:{ico:'🌀', name:'Mistura mais rápida', base:7000, ph:3}, cload:{ico:'⬇️', name:'Carregamento mais rápido', base:6000, ph:3},
-  ctrans:{ico:'🚛', name:'Betoneiras maiores', base:8000, ph:3}, cspeed:{ico:'⏱️', name:'Entregas mais rápidas', base:8000, ph:3},
+// uma melhoria por fase (como "Floresta Maior"): cada nível acelera todas as etapas daquela fase
+const Q_UP = {
+  p1:{ico:'⛰️', name:'Pedreira Maior', base:10000, ph:1, desc:'Explosões, pedras, britador, esteira, estoque e caminhões de brita'},
+  p2:{ico:'🧱', name:'Fábrica de Blocos Maior', base:15000, ph:2, desc:'Abastecimento, misturador, prensa, pátio de paletes e caminhões'},
+  p3:{ico:'🏗️', name:'Usina de Concreto Maior', base:35000, ph:3, desc:'Abastecimento, capacidade, mistura, carregamento e betoneiras'},
 };
+const Q_PH = {blast:'p1', rocks:'p1', crush:'p1', belt:'p1', stock:'p1', sell:'p1', bfill:'p2', bmix:'p2', bmach:'p2', bstore:'p2', bsell:'p2', cfill:'p3', ccap:'p3', cmix:'p3', cload:'p3', ctrans:'p3', cspeed:'p3'};
 const Q_UP_MAX = 10;
-const qLv = k => (S.quarry.lv[k] || 0);
-const qUpCost = k => Math.ceil(Q_UP[k].base * Math.pow(2.6, qLv(k)));
+const qLv = k => (S.quarry.lv[Q_PH[k] || k] || 0);
+const qUpCost = k => Math.ceil(Q_UP[k].base * Math.pow(2.8, qLv(k)));
 const qBuyCost = k => { const Q = S.quarry, n = {crusher:+Q.crusher, belt:+Q.belt, helpers:Q.helpers, loaders:Q.loaders, trucks:Q.trucks.length,
   bOpen:+Q.blocks.open, bHelpers:Q.blocks.helpers, bBelt:+Q.blocks.belt, bTrucks:Q.blocks.trucks.length, cOpen:+Q.conc.open, cBelt:+Q.conc.belt, cTrucks:Q.conc.bts.length}[k];
   return Q_BUY[k][n]; };   // undefined = já comprou tudo
 const qOpenLeft = () => Math.max(0, QUARRY_OPEN_COST - (S.paid.q_open||0));
-const qLevel1 = () => { const Q = S.quarry; return Q.helpers + Q.loaders + Q.trucks.length + ['blast','rocks','crush','belt','stock','sell'].reduce((a,k)=>a+qLv(k), 0); };
-const qLevel2 = () => { const B = S.quarry.blocks; return B.helpers + B.trucks.length + (B.belt?1:0) + ['bfill','bmix','bmach','bstore','bsell'].reduce((a,k)=>a+qLv(k), 0); };
+const qLevel1 = () => { const Q = S.quarry; return Q.helpers + Q.loaders + Q.trucks.length + 3*qLv('p1'); };
+const qLevel2 = () => { const B = S.quarry.blocks; return B.helpers + B.trucks.length + (B.belt?1:0) + 2*qLv('p2'); };
 const blocksUnlocked = () => { const Q = S.quarry; return Q.crusher && Q.belt && Q.trucks.length >= 1 && qLevel1() >= 6 && lvlOk('blocks'); };
 const concUnlocked = () => { const B = S.quarry.blocks; return B.open && B.trucks.length >= 1 && qLevel2() >= 4 && lvlOk('conc'); };
 // números da produção
@@ -1153,12 +1153,12 @@ function quarryStages(){
   const Q = S.quarry, R4 = BRITA_PER_ROCK*60, tk = Q.trucks.length;
   const truckCycle = T_IN + T_OUT + britaTruckLoad()/(3*(1 + 0.5*qLv('sell')));
   const st = [
-    {k:'ext', ico:'💥', name:'Explosões', v:rocksPerBlast()/blastEvery()*R4, fix:'Melhore a frequência ou a quantidade de pedras'},
+    {k:'ext', ico:'💥', name:'Explosões', v:rocksPerBlast()/blastEvery()*R4, fix:'Compre "Pedreira Maior"'},
     {k:'car', ico:'👷', name:'Carga até o britador', v:carryRate()*R4, fix:'Contrate ajudantes ou compre carregadeiras'},
-    {k:'bri', ico:'⚙️', name:'Britador', v:Q.crusher ? crushRate()*R4 : 0, fix:Q.crusher ? 'Deixe o britador mais rápido' : 'Instale o britador'},
-    {k:'est', ico:'🛤️', name:'Esteira', v:Q.belt ? qBeltRate()*60 : 0, fix:Q.belt ? 'Deixe a esteira mais rápida' : 'Instale a esteira'},
+    {k:'bri', ico:'⚙️', name:'Britador', v:Q.crusher ? crushRate()*R4 : 0, fix:Q.crusher ? 'Compre "Pedreira Maior"' : 'Instale o britador'},
+    {k:'est', ico:'🛤️', name:'Esteira', v:Q.belt ? qBeltRate()*60 : 0, fix:Q.belt ? 'Compre "Pedreira Maior"' : 'Instale a esteira'},
     {k:'ven', ico:'🚚', name:'Venda (caminhões + fábricas)', v:tk*britaTruckLoad()/truckCycle*60 + (Q.blocks.open ? Math.min(bFillRate(), bMachRate())*60 : 0) + (Q.conc.open ? Math.min(cFillRate()*60, Q.conc.bts.length*btLoad()/(T_IN + cMixTime() + cLoadTime() + cTripTime())*60) : 0),
-      fix:tk ? 'Compre mais caminhões, caminhões maiores ou mais fábricas' : 'Compre um caminhão de brita'},
+      fix:tk ? 'Compre mais caminhões, "Pedreira Maior" ou abra as fábricas' : 'Compre um caminhão de brita'},
   ];
   const min = Math.min(...st.map(x=>x.v)); st.forEach(x=>x.neck = x.v <= min + 1e-9);
   return st;
@@ -1167,9 +1167,8 @@ function qCanBuy(k){ const Q = S.quarry; if(!Q.open || qBuyCost(k) === undefined
   if(k === 'belt' || k === 'loaders') return Q.crusher; if(k === 'trucks') return Q.belt;
   if(k === 'bOpen') return blocksUnlocked(); if(/^b[HBT]/.test(k)) return Q.blocks.open;
   if(k === 'cOpen') return concUnlocked(); if(/^c[BT]/.test(k)) return Q.conc.open; return true; }
-function qCanUp(k){ const Q = S.quarry, u = Q_UP[k]; if(!Q.open || qLv(k) >= Q_UP_MAX) return false;
-  if(u.ph === 2) return Q.blocks.open; if(u.ph === 3) return Q.conc.open;
-  if(u.need === 'trucks') return Q.trucks.length > 0; if(u.need) return !!Q[u.need]; return true; }
+function qCanUp(k){ const Q = S.quarry, u = Q_UP[k]; if(!u || !Q.open || qLv(k) >= Q_UP_MAX) return false;
+  if(u.ph === 2) return Q.blocks.open; if(u.ph === 3) return Q.conc.open; return true; }
 function quarryBuy(k){
   const c = qBuyCost(k); if(c === undefined || S.money < c) return; const Q = S.quarry;
   if(k === 'crusher' && !Q.open) return; if(k === 'belt' && !Q.crusher) return; if(k === 'loaders' && !Q.crusher) return; if(k === 'trucks' && !Q.belt) return;
@@ -1189,7 +1188,7 @@ function quarryBuy(k){
   }[k]();
   toast(msg); if(window.world3d) world3d.onQuarryChanged(); render(); save();
 }
-function quarryUp(k){ const u = Q_UP[k]; if(qLv(k) >= Q_UP_MAX) return; const c = qUpCost(k); if(S.money < c) return; S.money -= c; S.quarry.lv[k] = qLv(k) + 1; toast(`${u.ico} ${u.name}: nível ${qLv(k)}!`); render(); save(); }
+function quarryUp(k){ const u = Q_UP[k]; if(!u || !qCanUp(k)) return; const c = qUpCost(k); if(S.money < c) return; S.money -= c; S.quarry.lv[k] = qLv(k) + 1; toast(`${u.ico} ${u.name}: nível ${qLv(k)}!`); render(); save(); }
 function openQuarry(){ S.quarry.open = true; delete S.paid.q_open; toast('⛰️ Pedreira liberada! As explosões começaram: contrate ajudantes e instale o britador.'); if(window.world3d) world3d.onQuarryChanged(); render(); save(); }
 function sellBritaNow(){ const Q = S.quarry, t = Math.floor(Q.brita); if(t <= 0) return 0; Q.brita -= t; Q.sold.brita += t; const v = qPay(t*BRITA_VALUE, 'brita'); toast(`⛰️ ${t} t de brita vendidas por ${money(v)}`); render(); save(); return v; }
 
@@ -1200,9 +1199,8 @@ function sellBritaNow(){ const Q = S.quarry, t = Math.floor(Q.brita); if(t <= 0)
 const LAKE_OPEN_COST = 15000, LAKE_BONUS = 0.8;
 const LAKE_USE = {bloco:{agua:0.4, areia:0.3, argila:0.3}, concreto:{agua:0.3, areia:0.5}};   // por t de brita (bloco) ou m³ (concreto)
 const L_BUY = {pump:[6000], pumpOp:[800], dredge:[12000], dredgeOp:[1200], exc:[10000], excOp:[1000], trucks:[5000, 15000]};
-const L_UP = {lpump:{ico:'💧', name:'Bombas mais fortes', base:3000}, ldredge:{ico:'🚤', name:'Draga mais rápida', base:4000}, lexc:{ico:'⛏️', name:'Escavadeira mais rápida', base:3500},
-  lhaul:{ico:'🚚', name:'Caçambas maiores', base:4000}, ltank:{ico:'🛢️', name:'Caixa d\'água e pátio maiores', base:2500}};
-const lLv = k => (S.lake.lv[k]||0), lUpCost = k => Math.ceil(L_UP[k].base * Math.pow(2.6, lLv(k)));
+const L_UP = {lake:{ico:'🌊', name:'Lago Maior', base:12000}};   // um nível acelera bombas, draga, escavadeira, caçambas e pátio
+const lLv = k => (S.lake.lv.lake||0), lUpCost = k => Math.ceil(L_UP.lake.base * Math.pow(2.8, lLv(k)));
 const lakeOpenLeft = () => Math.max(0, LAKE_OPEN_COST - (S.paid.lake_open||0));
 const lakeUnlocked = () => !!S.quarry.blocks.open && lvlOk('lake');
 const lBuyCost = k => { const L = S.lake, n = k === 'trucks' ? L.trucks.length : +!!L[k]; return L_BUY[k][n]; };
@@ -1859,7 +1857,7 @@ function buildPanel(){
     sec('🚚 Transporte até a pedreira');
     { const c = lBuyCost('trucks'); add('🚚', `Caçambas de insumos <span class="count">${L.trucks.length}/${L_BUY.trucks.length}</span>`, `Levam ${lakeTruckLoad()} t de areia ou argila do pátio do lago ao pátio de insumos da fábrica.`, c === undefined ? tag('✔ Completo') : lCanBuy('trucks') ? btn(money(c), ()=>lakeBuy('trucks'), c) : tag('🔒 Draga ou escavadeira','var(--muted)')); }
     sec('🔧 Melhorias');
-    Object.keys(L_UP).forEach(k=>{ const u = L_UP[k], lv = lLv(k), c = lUpCost(k); add(u.ico, `${u.name} <span class="count">nv ${lv}</span>`, '', lv >= 10 ? tag('✔ Máximo') : btn(money(c), ()=>lakeUp(k), c)); });
+    Object.keys(L_UP).forEach(k=>{ const u = L_UP[k], lv = lLv(k), c = lUpCost(k); add(u.ico, `${u.name} <span class="count">nv ${lv}</span>`, `Bombas, draga, escavadeira, caçambas e pátio: tudo +40% de velocidade e +50% de capacidade por nível.<br>Hoje: 💧 ${fmt(pumpRate())} m³/s · 🏖️ ${fmt(dredgeRate())} t/s · 🟫 ${fmt(excRate())} t/s · 🚚 ${lakeTruckLoad()} t`, lv >= 10 ? tag('✔ Máximo') : btn(money(c), ()=>lakeUp(k), c)); });
     return;
   }
   if(panelTarget === 'pedreira'){
@@ -1885,19 +1883,13 @@ function buildPanel(){
     if(!Q.open){ const r = qOpenLeft(); add('🏗️', 'Terreno da Pedreira', `Paredões de rocha a leste da floresta. As explosões começam sozinhas. Também dá para pagar pisando no quadrado.${lvlOk('quarry') ? '' : ` Precisa do nível ${LVL_REQ.quarry}.`}`, lvlOk('quarry') ? btn(money(r), ()=>{ if(S.money >= r){ S.money -= r; openQuarry(); } }, r) : tag('🔒 Nível ' + LVL_REQ.quarry, 'var(--muted)')); return; }
     const buyRow = (k, ico, name, desc, n, max) => { const c = qBuyCost(k), can = qCanBuy(k);
       add(ico, `${name}${max > 1 ? ` <span class="count">${n}/${max}</span>` : ''}`, desc, c === undefined ? tag('✔ Completo') : can ? btn(money(c), ()=>quarryBuy(k), c) : tag('🔒 Bloqueado','var(--muted)')); };
-    const UPV = {blast:[()=>60/blastEvery(),'explosões/min'], rocks:[rocksPerBlast,'pedras/explosão'], crush:[()=>crushRate()*BRITA_PER_ROCK*60,'t/min'], belt:[()=>qBeltRate()*60,'t/min'],
-      stock:[stockCap,'t'], sell:[britaTruckLoad,'t/caminhão'], bfill:[()=>bFillRate()*60,'t/min'], bmix:[bMixCap,'t'], bmach:[()=>bMachRate()*BLOCKS_PER_T*60,'blocos/min'],
-      bstore:[bPalletCap,'paletes'], bsell:[blockTruckLoad,'paletes/caminhão'], cfill:[()=>cFillRate()*60,'t/min'], ccap:[cBinCap,'t'], cmix:[()=>60/cMixTime(),'misturas/min'],
-      cload:[()=>60/cLoadTime(),'cargas/min'], ctrans:[btLoad,'m³/betoneira'], cspeed:[()=>60/cTripTime(),'viagens/min']};
-    const upRows = ph => Object.keys(Q_UP).filter(k=>Q_UP[k].ph === ph).forEach(k=>{ const u = Q_UP[k], c = qUpCost(k), lv = qLv(k), [f, un] = UPV[k];
-      const now = f(); S.quarry.lv[k] = lv + 1; const nx = f(); S.quarry.lv[k] = lv; if(!lv) delete S.quarry.lv[k];
-      const desc = lv >= Q_UP_MAX ? `${fmt(now)} ${un}` : `${fmt(now)} → <b>${fmt(nx)}</b> ${un} (+${Math.round((nx/now - 1)*100)}%)`;
-      let right; if(lv >= Q_UP_MAX) right = tag('✔ Máximo'); else if(!qCanUp(k)) right = tag('🔒','var(--muted)');
-      else { right = document.createElement('div'); right.style.cssText = 'display:flex;flex-direction:column;gap:4px';
-        right.appendChild(btn(money(c), ()=>quarryUp(k), c));
-        const mx = document.createElement('button'); mx.textContent = 'Máx'; mx.style.cssText = 'padding:4px 8px;font-size:12px'; mx.dataset.cost = c;
-        mx.onclick = ()=>{ let n = 0; while(qCanUp(k) && S.money >= qUpCost(k) && n < Q_UP_MAX){ quarryUp(k); n++; } if(n){ toast(`${u.ico} ${u.name}: +${n} nível(is)!`); save(); } buildPanel(); render(); };
-        right.appendChild(mx); }
+    const UPV = {p1:[[()=>60/blastEvery(),'explosões/min'], [()=>crushRate()*BRITA_PER_ROCK*60,'t/min no britador'], [stockCap,'t de estoque']],
+      p2:[[()=>bMachRate()*BLOCKS_PER_T*60,'blocos/min'], [bPalletCap,'paletes'], [blockTruckLoad,'paletes/caminhão']],
+      p3:[[()=>60/cMixTime(),'misturas/min'], [btLoad,'m³/betoneira'], [()=>60/cTripTime(),'entregas/min']]};
+    const upRows = ph => Object.keys(Q_UP).filter(k=>Q_UP[k].ph === ph).forEach(k=>{ const u = Q_UP[k], c = qUpCost(k), lv = qLv(k);
+      const now = UPV[k].map(([f])=>f()); S.quarry.lv[k] = lv + 1; const nx = UPV[k].map(([f])=>f()); S.quarry.lv[k] = lv;
+      const desc = `${u.desc}.<br>` + UPV[k].map(([f,un],i)=>lv >= Q_UP_MAX ? `${fmt(now[i])} ${un}` : `${fmt(now[i])} → <b>${fmt(nx[i])}</b> ${un}`).join(' · ');
+      let right; if(lv >= Q_UP_MAX) right = tag('✔ Máximo'); else if(!qCanUp(k)) right = tag('🔒','var(--muted)'); else right = btn(money(c), ()=>quarryUp(k), c);
       add(u.ico, `${u.name} <span class="count">nv ${lv}</span>`, desc, right); });
     { const t = Math.floor(Q.brita), b2 = document.createElement('button'); b2.className = 'primary'; b2.style.width = '100%'; b2.style.marginBottom = '10px';
       b2.textContent = t ? `⛰️ Vender ${t} t de brita agora por ${money(t*BRITA_VALUE*mkP('brita'))}` : '⛰️ Sem brita no estoque'; b2.disabled = !t; b2.onclick = ()=>{ sellBritaNow(); buildPanel(); }; el.appendChild(b2); }
@@ -5494,9 +5486,9 @@ function xpMilestones(sec){ const X = S.xp; if(!X) return;
   done('openQuarry', C.terreno);
   paid('quarryBuy', k => ({crusher:C.comprarMaquina, belt:C.automatizar, helpers:C.contratar, loaders:C.comprarVeiculo, trucks:C.comprarVeiculo, bOpen:C.novaFabrica, bHelpers:C.contratar,
     bBelt:C.automatizar, bTrucks:C.comprarVeiculo, cOpen:C.novaFabrica, cBelt:C.automatizar, cTrucks:C.comprarVeiculo})[k]);
-  paid('quarryUp', k => ({stock:C.melhorarEstoque, bstore:C.melhorarEstoque, ccap:C.melhorarEstoque, belt:C.melhorarEsteira, sell:C.melhorarVeiculo, bsell:C.melhorarVeiculo, ctrans:C.melhorarVeiculo, cspeed:C.melhorarVeiculo})[k] || C.upgradeMaquina);
+  paid('quarryUp', C.upgradeMaquina*2);
   done('openLake', C.terreno); paid('lakeBuy', k => k.endsWith('Op') ? C.contratar : k === 'trucks' ? C.comprarVeiculo : C.comprarMaquina);
-  paid('lakeUp', k => k === 'ltank' ? C.melhorarEstoque : k === 'lhaul' ? C.melhorarVeiculo : C.upgradeMaquina);
+  paid('lakeUp', C.upgradeMaquina);
   paid('buyGemItem', 30);
   done('farmOpen', C.novaFabrica);
   paid('farmBuy', (id, k) => ({machine:C.comprarMaquina, help:C.contratar, truck:C.comprarVeiculo, animal:20})[k] || 0);

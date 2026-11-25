@@ -50,12 +50,12 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
   Por isso a primeira etapa da usina é barata (~$1,4 mil, logo depois da fundição do Cobre) e o caminho até o posto custa ~$9,7 mil.
   O Banco de Baterias ($10 mil) fica para depois. Saves antigos com gerador recebem de volta o que pagaram nele.
 - `FOREST_ITEMS`, `forStep`, `treeGrow`, `forestLvlCost`, `TORAS_PER_TREE`, `SACK_VALUE`, `PAPER_VALUE`: floresta a leste das minas (lenhadores, adubadores, trator florestal, serraria, carvoaria, fábrica de papel com energia). Terreno $12 mil, tudo ~$112 mil; rende ~$45/s no nível 0.
-- **Pedreira (leste da floresta, x 78–114):** `QUARRY_OPEN_COST`, `Q_BUY` (compras únicas/em sequência), `Q_UP` (melhorias, custo base × 2,6^nível, até 10),
+- **Pedreira (leste da floresta, x 78–114):** `QUARRY_OPEN_COST`, `Q_BUY` (compras únicas/em sequência), `Q_UP` (UMA melhoria por fase: p1 Pedreira Maior, p2 Fábrica de Blocos Maior, p3 Usina Maior; custo base × 2,8^nível, até 10; `Q_PH` liga as etapas antigas à fase),
   `BRITA_VALUE` ($10/t), `BLOCKS_PER_T`/`BLOCK_VALUE` (blocos rendem ~$18 por t de brita), `CONC_VALUE` ($45/m³, 1 t de brita por m³).
   `quarryStep` roda tudo em passos de 0,5 s (funciona offline). As três fases dividem o estoque central `S.quarry.brita`; os caminhões de brita deixam 25% de reserva quando há fábricas.
   Fase 2 libera com a pedreira no nível 6 (`blocksUnlocked`), fase 3 com a fábrica de blocos no nível 4 (`concUnlocked`).
   Insumos externos (cimento, areia, água, argamassa, aditivos) estão em `QUARRY_SUPPLIES` como automáticos; futuras indústrias entram ali (`supplyOk`).
-- **Lago (sul da pedreira):** `LAKE_OPEN_COST` ($15 mil, libera com a fábrica de blocos), `L_BUY` (bomba, draga, escavadeira, operadores, caçambas), `L_UP`.
+- **Lago (sul da pedreira):** `LAKE_OPEN_COST` ($15 mil, libera com a fábrica de blocos), `L_BUY` (bomba, draga, escavadeira, operadores, caçambas), `L_UP` (uma só: Lago Maior).
   Água (reservatório → adutora → caixa d'água), areia (draga) e argila (escavadeira) vão ao pátio do lago; caçambas levam areia/argila ao pátio de insumos da fábrica.
   `lakeUse(LAKE_USE.x, q)` consome de verdade; a parte feita com insumos próprios rende +`LAKE_BONUS` (80%). Cada estação paga `STAGE_PAY` (bombeamento, dragagem, escavação).
 - **Estradas:** `asphalt()` registra cada avenida em `ROADS` (árvores/flores não nascem em cima; o personagem anda +30% no asfalto via `onRoad`). Avenidas em x=`AVE_A` (24) e `AVE_B` (-64,5), Rua do Galpão (x=0) e rodovia até `HWY_E` (74). Carros fazem circuitos rodovia → avenida → estrada principal → outra avenida em `spawnCar`.
