@@ -39,7 +39,7 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `DEPOT_COST`, `DELIVERY_MULT`, `TRUCK_COSTS`, `LOADER_COSTS`, `COLLECTOR_COST`, `bagCap`, `truckCap`, `collectorCap`: área de entregas. A Metalúrgica (`DELIVERY_MULT`) deve pagar um pouco mais que a barra da fundição (`BAR_MULT/ORES_PER_BAR`), sem exagero.
 - `MISSIONS`: sequência de missões e recompensas.
 - `SM_WEAR_TIME`, `TRUCK_WEAR_TRIP`, `MIN_EFF`: manutenção (desgaste e custo de conserto).
-- `GEM_CHANCE`, `GEM_DELIVERY_CHANCE`, `GEM_ITEMS`: gemas raras e itens da loja de gemas (bônus pequenos).
+- `GEM_CHANCE`, `GEM_DELIVERY_CHANCE`, `GEM_ITEMS`: gemas raras (~10 por hora minerando ativamente) e itens da loja de gemas (8 a 25 gemas, 101 no total; bônus pequenos).
 - `POWER_ITEMS`, `powerStep`, `boilerCost`, `ENERGY_PER_COAL`, `BATTERY_*`: usina de energia (britadores com operadores, lavadora com maquinista,
   caldeira com 2 ajudantes, turbina, banco de baterias). Bateria rende pouco por segundo de propósito.
 - `OIL_ITEMS`, `oilStep`, `fuelCap`, `pumpCost`, `GAL_*`, `DRUM_*`, `FUEL_BOOST`, `TRUCK_FUEL`, `COLLECTOR_FUEL`: campo de petróleo
@@ -64,13 +64,13 @@ O jogador deve sempre sentir que falta só mais um pouco para a próxima conquis
 - `MARKET_*`, `mk`, `mval`, `marketTick`: mercado vivo (preço de cada produto varia entre 0,7x e 1,4x, média 1,0x, a cada 30 s). Todo valor de minério passa por `mval(m)`.
 - `DEAL_*`, `dealPool`: pedidos do mercado (quantidade fixa por +40%, 5 min para entregar).
 - `CAR_GAL_MULT`, `carBuy`, `updateCars`: carros da rodovia que param no posto e compram galões (um pouco acima do preço de venda do galão).
-- `PR_ITEMS`, `prGain`, `doPrestige`, `goal()`: prestígio (aba ⭐ Era, lado direito). Depois de virar Magnata, recomeça com estrelas (raiz dos milhões ganhos na era) para melhorias permanentes; a meta de esmeraldas dobra a cada era. Mantém estrelas, gemas, itens de gema e conquistas.
+- `PR_ITEMS`, `prGain`, `doPrestige`, `goal()`: prestígio (aba ⭐ Era, lado direito). Depois de virar Magnata, recomeça com estrelas (raiz das dezenas de milhões ganhos na era, ~10 estrelas com $1 bilhão) para melhorias permanentes; a meta de esmeraldas cresce 50% a cada era; Herança dá $2 mil/5 mil/12 mil. Mantém estrelas, gemas, itens de gema e conquistas.
 - `ACHS`: conquistas (metas e recompensas por medalha; mantenha as recompensas pequenas).
 
 ## Simulador de economia (use sempre que mexer em valores)
 `node tools/simular_economia.js [horas] [barato|minas|equipe|fabricas|todas]`: um robô joga com as funções reais do jogo (em segundos)
 e mostra quando compra cada mina/fábrica e de onde vem o dinheiro. Metas atuais (jogo ativo):
-Ferro 15–22 min · Ouro 30–45 min · Diamante 1h20–3h30 · Esmeralda 3–9h · Magnata ~22–30h (`GOAL` = 8 milhões de esmeraldas).
+Ferro 15–22 min · Ouro 30–45 min · Diamante 1h20–3h30 · Esmeralda 3–9h · Magnata ~22–30h (`GOAL` = 8 milhões de esmeraldas, +50% por era).
 Números pequenos de propósito: minério $1/3/9/25/70 (~3x por mina), ferramentas $2 mil/20 mil/200 mil/2 milhões (10x),
 esteiras de fundição limitadas (`BELT_RATE` 3–8 minérios/s) e Turbo caro, para o fim de jogo ficar nos milhões e não em bilhões.
 Custos de cada mina (fundição, esteiras, coletor, ajudantes) acompanham ~27% do preço da próxima ferramenta.

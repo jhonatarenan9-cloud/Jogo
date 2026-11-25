@@ -540,16 +540,16 @@ const smRepairCost = m => Math.ceil(SMELTER_COST[m.id] * 0.15 * (1 - cond('sm_'+
 const truckRepairCost = k => Math.ceil(TRUCK_COSTS[k] * 0.2 * (1 - cond('truck_'+k)));
 function repair(key, cost){ if(S.money < cost || cost <= 0) return; S.money -= cost; S.cond[key] = 1; toast('🔧 Consertado! Rendimento 100%.'); if(sheetOpen === 'maint') buildMaint(); if(window.world3d) world3d.celebrate(); render(); save(); }
 // ===== gemas raras =====
-const GEM_CHANCE = 0.005, GEM_DELIVERY_CHANCE = 0.04;
+const GEM_CHANCE = 0.0012, GEM_DELIVERY_CHANCE = 0.012;   // ~10 gemas por hora minerando ativamente
 const gemChance = () => GEM_CHANCE * (S.gemItems.lupa ? 2 : 1) * (1 + 0.2*prLv('sorte'));
 const GEM_ITEMS = [
-  {id:'capacete', ico:'⛑️', name:'Capacete Dourado',  desc:'+10% de minério por golpe', cost:5},
-  {id:'botas',    ico:'👟', name:'Botas de Corrida',  desc:'O mineiro anda 20% mais rápido', cost:4},
-  {id:'mochila',  ico:'🎒', name:'Mochila de Couro',  desc:'+25 de espaço na mochila', cost:4},
-  {id:'kit',      ico:'🧰', name:'Kit de Ferramentas',desc:'Fundições e caminhões se desgastam 50% mais devagar', cost:6},
-  {id:'lupa',     ico:'🔍', name:'Lupa do Garimpeiro',desc:'Chance de achar gemas dobrada', cost:8},
-  {id:'dourado',  ico:'🚛', name:'Caminhão Dourado',  desc:'Caminhões 25% mais rápidos', cost:10},
-  {id:'vip',      ico:'📜', name:'Contrato VIP',      desc:'A Metalúrgica paga +10%', cost:12},
+  {id:'capacete', ico:'⛑️', name:'Capacete Dourado',  desc:'+10% de minério por golpe', cost:10},
+  {id:'botas',    ico:'👟', name:'Botas de Corrida',  desc:'O mineiro anda 20% mais rápido', cost:8},
+  {id:'mochila',  ico:'🎒', name:'Mochila de Couro',  desc:'+25 de espaço na mochila', cost:8},
+  {id:'kit',      ico:'🧰', name:'Kit de Ferramentas',desc:'Fundições e caminhões se desgastam 50% mais devagar', cost:12},
+  {id:'lupa',     ico:'🔍', name:'Lupa do Garimpeiro',desc:'Chance de achar gemas dobrada', cost:18},
+  {id:'dourado',  ico:'🚛', name:'Caminhão Dourado',  desc:'Caminhões 25% mais rápidos', cost:20},
+  {id:'vip',      ico:'📜', name:'Contrato VIP',      desc:'A Metalúrgica paga +10%', cost:25},
 ];
 const delivMult = () => DELIVERY_MULT * (S.gemItems.vip ? 1.1 : 1);
 function findGem(pos){
@@ -564,23 +564,23 @@ function buyGemItem(it){
   if(window.world3d) world3d.onGemItem(it.id);
   buildShop(); render(); save();
 }
-const GOAL = 8000000; // esmeraldas para vencer (≈ 20 a 30 h de jogo; dobra a cada Nova Era) (dobra a cada Nova Era)
+const GOAL = 8000000; // esmeraldas para vencer (≈ 20 a 30 h de jogo; cresce 50% a cada Nova Era)
 // ===================== PRESTÍGIO (NOVA ERA) =====================
-// ao virar Magnata, o jogador pode recomeçar ganhando Estrelas ⭐ para melhorias permanentes; a meta dobra a cada era
-const goal = () => GOAL * Math.pow(2, (S.pr && S.pr.eras) || 0);
+// ao virar Magnata, o jogador pode recomeçar ganhando Estrelas ⭐ para melhorias permanentes; a meta cresce 50% a cada era
+const goal = () => GOAL * Math.pow(1.5, (S.pr && S.pr.eras) || 0);
 const PR_ITEMS = [
   {id:'equipe',  ico:'👷', name:'Equipe Lendária',   desc:'Ajudantes de todas as minas +10% por nível.', max:10},
   {id:'golpe',   ico:'⛏️', name:'Picareta Dourada',  desc:'Seu golpe +25% por nível.', max:10},
   {id:'negocio', ico:'📈', name:'Negociante',        desc:'Tudo que você vende vale +5% por nível.', max:10},
   {id:'usina',   ico:'⚙️', name:'Usinas Turbinadas', desc:'Usina e campo de petróleo +15% por nível.', max:8},
   {id:'sorte',   ico:'💎', name:'Faro de Gemas',     desc:'Chance de achar gemas +20% por nível.', max:5},
-  {id:'heranca', ico:'💰', name:'Herança',           desc:'Começa as próximas eras com mais dinheiro: $5 mil, $25 mil, $125 mil.', max:3},
+  {id:'heranca', ico:'💰', name:'Herança',           desc:'Começa as próximas eras com mais dinheiro: $2 mil, $5 mil, $12 mil.', max:3},
 ];
 const prLv = id => (S.pr && S.pr.lv[id]) || 0;
 const prCost = it => prLv(it.id) + 1;                       // 1, 2, 3... estrelas
 const prSell = () => 1 + 0.05*prLv('negocio');
-const prStart = () => [START_MONEY, 5000, 25000, 125000][prLv('heranca')];
-const prGain = () => S.won ? Math.max(1, Math.floor(Math.sqrt(S.earned/1e6))) : 0;   // ~5 estrelas com $25 milhões ganhos na era
+const prStart = () => [START_MONEY, 2000, 5000, 12000][prLv('heranca')];
+const prGain = () => S.won ? Math.max(1, Math.floor(Math.sqrt(S.earned/1e7))) : 0;   // ~10 estrelas com $1 bilhão ganho na era
 function buyPr(it){ const c = prCost(it); if(prLv(it.id) >= it.max || S.pr.stars < c) return; S.pr.stars -= c; S.pr.lv[it.id] = prLv(it.id) + 1; toast(`⭐ ${it.name} nível ${prLv(it.id)}!`); render(); save(); }
 function doPrestige(){
   const gain = prGain(); if(gain <= 0) return;
@@ -1565,7 +1565,7 @@ function buildEra(){
       <div>💎 ${fmt(Math.min(S.mined.esmeralda, goal()))} / ${fmt(goal())} esmeraldas</div><div class="progress"><div style="width:${Math.min(1, S.mined.esmeralda/goal())*100}%"></div></div></div>
     <div class="lvlRows"><div><span>⭐ Estrelas para gastar</span><b>${P.stars}</b></div><div><span>🏛️ Eras completas · estrelas ganhas</span><b>${P.eras} · ${P.total||0}</b></div>
       <div><span>⭐ Estrelas ao começar a próxima era</span><b>${S.won ? g : '— vire Magnata primeiro'}</b></div></div></div>
-    <p class="small">Ao começar uma <b>Nova Era</b>, minas, máquinas, usina, petróleo e dinheiro recomeçam do zero. Você mantém as <b>estrelas, melhorias de estrela, gemas, itens de gema e conquistas</b>. Quanto mais dinheiro você ganhar na era, mais estrelas (raiz quadrada dos milhões ganhos). A meta de esmeraldas dobra a cada era.</p>`;
+    <p class="small">Ao começar uma <b>Nova Era</b>, minas, máquinas, usina, petróleo e dinheiro recomeçam do zero. Você mantém as <b>estrelas, melhorias de estrela, gemas, itens de gema e conquistas</b>. Quanto mais dinheiro você ganhar na era, mais estrelas (raiz quadrada das dezenas de milhões ganhos). A meta de esmeraldas cresce 50% a cada era.</p>`;
   const b = document.createElement('button'); b.className = 'primary'; b.style.width = '100%'; b.style.marginBottom = '10px';
   b.textContent = !S.won ? '🔒 Vire Magnata para liberar' : eraArmed > Date.now() ? '⚠️ Toque de novo para confirmar' : `⭐ Começar Nova Era (+${g} estrelas)`; b.disabled = !S.won;
   b.onclick = ()=>{ if(eraArmed > Date.now()) doPrestige(); else { eraArmed = Date.now() + 4000; buildEra(); setTimeout(()=>{ if(sheetOpen === 'era') buildEra(); }, 4100); } };
